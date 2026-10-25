@@ -160,8 +160,13 @@ test("batch confirmation rechecks ID membership after task row locks, before any
       assert.match(compact, /ORDER BY u.id FOR SHARE OF u$/);
       assert.deepEqual(params, [actorHash]); return { rows: [{ id: actor.userId }] };
     }
-    if (sql.includes("FROM integracion_confirmaciones")) return { rows: [{ informante_actor_id: "external", payload: { tasks: [task] } }] };
-    if (sql.includes("FROM tareas WHERE")) return { rows: [task] };
+    if (compact === 'SELECT pg_advisory_xact_lock(hashtextextended($1,0))') {
+      assert.deepEqual(params, [JSON.stringify(['wilson-review-batch-v1', 'wilson', 'whatsapp', 'external', 'group'])]);
+      return { rows: [] };
+    }
+    if (sql.includes("FROM integracion_confirmaciones")) return { rows: [{ token: 'token', actor_id: 'external', grupo_id: 'group',
+      integracion: 'wilson', canal: 'whatsapp', operacion: 'revisar_lote', informante_actor_id: "external", payload: { tasks: [task] } }] };
+    if (sql.includes("FROM tareas WHERE")) { assert.match(compact, /ORDER BY id FOR UPDATE$/); return { rows: [task] }; }
     if (sql.includes("SELECT tarea_id, usuario_id, tipo")) return { rows: [{ tarea_id: 100, usuario_id: 22, tipo: "responsable" }] };
     return { rows: [] };
   } };
@@ -171,6 +176,10 @@ test("batch confirmation rechecks ID membership after task row locks, before any
   assert.equal(calls[0], 'BEGIN ISOLATION LEVEL READ COMMITTED');
   assert.ok(calls.findIndex(sql => sql.includes('FROM usuarios WHERE id=$1 FOR SHARE'))
     < calls.findIndex(sql => sql.includes('FROM integracion_confirmaciones')));
+  const hint = calls.findIndex(sql => sql.includes('FROM integracion_confirmaciones'));
+  const gate = calls.findIndex(sql => sql.includes('pg_advisory_xact_lock'));
+  const locked = calls.findIndex(sql => sql.includes('FROM integracion_confirmaciones') && /FOR UPDATE/.test(sql));
+  assert.ok(hint < gate && gate < locked && locked < calls.findIndex(sql => /FROM tareas WHERE/.test(sql)));
   assert.ok(calls.findIndex(sql => /FROM tareas WHERE[\s\S]*FOR UPDATE/.test(sql)) < calls.findIndex(sql => sql.includes("SELECT tarea_id, usuario_id, tipo")));
   assert.equal(calls.some(sql => /UPDATE tareas/.test(sql)), false);
   assert.equal(calls.at(-1), "ROLLBACK");

@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado389
+# Render 2.0 — corte de aceptación local372, actualizado390
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -11,7 +11,7 @@ Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la a
 | 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados; proyección de aprobación de Reportes corregida373 | Proveedor Drive real no certificado; aceptación transversal todavía parcial. |
 | 3. Diseño | Tokens y componentes compartidos, rutas reales, sidebar agrupada, modo claro; recorridos nativos concretos de escritorio/móvil | No hay aceptación poblada transversal de todas las secciones/roles, lectores de pantalla, zoom, teclado y dispositivos físicos independientes. |
 | 4. Funciones y experiencia | Persistencia, versiones, recibos, filtros, comentarios, protección de borradores y recuperación implementados por módulos | Reconciliar consumidores históricos restantes; avisos de revisión aún dependen de etiquetas. No afirmar que todo error de conexión/concurrencia esté cubierto. |
-| 5. Punta a punta | Cohorte fija34 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
+| 5. Punta a punta | Cohorte fija35 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
 
 ## Aplicación y fuente de datos
 
@@ -73,6 +73,8 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
+
+Integración390: reproduce40P01/HTTP500 y corrige la inversión preview/confirm del lote mediante scope advisory por informante/grupo, hint no autoritativo+reread exacto y task locks ascendentes. Conserva orden visible y política admin.19 unidades/120 focalesPASS, backend2598PASS/175SKIP/0FAIL; física nueva1PASS con carrera y stale hint/109 tablas y16 anterioresPASS. Core35archivos340PASS/0FAIL/0SKIP, terminal0. Inventario Chrome recuperable pero getTab QA382 vuelve a timeout/reset; ningún nuevo éxito visual/restauración. No acredita ausencia global de deadlocks ni permisos/proveedores/dispositivos reales; sin UI, migración o despliegue.
 
 Integración389: preview del lote Wilson captura sujeto/IDs y retiene identidad actual antes de tareas o reemplazo de tokens.13 unidades/98 focalesPASS, física16PASS con revocaciones durante espera y token previo/109 tablas preservados; backend2579PASS/174SKIP/0FAIL. Core34archivos339PASS/0FAIL/0SKIP, terminal0. Sin nueva política comercial/proveedor/UI/migración/despliegue. Pendiente independiente: reproducir inversión de orden preview tareas→tokens frente a confirm token→tareas; no afirmar concurrencia completa desde la protección de identidad.
 

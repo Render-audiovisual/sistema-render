@@ -30,9 +30,12 @@ function fixture({change=()=>{},assigned=7,mutate=false,failure,rollbackFails=fa
     if(sql.startsWith('SELECT u.id FROM usuarios u WHERE u.whatsapp_habilitado IS TRUE')){
       assert.match(sql,/ORDER BY u.id FOR SHARE OF u$/);assert.deepEqual(params,[hash]);return {rows:structuredClone(matches)};
     }
+    if(sql==='SELECT pg_advisory_xact_lock(hashtextextended($1,0))'){
+      assert.deepEqual(params,[JSON.stringify(['wilson-review-batch-v1','wilson','whatsapp',external,group])]);return {rows:[]};
+    }
     if(sql.includes('FROM tareas t LEFT JOIN clientes')){
       assert.deepEqual(params,[[101]],'Normalized task selection is captured before lease');
-      assert.match(sql,/FOR UPDATE OF t$/);return {rows:[structuredClone(task)]};
+      assert.match(sql,/ORDER BY t.id FOR UPDATE OF t$/);return {rows:[structuredClone(task)]};
     }
     if(sql.includes('SELECT tarea_id, usuario_id, tipo'))return {rows:[{tarea_id:101,usuario_id:assigned,tipo:'responsable'}]};
     if(sql.startsWith('UPDATE integracion_confirmaciones')){
@@ -89,7 +92,8 @@ for(const mutate of [false,true])test(`preview retains original subject/IDs and 
   assert.deepEqual(f.errors,[]);assert.equal(res.statusCode,201);assert.deepEqual(res.body.task_ids,[101]);
   assert.equal(f.calls.find(c=>c.sql.startsWith('BEGIN')).sql,'BEGIN ISOLATION LEVEL READ COMMITTED');
   const a=f.calls.findIndex(c=>c.sql===actorSql),tasks=f.calls.findIndex(c=>c.sql.includes('FROM tareas t'));
-  assert.ok(a>=0&&a<tasks);assert.equal(f.state.replaced,true);
+  const gate=f.calls.findIndex(c=>c.sql.includes('pg_advisory_xact_lock'));
+  assert.ok(a>=0&&a<gate&&gate<tasks);assert.equal(f.state.replaced,true);
   const params=f.state.inserted;assert.equal(params[0],res.body.confirmacion_token);
   assert.deepEqual(params.slice(1,3),[external,group]);assert.equal(params[6],'QA389 current name');
   assert.equal(params[3],buildWilsonConfirmationHash({operation:'revisar_lote',payload:{task_ids:[101]}}));

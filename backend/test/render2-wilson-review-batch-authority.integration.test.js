@@ -252,8 +252,8 @@ test('Wilson signed review batch retains current WhatsApp actor before consuming
         const promise = confirm(batch.token); operations.add(promise);
         pending = {promise, settled: false}; promise.then(() => {pending.settled = true;}, () => {pending.settled = true;});
         const actorQuery = 'SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE';
-        const taskQuery = 'SELECT id,titulo,asignado_a,estado,tipo_tarea,subtipo,material_referencia, cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE';
-        const tokenPattern = 'SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at FROM integracion_confirmaciones WHERE token=$1 %FOR UPDATE';
+        const taskQuery = 'SELECT id,titulo,asignado_a,estado,tipo_tarea,subtipo,material_referencia, cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE';
+        const tokenPattern = 'SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at,integracion,canal,operacion FROM integracion_confirmaciones WHERE token=$1 %FOR UPDATE';
         const deadline = Date.now() + 7000;
         let writer = null, expiredWhileBlocked = false;
         do {

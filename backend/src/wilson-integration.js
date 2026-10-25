@@ -118,6 +118,17 @@ export function normalizeReviewBatchIds(values) {
 
 const validUserId = id => Number.isSafeInteger(id) && id > 0;
 
+const REVIEW_BATCH_SCOPE_FIELDS = ['token', 'integracion', 'canal', 'operacion', 'actor_id', 'grupo_id', 'informante_actor_id'];
+// Coordination only, never authorization. Both routes must use the reporter
+// scope, including when a different current admin confirms the reporter's work.
+async function lockReviewBatchScope(db, reporterActorId, groupId) {
+  if (typeof reporterActorId !== 'string' || !reporterActorId || typeof groupId !== 'string') {
+    throw Object.assign(new Error('La confirmación no tiene un origen válido. Prepará un listado nuevo.'), { status: 409 });
+  }
+  const key = JSON.stringify(['wilson-review-batch-v1', 'wilson', 'whatsapp', reporterActorId, groupId]);
+  await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [key]);
+}
+
 export function reviewTaskOwnedBy(task = {}, userId) {
   if (!validUserId(userId)) return false;
   return task.asignado_a_id === userId
@@ -1315,6 +1326,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       });
       req.wilson = Object.freeze({ ...req.wilson, actorName: actor.nombre,
         actorRole: actor.rol, confirmedBy: actor.nombre, isLeader: actor.rol === 'admin' });
+      await lockReviewBatchScope(client, req.wilson.actorId, req.wilson.groupId);
       const result = await client.query(
         `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
           t.material_referencia,t.propiedades_extra,t.updated_at,
@@ -1323,13 +1335,15 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
          WHERE t.id=ANY($1::int[]) AND t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-         ORDER BY array_position($1::int[],t.id) FOR UPDATE OF t`,
+         ORDER BY t.id FOR UPDATE OF t`,
         [ids],
       );
       if (result.rows.length !== ids.length) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "Una o más tareas ya no están disponibles. Volvé a preparar el listado." });
       }
+      // Lock in stable ID order, present in the user's original chosen order.
+      result.rows.sort((a, b) => ids.indexOf(Number(a.id)) - ids.indexOf(Number(b.id)));
       result.rows = await annotateTaskAssignments(client, result.rows);
       if (!isWilsonLeader(req) && result.rows.some(task => !reviewTaskOwnedBy(task, req.wilson.userId))) {
         await client.query("ROLLBACK");
@@ -1397,15 +1411,25 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       });
       req.wilson = Object.freeze({ ...req.wilson, actorName: actor.nombre,
         actorRole: actor.rol, confirmedBy: actor.nombre, isLeader: actor.rol === 'admin' });
+      // An unlocked hint chooses coordination only. It never grants authority:
+      // re-read the exact scope under lock after acquiring the reporter gate.
+      const hintResult = await client.query(`SELECT token,actor_id,grupo_id,integracion,canal,operacion,informante_actor_id
+        FROM integracion_confirmaciones
+        WHERE token=$1 AND integracion='wilson' AND canal='whatsapp' AND operacion='revisar_lote'
+          AND grupo_id=$2 AND used_at IS NULL AND expires_at>clock_timestamp()`, [token, req.wilson.groupId]);
+      const hint = hintResult.rows[0];
+      if (!hint) throw Object.assign(new Error('La confirmación no existe, ya fue utilizada o venció.'), { status: 409 });
+      const observedScope = Object.freeze(Object.fromEntries(REVIEW_BATCH_SCOPE_FIELDS.map(field => [field, hint[field]])));
+      await lockReviewBatchScope(client, observedScope.actor_id, observedScope.grupo_id);
       const confirmationResult = await client.query(
-        `SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at
+        `SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at,integracion,canal,operacion
          FROM integracion_confirmaciones
          WHERE token=$1 AND integracion='wilson' AND canal='whatsapp' AND operacion='revisar_lote'
            AND grupo_id=$2 AND used_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE`,
         [token, req.wilson.groupId],
       );
       const confirmation = confirmationResult.rows[0];
-      if (!confirmation) {
+      if (!confirmation || REVIEW_BATCH_SCOPE_FIELDS.some(field => confirmation[field] !== observedScope[field])) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "La confirmación no existe, ya fue utilizada o venció después de 15 minutos." });
       }
@@ -1418,7 +1442,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       const currentResult = ids.length ? await client.query(
         `SELECT id,titulo,asignado_a,estado,tipo_tarea,subtipo,material_referencia,
           cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at
-         FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE`, [ids],
+         FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE`, [ids],
       ) : { rows: [] };
       // A preview is not ongoing authority over a task. Check current scope
       // under the retained row locks, even when a legacy writer kept updated_at.

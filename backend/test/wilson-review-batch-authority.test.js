@@ -31,13 +31,18 @@ function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,
     if(sql.startsWith('SELECT u.id FROM usuarios u WHERE u.whatsapp_habilitado IS TRUE')){
       assert.match(sql,/ORDER BY u.id FOR SHARE OF u$/);assert.deepEqual(params,[hash]);return {rows:structuredClone(matches)};
     }
+    if(sql==='SELECT pg_advisory_xact_lock(hashtextextended($1,0))'){
+      assert.deepEqual(params,[JSON.stringify(['wilson-review-batch-v1','wilson','whatsapp',reporter,group])]);return {rows:[]};
+    }
     if(sql.includes('FROM integracion_confirmaciones')){
       assert.deepEqual(params,[key,group],'Token/group must retain original subject');
       if(clockSelect)assert.match(sql,/expires_at\s*>\s*clock_timestamp\(\)/);
-      return {rows:[{token:key,informante_actor_id:reporter,informante_actor_nombre:'Original reporter',
+      return {rows:[{token:key,actor_id:reporter,grupo_id:group,integracion:'wilson',canal:'whatsapp',operacion:'revisar_lote',
+        informante_actor_id:reporter,informante_actor_nombre:'Original reporter',
         payload:{tasks:ids.map(id=>({id,titulo,asignado_a,estado,updated_at}))}}]};
     }
     if(sql.includes('FROM tareas WHERE id=ANY')){
+      assert.match(sql,/ORDER BY id FOR UPDATE$/);
       assert.deepEqual(params,[ids]);const current=structuredClone(task);
       if(branch==='conflict')current.updated_at='2026-10-25T13:00:00.000Z';
       if(branch==='validation')Object.assign(current,{tipo_tarea:'produccion',subtipo:'visita',
@@ -141,9 +146,11 @@ test('fresh demotion removes cached admin bypass for another reporter and assign
 test('retained current actor labels, IDs and actor-before-token/task locks on positive confirmation',async()=>{
   const f=fixture(),res=await f.run();assert.equal(res.statusCode,200);assert.equal(res.body.updated,true);assert.deepEqual(f.errors,[]);
   assert.equal(f.calls.find(c=>c.sql.startsWith('BEGIN')).sql,'BEGIN ISOLATION LEVEL READ COMMITTED');
-  const actor=f.calls.findIndex(c=>c.sql===actorSql),token=f.calls.findIndex(c=>c.sql.includes('FROM integracion_confirmaciones'));
+  const actor=f.calls.findIndex(c=>c.sql===actorSql),hint=f.calls.findIndex(c=>c.sql.includes('FROM integracion_confirmaciones'));
+  const gate=f.calls.findIndex(c=>c.sql.includes('pg_advisory_xact_lock'));
+  const token=f.calls.findIndex(c=>c.sql.includes('FROM integracion_confirmaciones')&&c.sql.endsWith('FOR UPDATE'));
   const task=f.calls.findIndex(c=>c.sql.includes('FROM tareas WHERE id=ANY'));
-  assert.ok(actor>=0&&actor<token&&token<task);assert.equal(f.notifications.length,1);
+  assert.ok(actor>=0&&actor<hint&&hint<gate&&gate<token&&token<task);assert.equal(f.notifications.length,1);
   assert.equal(f.notifications[0].actorId,7);assert.equal(f.notifications[0].actor,'QA386 current name');
   assert.equal(f.audits.length,1);assert.deepEqual(f.audits[0].slice(0,4),['whatsapp',external,'QA386 current name',group]);
   const update=f.calls.find(c=>c.sql.startsWith("UPDATE tareas SET estado='en_revision'"));

@@ -39,13 +39,21 @@ function fixture({ failure, changed = false, missingConfirmation = false } = {})
         assert.match(compact, /ORDER BY u.id FOR SHARE OF u$/);
         assert.deepEqual(params, [actorHash]); return { rows: [{ id: currentActor.id }] };
       }
+      if (compact === 'SELECT pg_advisory_xact_lock(hashtextextended($1,0))') {
+        assert.deepEqual(params, [JSON.stringify(['wilson-review-batch-v1', 'wilson', 'whatsapp', 'qa-external-actor', 'qa-private-group'])]);
+        return { rows: [] };
+      }
       if (sql.includes('FROM integracion_confirmaciones')) {
         assert.deepEqual(params, ['qa-review-token', 'qa-private-group']);
-        return { rows: missingConfirmation ? [] : [{ token: 'qa-review-token',
+        // Existing rejection assertions exercise a token disappearing between
+        // the unlocked coordination hint and the authoritative locked read.
+        return { rows: missingConfirmation && /FOR UPDATE/.test(sql) ? [] : [{ token: 'qa-review-token',
+          actor_id: 'qa-external-actor', grupo_id: 'qa-private-group', integracion: 'wilson', canal: 'whatsapp', operacion: 'revisar_lote',
           informante_actor_id: 'qa-external-actor', informante_actor_nombre: 'QA original reporter',
           payload: { tasks: snapshots } }] };
       }
       if (sql.includes('FROM tareas WHERE id=ANY')) {
+        assert.match(compact, /ORDER BY id FOR UPDATE$/);
         assert.deepEqual(params, [[101, 102]]);
         return { rows: tasks.map(row => ({ ...row, ...(changed && row.id === 101
           ? { updated_at: '2026-10-25T13:00:00.000Z' } : {}) })) };
