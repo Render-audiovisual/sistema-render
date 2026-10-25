@@ -40,17 +40,17 @@ test('linked source date labels and material message distinguish visit context w
   assert.match(material,/DriveUploader task=\{task\}/);
   assert.doesNotMatch(material,/registry.vinculo.drive_url/);
 });
-test('explicit successful null binding and empty visit retain legacy flow; source fields remain read-only when linked',()=>{
+test('explicit null binding retains legacy flow; empty canonical visit selects individual workflow',()=>{
   const standalone=registryState(task,{status:'ready',key:'10:7',vinculo:null});
   assert.equal(standalone.legacyEnabled,true);assert.equal(standalone.clientEditable,true);assert.equal(standalone.dateEditable,true);
   const empty=registryState(task,{status:'ready',key:'10:7',vinculo:link});
-  assert.equal(empty.legacyEnabled,true);assert.equal(empty.clientEditable,false);assert.equal(empty.dateEditable,false);assert.equal(empty.vinculo.id,id);
+  assert.equal(empty.legacyEnabled,false);assert.equal(empty.usesIndividual,true);assert.equal(empty.clientEditable,false);assert.equal(empty.dateEditable,false);assert.equal(empty.vinculo.id,id);
 });
-test('server flag alone selects individual registry, not guessed video counts or task labels',()=>{
+test('canonical origin selects individual workflow without guessing media or changing reporting flag',()=>{
   const individual=registryState(task,{status:'ready',key:'10:7',vinculo:{...link,fotos_total:1,usa_registro_individual:true}});
   assert.equal(individual.usesIndividual,true);assert.equal(individual.legacyEnabled,false);
   const historical=registryState(task,{status:'ready',key:'10:7',vinculo:{...link,videos_total:9,usa_registro_individual:false}});
-  assert.equal(historical.legacyEnabled,true);
+  assert.equal(historical.legacyEnabled,false);assert.equal(historical.vinculo.usa_registro_individual,false);
   const editing=registryState(task,{status:'ready',key:'10:7',vinculo:{...link,tipo:'edicion',usa_registro_individual:true}});
   assert.equal(editing.clientEditable,false);assert.equal(editing.dateEditable,true);assert.equal(editing.vinculo.id,id);
 });
@@ -84,7 +84,7 @@ test('drawer focus/visible rechecks independent registry, blocks legacy immediat
   const run=new Function('task','registryRetry','useEffect','captureRequest','setRegistryLookup','setRegistryRetry','window','document',effect);
   run(task,0,fn=>{cleanup=fn();},captureFor(async(_url,options)=>{signal=options.signal;return {vinculo:link};}),value=>{lookup=value;},fn=>{retries=fn(retries);},window,document);
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(registryState(task,lookup).legacyEnabled,true);
+  assert.equal(registryState(task,lookup).legacyEnabled,false);
   document.visibilityState='hidden';documentListeners.get('visibilitychange')();windowListeners.get('focus')();
   assert.equal(retries,0);
   document.visibilityState='visible';documentListeners.get('visibilitychange')();
@@ -105,7 +105,7 @@ test('legacy action and date/client controls are guarded without disabling the t
   assert.match(workspace,/\(isAdmin \|\| sesion.usuario.rol === "produccion"\) && legacyProductionEnabled/);
   assert.match(workspace,/const canConfirmProduction = legacyProductionEnabled/);
   assert.match(workspace,/if \(!canRegisterProduction\) return;/);
-  assert.match(workspace,/isProductionVisit && !registry.usesIndividual && <section/);
+  assert.match(workspace,/isProductionVisit && registry.ready && !registry.usesIndividual && <section/);
   for(const permission of ['canEditVisitClient','canEditVisitDate']) {
     assert.ok(workspace.includes(`canEditTask && ${permission}`));
     assert.ok(workspace.includes(`editing && ${permission}`));

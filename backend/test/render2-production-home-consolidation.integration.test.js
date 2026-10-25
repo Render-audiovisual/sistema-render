@@ -165,15 +165,20 @@ test('production home consolidation HTTP: stable-ID board, recorded context, coo
     assert.equal(edited.propiedades_extra.horario, 'New verified owner schedule');
     context(expect(await detail(owned, homonymToken)));
   });
-  await t.test('production role rejects incomplete visits but can finish a genuinely complete explicitly created visit', async () => {
-    // New visit through the existing API, after all legacy-task assertions.
-    // Never change the type/title/metadata of a historical generic task to
-    // manufacture visit eligibility or add a new permission.
-    const created = expect(await api('/tareas', { token: admin, method: 'POST', body: {
-      titulo: 'QA visita de produccion readiness', workspace: 'render_os', tipo_tarea: 'produccion', subtipo: 'visita',
-      asignado_a_id: ids.owner, colaborador_ids: [], cliente_id: client.id, fecha_vencimiento: dates.first,
-      produccion_videos_previstos: 1, material_referencia: 'https://example.invalid/explicit-visit-material',
-    } }), 201);
+  await t.test('production role rejects incomplete legacy unbound visits but can finish a genuinely complete historical visit', async () => {
+    // Explicit pre-registry visit fixture, separate from the historical generic
+    // tasks above. Current POST creation binds a canonical visit and belongs to
+    //312's individual-recording boundary tests, not aggregate readiness here.
+    // Do not delete a derived visit or reinterpret an existing generic task.
+    const [created] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,estado,tipo_tarea,subtipo,
+      cliente_id,fecha_vencimiento,material_referencia,propiedades_extra)
+      VALUES('QA visita de produccion readiness','QA Production Homonym','pendiente','produccion','visita',
+        $1,$2,'https://example.invalid/explicit-visit-material',$3::jsonb) RETURNING id`,
+    [client.id, dates.first, JSON.stringify({ Origen: 'Cargada desde la plataforma', colaboradores: [],
+      workspace: 'render_os', produccion_videos_previstos: 1, produccion_registros: [] })]);
+    await fixture.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,$2,'responsable')", [created.id, ids.owner]);
+    assert.deepEqual(await fixture.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1', [created.id]), [],
+      'Historical readiness fixture must have no canonical origin binding');
     const incomplete = expect(await detail(created.id));
     assert.equal(incomplete.asignado_a_id, ids.owner);
     assert.equal(incomplete.propiedades_extra.produccion_videos_previstos, 1);

@@ -6,7 +6,7 @@ import { startLocalHarness, request, fixturePassword } from '../scripts/render2-
 
 const ids = { owner: 96001, impostor: 96002, collaborator: 96003 };
 
-test('production HTTP CAS, stable membership and confirmation without implicit aggregate editing', {
+test('legacy unbound production HTTP CAS, stable membership and confirmation without implicit aggregate editing', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 150000,
 }, async t => {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -60,17 +60,24 @@ test('production HTTP CAS, stable membership and confirmation without implicit a
     return result.body;
   };
   const visit = async (planned = 20) => {
-    const result = await api('/tareas', { token: admin, method: 'POST', body: {
-      titulo: 'QA visita production CAS', asignado_a_id: ids.owner, colaborador_ids: [ids.collaborator],
-      cliente_id: client.id, tipo_tarea: 'produccion', subtipo: 'visita', workspace: 'render_os',
-      produccion_videos_previstos: planned, material_referencia: 'https://example.invalid/qa-production-material',
-      fecha_vencimiento: '2026-10-25',
-    } });
-    assert.equal(result.status, 201, JSON.stringify(result.body));
+    // Genuine pre-registry aggregate fixture: current POST task creation now
+    // binds a canonical visit, whose writers are covered separately by312.
+    // Never create/delete a normalized visit to manufacture legacy authority.
+    const [row] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,tipo_tarea,subtipo,
+      estado,fecha_vencimiento,material_referencia,propiedades_extra)
+      VALUES('QA visita production CAS','QA Production Shared',$1,'produccion','visita',
+        'pendiente','2026-10-25','https://example.invalid/qa-production-material',$2::jsonb) RETURNING id`,
+    [client.id, JSON.stringify({ Origen: 'Cargada desde la plataforma',
+      colaboradores: ['QA Production Collaborator'], workspace: 'render_os',
+      produccion_videos_previstos: planned, produccion_registros: [] })]);
+    await fixture.query(`INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo)
+      VALUES($1,$2,'responsable'),($1,$3,'colaborador')`, [row.id, ids.owner, ids.collaborator]);
+    assert.deepEqual(await fixture.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1', [row.id]), [],
+      'Legacy aggregate CAS fixture must have no canonical origin binding');
     // Fixture-only explicit editor selection: no name inference or real account.
     await fixture.query(`UPDATE tareas SET propiedades_extra=propiedades_extra ||
-      '{"edicion_responsable_id":91003}'::jsonb WHERE id=$1`, [result.body.id]);
-    return result.body.id;
+      '{"edicion_responsable_id":91003}'::jsonb WHERE id=$1`, [row.id]);
+    return row.id;
   };
   const add = (id, token, revision, cantidad = 1) => api(`/tareas/${id}/produccion/registros`, {
     token, method: 'POST', body: { cantidad, fecha: '2026-10-25', expected_revision: revision },

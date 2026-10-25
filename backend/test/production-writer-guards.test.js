@@ -35,8 +35,8 @@ function mockDb({ linkedDate = null, mixed = false, owner = 7, selectedDate = '2
       if (sql.includes('FROM mia_supervisor_proposals WHERE id=')) return { rows: [{ id: proposalId,
         fecha: selectedDate, snapshot_hash: proposalSnapshot(task) }] };
       if (sql.includes('FROM mia_supervisor_conversations')) return { rows: [] };
-      if (sql.includes('FROM produccion_visitas')) return { rows: sql.includes('produccion_videos')
-        ? (mixed ? [{ id: 'registry' }] : []) : (linkedDate ? [{ id: 'registry', fecha: linkedDate }] : []) };
+      if (sql.includes('FROM produccion_visitas')) return { rows: sql.includes('WHERE v.tarea_origen_id=$1 LIMIT 1')
+        ? (mixed || linkedDate ? [{ id: 'registry' }] : []) : (linkedDate ? [{ id: 'registry', fecha: linkedDate }] : []) };
       if (sql.startsWith('UPDATE tareas')) pending.taskWrites++;
       if (sql.startsWith('INSERT INTO mia_supervisor_conversations')) pending.conversationWrites++;
       if (sql.startsWith('UPDATE mia_supervisor_proposals')) pending.proposalAccepted = true;
@@ -64,8 +64,8 @@ test('chat rejects normalized video/photo registry after source lock and rolls b
   const guard = db.calls.findIndex(call => call.sql.includes('FROM produccion_visitas'));
   assert.ok(lock >= 0 && guard > lock);
   assert.deepEqual(db.calls[guard].params, [10]);
-  assert.match(db.calls[guard].sql, /produccion_videos/);
-  assert.match(db.calls[guard].sql, /produccion_fotos/);
+  assert.match(db.calls[guard].sql, /v.tarea_origen_id=\$1/);
+  assert.doesNotMatch(db.calls[guard].sql, /produccion_videos|produccion_fotos/);
   assert.equal(db.calls.some(call => call.sql.startsWith('UPDATE tareas')), false);
   assert.ok(db.calls.some(call => call.sql === 'ROLLBACK'));
   assert.equal(db.stored.tokenUsed, false);

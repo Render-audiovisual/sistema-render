@@ -35,8 +35,9 @@ test('Moketa: actual count without a planned count can complete the visit and st
   assert.equal(result.updated.propiedades_extra.produccion_confirmada_at, null);
   assert.equal(production.isProductionComplete(result.updated), true);
 });
-test('normalized media prevents legacy quantity writes before task mutation', async () => {
-  await assert.rejects(register({ cantidad: 3, fecha: '2026-09-16' }, {}, { id: 7, nombre: 'Germán', rol: 'produccion' }, true), error => error.status === 409);
+test('canonical origin prevents legacy quantity writes before task mutation', async () => {
+  const result=await register({ cantidad: 3, fecha: '2026-09-16' }, {}, { id: 7, nombre: 'Germán', rol: 'produccion' }, true);
+  assert.equal(result.code,409);assert.equal(result.updated,null);assert.match(result.body.error,/Producciones/);
 });
 test('saving a partial unplanned recording does not complete it', async () => {
   const result = await register({ cantidad: 2, fecha: '2026-09-16' });

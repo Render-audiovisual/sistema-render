@@ -2096,6 +2096,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
     return res.status(201).json(taskOperationalDto(saved, req.auth));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if(error.code==='PRODUCTION_CANONICAL_RECORDING_REQUIRED')return res.status(409).json({error:error.message});
     return next(error);
   } finally {
     client.release();
