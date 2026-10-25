@@ -32,10 +32,28 @@ print(json.dumps(dict(calls=calls, error=error)))
 `;
 function cli(channel, args) {
   const result = spawnSync('python3', ['-c', runner, scripts[channel], JSON.stringify(args)], { encoding: 'utf8', timeout: 5000, env: { PATH: '/usr/bin:/bin:/opt/homebrew/bin' } });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0, JSON.stringify({status:result.status,signal:result.signal??null,
+    errorCode:result.error?.code??null,stderrBytes:Buffer.byteLength(result.stderr??'')}));
   return JSON.parse(result.stdout);
 }
 const identity = (channel) => channel === 'telegram' ? ['--telegram-user-id', 'synthetic-user'] : [];
+
+test('CLI diagnostics distinguish timeout and spawn faults without printing arguments or child output',()=>{
+  const source=readFileSync(new URL('./task-cli-receipts-contract.test.js',import.meta.url),'utf8');
+  const body=source.slice(source.indexOf('function cli('),source.indexOf('\nconst identity ='));
+  for(const [errorCode,signal] of [['ETIMEDOUT','SIGTERM'],['ENOENT',null]]){
+    let options;
+    const fake=(_command,_args,settings)=>{options=settings;return{status:null,signal,
+      error:{code:errorCode,message:'SYNTHETIC_PRIVATE_CHILD_ERROR'},stderr:'SYNTHETIC_PRIVATE_STDERR',stdout:'SYNTHETIC_PRIVATE_STDOUT'};};
+    const call=new Function('spawnSync','scripts','runner','assert',`${body}\nreturn cli;`)(fake,scripts,runner,assert);
+    assert.throws(()=>call('telegram',['SYNTHETIC_PRIVATE_ARGUMENT']),error=>{
+      assert.equal(error.code,'ERR_ASSERTION');assert.ok(error.message.includes(errorCode));
+      assert.doesNotMatch(error.message,/SYNTHETIC_PRIVATE_/);
+      if(signal)assert.ok(error.message.includes(signal));return true;
+    });
+    assert.equal(options.timeout,5000);assert.deepEqual(Object.keys(options.env),['PATH']);
+  }
+});
 const key = ['--idempotency-key', ' task-receipt '];
 const token = ['--confirmation-token', 'synthetic-token'];
 const json = JSON.stringify;

@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Corte de aceptación del prompt maestro y diagnóstico CLI — integración372
+
+ACCEPTANCE_CHECKPOINT.md reconcilia fases0–5, las15 secciones, fuentes activas, recorridos A–F y gates externos contra el código presente, sin declarar objetivo cumplido ni sustituirlo por pruebas pequeñas. Hilbert revisó identidad/cookies/Finanzas/PG/arranque/Drive; Harvey revisó secciones, grafo y storage operativo. No se confirmó una aplicación paralela montada ni negocio localStorage en el grafo inspeccionado; no se extrapola a cualquier import dinámico posible. Las cuentas QA y mocks no acreditan roster ni proveedores reales.
+
+Main renovó tres físicas independientes: master editorialC, calendario/proyectos y contenido/objetivos19PASS/0FAIL/0SKIP con limpieza propia (/private/tmp/render2-goal372-master-physical.log); grafoApp/Vite4PASS (/private/tmp/render2-goal372-runtime-graph.log). El hallazgo nuevo de Harvey en Reportes fue reproducido con funciones reales por Main: boolean revision_aprobada=true sobre en_revision tiene estado canónico aprobada, pero métricas muestran revisión1/aprobadas0. Se conserva como próxima prioridad abierta, no se reinterpreta histórico ni se cambia negocio372.
+
+Main mejoró únicamente el diagnóstico del helper CLI para registrar status/señal/error.code/tamaño de stderr, sin exponer argumentos ni salidas privadas ni alterar timeout5000/env. Nueva prueba inyecta ETIMEDOUT/SIGTERM y ENOENT para verificar diagnóstico/redacción/opciones;17 focalesPASS (/private/tmp/render2-goal372-cli-diagnostics.log), revisiónHilbert sin bloqueantes. Backend final2442PASS/168SKIP opt-in/0FAIL de2610 (/private/tmp/render2-goal372-final-backend.log). No causa atribuida al fallo371, nuevos proveedores/servicios configurados, frontend/build/navegador ni despliegue. El objetivo global sigue activo.
+
 ### Aviso de aprobación sin promesa de publicación — integración371
 
 La revisión actual de avisos confirmó que getStateNotification aún resuelve destinatarios de revisión por etiquetas Agustín/Franco y añade Oriana en carruseles. Transportes por ID existen, pero no un roster de revisores explícito. Se preguntó al usuario si avisar a la community del cliente, solo a líderes o a un revisor elegido por tarea; sin respuesta no se cambia esa política ni se inventan IDs/roles destinatarios. Hilbert revisó esta limitación y la separación entre bindings de transporte y decisión de revisión.
