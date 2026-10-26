@@ -35,6 +35,19 @@ test('comment/block SQL requires current assignment and visible RenderOS task, i
   assert.doesNotMatch(sql,/rol|admin|nombre|FOR UPDATE|FOR SHARE|UPDATE |INSERT |DELETE /);
 });
 
+test('correction delivery requires current membership and a valid task, not only an active account', async () => {
+  assert.match(sql,/n.motivo IS DISTINCT FROM 'correcciones'/);
+  for (const tarea_id of [null, undefined, '0', '01', {}]) {
+    assert.equal(await taskNotificationEligible(never,notice({motivo:'correcciones',tarea_id})),false);
+  }
+  const calls=[];
+  assert.equal(await taskNotificationEligible({query:async(query,params)=>{
+    calls.push({query,params});return {rows:[{eligible:false}]};
+  }},notice({motivo:'correcciones'})),false);
+  assert.equal(calls.length,1);assert.ok(calls[0].query.includes(sql));
+  assert.equal(calls[0].params[2],'correcciones');assert.equal(calls[0].params[3],'9');
+});
+
 test('SQL aliases accept only fixed internal names, with no injectable identifier interpolation',()=>{
   assert.equal(buildTaskNotificationEligibilityPredicate(),sql);
   assert.ok(buildTaskNotificationEligibilityPredicate('notification').includes('notification.detalles'));

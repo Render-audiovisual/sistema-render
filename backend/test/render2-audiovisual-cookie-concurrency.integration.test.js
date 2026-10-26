@@ -174,6 +174,9 @@ test('cookie audiovisual concurrency preserves exact artifacts, CAS and independ
     const shared = await task(); assert.equal(shared.estado, 'en_revision'); assert.equal(shared.revision, first.task_revision);
     const correction = correctionBody(shared.revision, first.id, 'race'), replacement = deliveryBody(shared.revision, 'race-replacement');
     const beforeRace = await snapshot();
+    const readNotices = () => f.query(`SELECT to_jsonb(n) AS row,n.xmin::text AS xmin,n.ctid::text AS ctid
+      FROM mia_private_task_notifications n ORDER BY n.id`);
+    const beforeNotices = await readNotices();
     const go = deferred();
     const run = (route, actor, body) => (async () => {await go.promise; return api(route, actor, 'POST', body);})();
     const correcting = run(`/tareas-edicion/${taskId}/correcciones`, agustin, correction);
@@ -198,8 +201,28 @@ test('cookie audiovisual concurrency preserves exact artifacts, CAS and independ
     assert.deepEqual(decisions.map(row => row.id), corrections.map(item => item.row.id));
     assert.equal(artifacts.some(row => row.request_id === raceLoser.body.request_id), false);
     assert.equal(decisions.some(row => row.request_id === raceLoser.body.request_id), false);
+    let afterNotices = await readNotices();
+    if (correctionWon) {
+      const fingerprint = createHash('sha256').update(JSON.stringify([
+        'task-recipient-id-v1',taskId,'correcciones',luciano.id,fresh.revision,correction.notes,
+      ])).digest('hex');
+      const deadline = Date.now() + 5000;
+      while (!afterNotices.some(item => item.row.fingerprint === fingerprint) && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve,25)); afterNotices = await readNotices();
+      }
+      assert.equal(afterNotices.length,beforeNotices.length+1,'Only the winning correction emits a notice');
+      for (const prior of beforeNotices) assert.deepEqual(afterNotices.find(item => item.row.id === prior.row.id),prior,
+        'Existing notices remain physically unchanged');
+      const notice = afterNotices.find(item => item.row.fingerprint === fingerprint)?.row;
+      assert.ok(notice,'Committed correction has its ID/version/notes-bound notice');
+      assert.equal(String(notice.tarea_id),String(taskId)); assert.equal(notice.motivo,'correcciones');
+      assert.equal(notice.detalles.actor_usuario_id,agustin.id);
+      assert.equal(notice.detalles.destinatario_usuario_id,luciano.id);
+      assert.ok(notice.mensaje.split('\n').includes(correction.notes));
+    } else assert.deepEqual(afterNotices,beforeNotices,'Losing correction cannot enqueue');
     const afterRace = await snapshot();
-    unchangedExcept(beforeRace, afterRace, ['tareas', 'task_editing_deliveries', 'task_editing_reviews']);
+    unchangedExcept(beforeRace, afterRace, ['tareas', 'task_editing_deliveries', 'task_editing_reviews',
+      ...(correctionWon ? ['mia_private_task_notifications'] : [])]);
     checked(await api(raceLoser.route, raceLoser.actor, 'POST', raceLoser.body), 409);
     assert.deepEqual(await snapshot(), afterRace);
     assert.deepEqual(await siblingSnapshot(), siblings);

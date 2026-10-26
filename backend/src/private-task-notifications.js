@@ -7,6 +7,7 @@ const TITULOS = Object.freeze({
   creada: "Tenés una nueva tarea",
   reasignada: "Te asignaron una tarea",
   comentario: "Hay un comentario nuevo",
+  correcciones: "Correcciones solicitadas",
   revision: "La tarea pasó a revisión",
   bloqueada: "Hay un bloqueo en la tarea",
   en_progreso: "La tarea comenzó",

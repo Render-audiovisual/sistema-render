@@ -27,7 +27,8 @@ export function buildTaskNotificationEligibilityPredicate(alias = 'n') {
           SELECT 1 FROM mia_whatsapp_identities other_alias
           WHERE other_alias.usuario_id <> recipient.id AND other_alias.notification_key = ${alias}.destinatario_clave
             AND other_alias.enabled IS TRUE)
-        AND ((${alias}.motivo IS DISTINCT FROM 'comentario' AND ${alias}.motivo IS DISTINCT FROM 'bloqueada') OR EXISTS (
+        AND ((${alias}.motivo IS DISTINCT FROM 'comentario' AND ${alias}.motivo IS DISTINCT FROM 'bloqueada'
+          AND ${alias}.motivo IS DISTINCT FROM 'correcciones') OR EXISTS (
           SELECT 1 FROM tareas task JOIN tarea_asignaciones assignment
             ON assignment.tarea_id = task.id AND assignment.usuario_id = recipient.id
           WHERE task.id = ${alias}.tarea_id AND task.id > 0
@@ -48,7 +49,7 @@ export async function taskNotificationEligible(db, notification) {
   const recipientId = details[recipientField], key = notification.destinatario_clave, reason = notification.motivo;
   if (!positive(recipientId) || typeof key !== 'string' || key === '' || typeof reason !== 'string') return false;
   const taskId = taskIdText(notification.tarea_id);
-  if (['comentario', 'bloqueada'].includes(reason) && taskId === null) return false;
+  if (['comentario', 'bloqueada', 'correcciones'].includes(reason) && taskId === null) return false;
   const { rows } = await db.query(`SELECT ${buildTaskNotificationEligibilityPredicate('n')} AS eligible
     FROM (SELECT $1::jsonb AS detalles,$2::text AS destinatario_clave,$3::text AS motivo,$4::bigint AS tarea_id) n`,
   [JSON.stringify({ [recipientField]: recipientId }), key, reason, taskId]);

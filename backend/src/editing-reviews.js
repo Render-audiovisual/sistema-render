@@ -4,6 +4,7 @@ import { assertCurrentEditingApprover, normalizeExpectedEditingDelivery } from '
 import { editingDeliveryDto, editingDeliveryTaskId } from './editing-deliveries.js';
 import { lockTaskOperationResources } from './task-operation-receipts.js';
 import { taskTransitionError } from './workflow-contract.js';
+import { readAssignmentNotificationMembers } from './task-reassignment-notifications.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -41,7 +42,8 @@ function available(task) {
 }
 
 async function readTask(db, id) {
-  const task = (await db.query(`SELECT t.id,t.revision,t.estado,t.tipo_tarea,t.cliente_id,t.propiedades_extra
+  const task = (await db.query(`SELECT t.id,t.revision,t.estado,t.tipo_tarea,t.cliente_id,t.propiedades_extra,
+    t.titulo,t.asignado_a,t.prioridad,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.updated_at
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
     WHERE t.id=$1 AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)`, [id])).rows[0];
   if (!task || !available(task)) throw fail('Tarea de edición no disponible.', 404);
@@ -129,7 +131,7 @@ async function reader(db, auth) {
   return user;
 }
 
-export function createEditingReviewsRouter({ express, pool }) {
+export function createEditingReviewsRouter({ express, pool, notifyAssignment }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const handle = write => async (req, res, next) => {
@@ -146,7 +148,7 @@ export function createEditingReviewsRouter({ express, pool }) {
         await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
         await lockTaskOperationResources(db, id);
       }
-      let task = await readTask(db, id), decisionId, replayed = false;
+      let task = await readTask(db, id), decisionId, notification, replayed = false;
       if (write) {
         const hash = editingCorrectionPayloadHash(id, input);
         const receipt = (await db.query('SELECT id,payload_hash FROM task_editing_reviews WHERE actor_id=$1 AND request_id=$2', [user.id, input.request_id])).rows[0];
@@ -162,17 +164,35 @@ export function createEditingReviewsRouter({ express, pool }) {
           const updated = (await db.query(`UPDATE tareas SET estado='en_progreso',propiedades_extra=propiedades_extra || jsonb_build_object(
             'revision_aprobada',false,'revision_aprobada_por',NULL,'revision_aprobada_por_id',NULL,'revision_aprobada_at',NULL,
             'revision_aprobada_entrega_id',NULL,'finalizada_at',NULL),updated_at=clock_timestamp()
-            WHERE id=$1 AND revision=$2 AND estado='en_revision' RETURNING id,revision,estado,tipo_tarea,cliente_id,propiedades_extra`, [id, input.expected_revision])).rows[0];
+            WHERE id=$1 AND revision=$2 AND estado='en_revision' RETURNING id,revision,estado,tipo_tarea,cliente_id,propiedades_extra,
+              titulo,asignado_a,prioridad,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,updated_at`, [id, input.expected_revision])).rows[0];
           if (!updated || updated.estado !== 'en_progreso' || !positive(updated.revision) || updated.revision !== task.revision + 1 || !available(updated)
             || updated.propiedades_extra.revision_aprobada !== false
             || ['revision_aprobada_por', 'revision_aprobada_por_id', 'revision_aprobada_at', 'revision_aprobada_entrega_id', 'finalizada_at'].some(k => updated.propiedades_extra[k] !== null)) throw fail('La corrección no quedó en un estado válido.', 409);
           decisionId = await insertDecision(db, updated, user, delivery.id, 'correcciones', input.notes, input.request_id, hash);
           task = updated;
+          if (typeof notifyAssignment === 'function') {
+            // Current task membership, not a display name or the historical
+            // author of the delivery. The existing actor/task locks are held.
+            const members = await readAssignmentNotificationMembers(db, id);
+            const recipientIds = [...new Set([members.ownerId, ...members.collaboratorIds].filter(value => value !== null))].sort((a,b) => a-b);
+            if (recipientIds.length) {
+              const label = (await db.query('SELECT nombre,usuario FROM usuarios WHERE id=$1', [user.id])).rows[0];
+              notification = { pool, tarea: task, destinatarioIds: recipientIds, actorId: user.id,
+                actor: label?.nombre || label?.usuario || `Usuario #${user.id}`,
+                motivo: 'correcciones', detalle: input.notes };
+            }
+          }
         }
       }
       const body = { ...(await history(db, task, user)), ...(write ? { decision_id: decisionId, replayed } : {}) };
       await db.query('COMMIT');
       res.status(write && !replayed ? 201 : 200).json(body);
+      // Notification transport failure cannot undo a confirmed decision or
+      // make the client retry it as if the correction had not been recorded.
+      if (notification) {
+        try { void Promise.resolve(notifyAssignment(notification)).catch(() => {}); } catch {}
+      }
     } catch (error) {
       if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; } }
       if (error.status) res.status(error.status).json({ error: error.message });

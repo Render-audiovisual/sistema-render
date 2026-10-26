@@ -78,6 +78,7 @@ export function crearContenidoCorreo({
   const tituloAccion = ({
     reasignada: "Te reasignaron una tarea",
     comentario: "Hay un comentario nuevo en tu tarea",
+    correcciones: "Correcciones solicitadas",
     revision: "La tarea pasó a revisión",
     bloqueada: "Hay un bloqueo en tu tarea",
     en_progreso: "La tarea comenzó",
