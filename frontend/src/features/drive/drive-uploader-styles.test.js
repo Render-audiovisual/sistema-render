@@ -46,8 +46,7 @@ test('actual Vite Workspace static dependency closure loads shared uploader CSS 
   const assets=new Map(result.output.filter(item=>item.type==='asset').map(item=>[item.fileName,item]));
   const containing=file=>chunks.filter(chunk=>Object.keys(chunk.modules).some(id=>normalize(id)===normalize(file)));
   const workspaceChunks=containing(workspace),driveChunks=containing(drive);
-  assert.equal(workspaceChunks.length,1);assert.equal(driveChunks.length,1);
-  assert.notEqual(workspaceChunks[0].fileName,driveChunks[0].fileName,'Exercise genuinely separate lazy page chunks');
+  assert.equal(workspaceChunks.length,1);assert.equal(driveChunks.length,0,'Retired Drive page is not shipped; task attachments remain');
   const byName=new Map(chunks.map(chunk=>[chunk.fileName,chunk]));
   const visited=new Set(),loadedCss=new Set();
   function visit(chunk){
@@ -58,7 +57,7 @@ test('actual Vite Workspace static dependency closure loads shared uploader CSS 
     for(const name of chunk.imports){const dependency=byName.get(name);if(dependency)visit(dependency);}
   }
   visit(workspaceChunks[0]);
-  assert.equal(visited.has(driveChunks[0].fileName),false,'Workspace must not need the Drive page chunk');
+  assert.equal(driveChunks.length,0,'Workspace must not need the retired Drive page chunk');
   const loadedModules=[...visited].flatMap(name=>Object.keys(byName.get(name).modules));
   assert.ok(loadedModules.some(id=>normalize(id)===normalize(uploader)),'Static closure includes actual shared uploader');
   assert.ok(loadedCss.size>0,'Inspect emitted CSS ownership, not source imports alone');

@@ -12,8 +12,6 @@ const shared = new Map([
   ["/producciones", ["Producciones"]],
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
-  ["/moodboards", ["Moodboard", "Moodboards"]],
-  ["/drive", ["Drive", "Archivos y Drive"]],
   ["/feedback", ["Feedback"]],
   ["/planificacion-historias", ["Historias"]],
   ["/planificacion-publicaciones", ["Publicaciones"]],

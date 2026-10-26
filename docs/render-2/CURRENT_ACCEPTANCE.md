@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Retiro de Drive/Moodboards y control previo a publicación — 2026-10-26
+
+A pedido del usuario se retiran secciones, mounts y accesos canónicos; bookmarks pasan por alias autenticado/guard existente a Inicio o tarea válida. Datos, archivos, APIs e integración de adjuntos se conservan. Recuperación de carga abre Google Drive externo explícitamente; no simula reconexión ni confirmación. Main integra, Hilbert revisa enlaces, Harvey audita publicación. Build local B1UabfNq correcto; no publicación ni acceso a DB existente.
+
+Consulta/fetch remoto confirma hostinger-deploy43f0270 con32commits ajenos a HEAD190101b, frente400locales: no se reemplaza la rama publicada. Hay historiales054/055 distintos; CLI bloquea apply productivo y arranque exige ledger compatible. Se requiere confirmar hosting, respaldo restaurable de DB/archivos, comparación de schema/ledger y ensayo de integración antes de publicar. Ver RELEASE_RESOURCE_RETIREMENT.md. No se ejecutan limpiezas históricas ni se inventa baseline.
+
 ### Moodboards: base visual compartida — integración404, aceptación nativa parcial
 
 CSS canónico adopta tokens compartidos sin cambiar galería, API, permisos ni persistencia. Harvey detecta contadores con contraste insuficiente y foco recortado en rail; corregidos con render-muted y outline interior. Hilbert6 regresiones; focal49PASS, frontend3324PASS/1opt-inSKIP/0FAIL y build BfN1lEwj terminal0. Chrome verifica escritorio1280, rail72 y compositor390 con campos16px/44px, Escape y retorno de foco. Primer chequeo109tablas invariante. La salida final320 se truncó y el fixture venció antes del cierre: terminal1 ABORTED_NO_ACCEPTANCE/cleanup ENOENT iUnIA5. No FINAL_OK ni aceptación física final; repetir ese cierre. Viewport restaurado, sin pestañas propias. Ver MOODBOARD_SHARED_VISUAL_TOKENS_QA.md. No backend comercial/proveedores/despliegue; objetivo abierto.

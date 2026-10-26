@@ -17,7 +17,7 @@ test('actual production build emits canonical App and no parallel entrypoints, i
   assert.ok(modules.includes(path.join(root, 'src/main.jsx')));
   assert.ok(modules.includes(path.join(root, 'src/App.jsx')));
   assert.ok(modules.includes(path.join(root, 'src/pages/Publicaciones.jsx')));
-  assert.ok(modules.some(id => id.endsWith('/MoodboardPreview.jsx')), 'Canonical preview component is not a parallel app');
+  assert.ok(!modules.some(id => /\/(?:MoodboardPreview|Drive)\.jsx$/.test(id)), 'Retired resource pages are not shipped');
   assert.ok(chunks.some(chunk => chunk.isDynamicEntry), 'Inspect lazy output, not just entry chunk');
   assert.deepEqual(parallelModulesInBundle(Object.fromEntries(chunks.map(chunk => [chunk.fileName, chunk])), root), []);
 });

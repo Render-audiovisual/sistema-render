@@ -110,14 +110,14 @@ test('actual October basic projection with a known future zero agreement has no 
 });
 test('all actual sibling actions are disabled during either nested editor and synchronously refuse a second modal before rerender',()=>{
  const detail=owner('DetalleClienteSession',parentFile),actions=nodes(detail,n=>ts.isJsxElement(n)&&n.openingElement.tagName.getText(parentFile)==='div'&&n.openingElement.attributes.properties.some(p=>p.name?.getText(parentFile)==='className'&&p.initializer?.getText(parentFile)==='"modal-actions cliente-detail-actions"'))[0];
- const buttons=nodes(actions,n=>ts.isJsxElement(n)&&n.openingElement.tagName.getText(parentFile)==='button');assert.equal(buttons.length,5);
+ const buttons=nodes(actions,n=>ts.isJsxElement(n)&&n.openingElement.tagName.getText(parentFile)==='button');assert.equal(buttons.length,4);
  for(const button of buttons){const disabled=button.openingElement.attributes.properties.find(p=>p.name?.getText(parentFile)==='disabled');assert.match(disabled.initializer.getText(parentFile),/editandoCuota/);assert.match(disabled.initializer.getText(parentFile),/startingAgreement/);}
  const byCode=text=>buttons.find(button=>button.getText(parentFile).includes(text));
  const handler=button=>button.openingElement.attributes.properties.find(p=>p.name?.getText(parentFile)==='onClick').initializer.expression;
  let current=true;const effects=[],deps={capture:()=>({current:()=>current}),pending:{current:false},nestedEditing:{current:false},detailAccessDenied:{current:false},setStartingAgreement:value=>effects.push(['start',value]),setEditandoCuota:value=>effects.push(['edit',value]),cliente:{id:7},periodo:'2026-10',clientOperationHref:()=>'/clientes/operacion?cliente=7&periodo=2026-10',navigateWithinApp:()=>effects.push(['navigate']),window:{history:{pushState:()=>effects.push(['push'])},dispatchEvent:()=>effects.push(['pop'])},PopStateEvent:class{}};
  const evaluate=button=>new Function(...Object.keys(deps),`return (${handler(button).getText(parentFile)});`)(...Object.values(deps));
  const start=evaluate(byCode('setStartingAgreement(true)')),edit=evaluate(byCode('setEditandoCuota(true)'));
- start();edit();start();evaluate(byCode('Ver operación del cliente'))();evaluate(byCode('Abrir moodboard'))();assert.deepEqual(effects,[['start',true]]);assert.equal(deps.nestedEditing.current,true);
+ start();edit();start();evaluate(byCode('Ver operación del cliente'))();assert.deepEqual(effects,[['start',true]]);assert.equal(deps.nestedEditing.current,true);
  deps.nestedEditing.current=false;edit();start();assert.deepEqual(effects,[['start',true],['edit',true]]);assert.equal(deps.nestedEditing.current,true);
  deps.nestedEditing.current=false;current=false;edit();start();assert.equal(effects.length,2);
 });

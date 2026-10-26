@@ -49,7 +49,7 @@ test('task switches gate before selection/history and feedback gates before hist
   assert.ok(validation < review && review < selection && selection < history,
     'Accepted navigation and post-listener validation precede hint, selection and history');
   assert.match(source, /if \(!requestAppNavigation\(window, "\/feedback"\)\) return;\s+window.history.pushState/);
-  assert.match(source, /navigateWithinApp\(window, `\/moodboards\?/);
+  assert.doesNotMatch(source, /navigateWithinApp\(window, `\/moodboards\?/);
 });
 test('new task clears guard only after creation success, before post-create navigation', () => {
   assert.match(source, /const confirmed=await action\(\)/);

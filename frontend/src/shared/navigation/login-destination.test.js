@@ -23,7 +23,6 @@ test('opaque query, fragment, task view and production day survive byte-for-byte
     '/inicio?production_period=2026-09&offset=20#produccion',
     '/clientes?periodo=2026-08&gestion=1#cliente-17',
     '/clientes/operacion?cliente=17&periodo=2026-10',
-    '/drive?q=%C3%A1%F0%9F%98%80&folder=a%2Fb%26next%3D%2Fsueldos#carpeta',
     '/feedback?q=a+b&literal=%252Flogin#caf%C3%A9',
     '/perfil#café',
   ]) {

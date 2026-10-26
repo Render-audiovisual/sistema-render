@@ -23,8 +23,6 @@ export function getNavigationGroups(role) {
       { href: "/feedback", label: "Feedback", icon: "feedback" },
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [
-      { href: "/drive", label: "Archivos y Drive", icon: "drive" },
-      { href: "/moodboards", label: "Moodboards", icon: "moodboard" },
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
       ...(admin ? [{ href: "/sueldos", label: "Finanzas", icon: "salary" }] : []),
     ] },

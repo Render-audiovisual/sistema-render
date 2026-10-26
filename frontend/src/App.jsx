@@ -32,9 +32,7 @@ const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "
 const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
 const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
 const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.jsx"), "WorkspaceReadOnlyPage");
-const DrivePage = lazyNamed(() => import("./pages/Drive.jsx"), "DrivePage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
-const MoodboardPreviewPage = lazyNamed(() => import("./pages/MoodboardPreview.jsx"), "MoodboardPreviewPage");
 const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
 const CalendarPage = lazyNamed(() => import("./pages/Calendar.jsx"), "CalendarPage");
 
@@ -200,14 +198,8 @@ export function App() {
     if (path === "/lista") {
       return <PersonalListsPage />;
     }
-    if (path === "/moodboards") {
-      return <MoodboardPreviewPage />;
-    }
     if (path === "/bloc-notas" || path === "/feedback") {
       return <FeedbackPage sesion={sesion} />;
-    }
-    if (path === "/drive") {
-      return <DrivePage sesion={sesion} />;
     }
     if (path === "/clientes/operacion") {
       return <ClientOperationPage sesion={sesion} />;

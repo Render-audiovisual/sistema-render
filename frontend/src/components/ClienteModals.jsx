@@ -608,18 +608,6 @@ function DetalleClienteSession({
               const href = clientOperationHref(cliente.id, periodo); if (href) navigateWithinApp(window, href);
             }}>Ver operación del cliente</button>
             <button
-              className="btn"
-              type="button"
-              disabled={enviando !== null || editandoCuota || startingAgreement}
-              onClick={() => {
-                const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
-                window.history.pushState({}, "", `/moodboards?cliente=${cliente.id}`);
-                window.dispatchEvent(new PopStateEvent("popstate"));
-              }}
-            >
-              ✦ Abrir moodboard
-            </button>
-            <button
               ref={editInvokerRef}
               className="btn primary"
               type="button"

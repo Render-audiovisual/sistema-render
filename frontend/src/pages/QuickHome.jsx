@@ -15,7 +15,6 @@ const WORK_AREAS = [
   { href: "/proyectos", title: "Proyectos" },
   { href: "/lista", title: "Mi lista" },
   { href: "/producciones", title: "Producciones" },
-  { href: "/moodboards", title: "Moodboard" },
   { href: "/feedback", title: "Feedback" },
   { href: "/planificacion-publicaciones", title: "Publicaciones" },
 ];

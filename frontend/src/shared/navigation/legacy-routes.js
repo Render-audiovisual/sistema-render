@@ -4,6 +4,8 @@ const dashboardAliases = new Set([
   // current-identity home; production replacement gates now include Germán.
   // Reference files stay intact.
   '/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider', '/german',
+  // Retired sections: keep old bookmarks safe without mounting their clients.
+  '/drive', '/moodboards',
 ]);
 const taskAliases = new Set(['/piezas', '/wilson-conversaciones']);
 
