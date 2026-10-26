@@ -306,7 +306,9 @@ export function PersonalListsPage() {
 
   const selectList = id => {
     if (!currentSession() || pendingSaves.current || !personalListId(id)) return;
-    if (navigateWithinApp(window, personalListUrl(window.location.href, id)) && globalThis.matchMedia?.('(max-width: 980px)').matches) setRailOpen(false);
+    const target = personalListUrl(window.location.href, id);
+    const alreadyHere = new URL(target, window.location.href).href === window.location.href;
+    if ((alreadyHere || navigateWithinApp(window, target)) && globalThis.matchMedia?.('(max-width: 980px)').matches) setRailOpen(false);
   };
   const changeItemDraft = (listId, blockId, text) => {
     if (!currentSession() || listSelection.current!==itemDraftSelection || pendingSaves.current || !listsRef.current.some(list=>String(list.id)===String(listId)&&list.bloques?.some(block=>String(block.id)===String(blockId)))) return;

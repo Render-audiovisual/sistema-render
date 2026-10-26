@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado390
+# Render 2.0 — corte de aceptación local372, actualizado391
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -73,6 +73,8 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
+
+Integración391: recupera el control Chrome cerrando confirm sintético382/rechazando contraseña QA; viewport restaurado y pestaña vieja retirada. Recorrido nativo Mi lista en1280/390 crea/edita/recarga con cookie edición y PostgreSQL109 tablas; ambos fixtures terminal0/ENOENT y privados ajenos intactos. Corrige panel móvil que no cerraba al elegir la página actual; RED nativo+callback,8 nuevas/28 focalesPASS, frontend3291PASS/1SKIP/0FAIL, build BVpPcc3y y core35archivos340PASS/0FAIL/0SKIP. Capturas en QA391_MI_LISTA_*.jpg y QA391_RAIL_BEFORE.jpg. No prueba todos los roles/dispositivos, pérdida de ACK nativa ni carreras Moodboards pendientes; sí queda resuelto el bloqueo del control visual. Sin backend/migraciones/proveedores activados ni despliegue.
 
 Integración390: reproduce40P01/HTTP500 y corrige la inversión preview/confirm del lote mediante scope advisory por informante/grupo, hint no autoritativo+reread exacto y task locks ascendentes. Conserva orden visible y política admin.19 unidades/120 focalesPASS, backend2598PASS/175SKIP/0FAIL; física nueva1PASS con carrera y stale hint/109 tablas y16 anterioresPASS. Core35archivos340PASS/0FAIL/0SKIP, terminal0. Inventario Chrome recuperable pero getTab QA382 vuelve a timeout/reset; ningún nuevo éxito visual/restauración. No acredita ausencia global de deadlocks ni permisos/proveedores/dispositivos reales; sin UI, migración o despliegue.
 
