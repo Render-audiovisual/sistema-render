@@ -93,10 +93,10 @@ test('isolated shared-only deployment copy imports without package type or insta
 
 test('Hostinger static copy list preserves shared alongside backend/src', () => {
   const source = readFileSync(path.join(root, 'scripts/build-hostinger-output.mjs'), 'utf8');
-  const list = source.match(/for\s*\(const\s+relativePath\s+of\s*\[([^\]]*)\]\)/);
+  const list = source.match(/const\s+inputs\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/);
   assert.ok(list, 'inspect the real deployment copy list without executing the script');
   const entries = [...list[1].matchAll(/['"]([^'"]+)['"]/g)].map(match => match[1]);
   assert.ok(entries.includes('shared'), 'root shared module must be deployed');
   assert.ok(entries.includes('backend/src'), 'backend sources must be deployed');
-  assert.match(source, /cpSync\(path\.join\(projectRoot, relativePath\), path\.join\(outputRoot, relativePath\)/);
+  assert.match(source, /for\(const relative of inputs\)cpSync\(path\.join\(source,relative\),path\.join\(destination,relative\)/);
 });

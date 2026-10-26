@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Preparación forward-only, protección Data API y candidato Node — 2026-10-26
+
+Ver FORWARD_RELEASE_PREPARATION_QA.md. Sin prodwrites/push/despliegue. Rama publicada sigue43f0270; inspección viva UI read-only confirma338 tareas/3cierres/58migraciones y hash de tareas coincidente al respaldo, sin congelar cambios posteriores. Exportación de metadatos completos bloqueada, permiso solicitado; no se guardó por otra vía. Preflight SQL manual nuevo solo lectura/timeout, sin contraseñas/importes/títulos; resultados privados permanecen en dashboard salvo aprobación.
+
+Runner local protege objetos públicos nuevos porOID dentro de cada transacción antes del COMMIT: RLS/tablas, revocación de grants API, privilegios de secuencias y EXECUTE de rutinas, sin tocar objetos anteriores/extensiones/auth/storage/defaults globales. Fingerprint del helper integra hash del plan. Bootstrap ledger protegido; apply productivo continúa bloqueado. Nueva restauración sre1MV ensaya40 migraciones con defaults amplios simulados:47 tablas protegidas,64 tablas/7566filas/338tareas intactas, ACL/RLS previos iguales, detenida. Nueva prueba física de permisos se incorpora a cohorte41archivos.
+
+Empaquetado nuevo nunca borra salida previa; valida contención/symlinks, fuente/asset/inventario exactos, solo PEM público Wilson permitido, dependencias locales y manifiesto v2 al final. Vía estática destructiva deshabilitada antes de escribir. Primer candidato detecta5 vulnerabilidades runtime y queda no aceptado. Se fijan versiones corregidas/lockfile; segundo candidato LccX1v tiene326 archivos y0 vulnerabilidades conocidas en runtime al momento del audit. SHA del manifiesto18cfe270d76566cc9dec07cfb536fd64f7fb9a8ec2132720dbf27feac1bf5b88. Arranque real desde ese artefacto/propios node_modules + PG descartable: cookies, assethash, task create/replay/date CAS/newlogin/Home, rechazo financiero y Reportes, bytes invariantes, terminal0/cleanupENOENT. No proveedores/env productivos.
+
+Regresión con dependencias corregidas: backend2753PASS/180opt-inSKIP/0FAIL; cohorte360PASS/0FAIL/0SKIP en161,92s; frontend3335PASS/1opt-inSKIP/0FAIL; build MhFIu74X. Main integra/prueba, Hilbert protege objetos/empaquetado, Fermat audita paridadWilson. Guías Superpowers/Supabase/PostgreSQL/correo orientan separación de efectos y pruebas sin envío.
+
+Persisten gates: elegir paridadWhatsApp frente a web temporal (no pérdida aceptada por silencio), cuentas/ACL/proveedores reales, backup fresco DB+archivos/config, entorno TLS/cookies de Hostinger y ventana/mecanismo productivo autorizado. No reutilizar plan del clon ni restaurar dumps sobre base viva, reejecutar044/legacy/seeds o falsear producción como sandbox. Candidato preparado/verificado localmente no equivale a listo globalmente ni publicado.
+
 ### Asignaciones históricas y cierres de Reportes resueltos en copia — 2026-10-26
 
 Ver LEGACY_ASSIGNMENTS_AND_REPORT_CLOSURES_QA.md. Usuario confirma cuentas existentes y Líder sin repartir. Conciliación offline porIDs/plan SHA exacto, identidad local, snapshots, transacción y revalidación:338 responsables+12 colaboradores en la copia; solo cambia tarea_asignaciones, otras110 tablas físicamente invariantes. Reinicio confirma350 vínculos, Inicio de8 cuentas según scope real y asignaciones de Reportes. Sin cambio de roles, tareas, estados, workspace, piezas ni usuarios. Se conserva la cuenta compartida por decisión explícita; no acredita dos dueños independientes.

@@ -9,9 +9,10 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.equal(plan.command, process.execPath);
   assert.equal(plan.options.shell, false);
   assert.equal(plan.options.stdio, 'inherit');
-  assert.equal(coreAcceptanceFiles.length, 40);
+  assert.equal(coreAcceptanceFiles.length, 41);
+  assert.ok(coreAcceptanceFiles.includes('test/render2-release-object-security.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-legacy-assignment-reconciliation.integration.test.js'));
-  assert.equal(new Set(coreAcceptanceFiles).size, 40);
+  assert.equal(new Set(coreAcceptanceFiles).size, 41);
   assert.ok(coreAcceptanceFiles.includes('test/render2-email-task-membership.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-editing-delivery-notifications.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-editing-correction-notifications.integration.test.js'));
@@ -56,7 +57,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   plan.options.env.DATABASE_URL = 'synthetic-not-a-real-target';
   plan.args.length = 0;
   assert.equal(Object.hasOwn(coreAcceptancePlan().options.env, 'DATABASE_URL'), false);
-  assert.equal(coreAcceptancePlan().args.length, 42);
+  assert.equal(coreAcceptancePlan().args.length, 43);
 });
 
 test('core QA refuses flags, URLs and fixture overrides instead of choosing a configured target', () => {

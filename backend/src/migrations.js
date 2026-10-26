@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { validateEnvironment, normalizeDatabaseIdentity, isLoopbackAddress } from './startup-policy.js';
 import { isRecognizedDeployedMigration } from './deployed-migration-history.js';
+import { readApplicationObjectInventory, protectNewApplicationObjects, securityPolicyFingerprint } from './application-object-security.js';
 
 const migrationsDir = fileURLToPath(new URL('../migrations/', import.meta.url));
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -45,7 +46,7 @@ export function buildMigrationPlan({ environment, identity, status }) {
     status.applied.some(name => typeof name !== 'string') || status.unknownApplied.some(name => typeof name !== 'string') ||
     status.pending.some(file => !file || typeof file.name !== 'string' || !/^[0-9a-f]{64}$/.test(file.sha256)))
     throw new Error('Invalid migration status.');
-  return digest(JSON.stringify({ environment, identity: actual, status: {
+  return digest(JSON.stringify({ environment, identity: actual, securityPolicyFingerprint, status: {
     ledgerExists: status.ledgerExists, applied: [...status.applied].sort(),
     pending: [...status.pending].map(({ name, sha256 }) => ({ name, sha256 })).sort((a, b) => a.name.localeCompare(b.name)),
     unknownApplied: [...status.unknownApplied].sort() } }));
@@ -98,11 +99,26 @@ export async function runMigrations(pool, logger = console, { approval, deferred
       if (digest(content) !== file.sha256) throw new MigrationPolicyError('Migration file changed; inspect and approve again.');
       return { ...file, content };
     });
-    if (!status.ledgerExists) await client.query('CREATE TABLE public._migrations (id SERIAL PRIMARY KEY, nombre TEXT NOT NULL UNIQUE, aplicada_at TIMESTAMPTZ NOT NULL DEFAULT now())');
+    if (!status.ledgerExists) {
+      try {
+        await client.query('BEGIN');
+        const before = await readApplicationObjectInventory(client);
+        await client.query('CREATE TABLE public._migrations (id SERIAL PRIMARY KEY, nombre TEXT NOT NULL UNIQUE, aplicada_at TIMESTAMPTZ NOT NULL DEFAULT now())');
+        await protectNewApplicationObjects(client, before);
+        await client.query('COMMIT');
+      } catch {
+        try { await client.query('ROLLBACK'); } catch { destroy = true; }
+        throw new MigrationPolicyError('Migration ledger initialization failed.');
+      }
+    }
     for (const { name, content } of pending) {
       try {
         await client.query('BEGIN');
+        const before = await readApplicationObjectInventory(client);
         await client.query(content.toString('utf8'));
+        // Supabase may grant new public objects to API roles by default. Close
+        // that surface in the same transaction, before the file is visible.
+        await protectNewApplicationObjects(client, before);
         await client.query('INSERT INTO public._migrations (nombre) VALUES ($1)', [name]);
         await client.query('COMMIT');
       } catch {
