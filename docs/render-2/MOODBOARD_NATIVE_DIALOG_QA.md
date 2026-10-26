@@ -14,6 +14,12 @@ Composer, category editor and reference detail now use the existing shared nativ
 - New AST test initially failed because its evaluation scope omitted writeState; corrected test setup, not product guards. Automated checks are not substitutes for native focus proof.
 - Observation fixture checked JSON/xmin/ctid invariance across all 109 public tables three times after native login. No save, external Pinterest navigation, upload or provider request occurred. Both disposable roots iHW96w and HczKIQ were cleaned with ENOENT confirmation. Chrome viewport reset and owned tab closed.
 
+## Follow-up QA399 — final build native confirmation
+
+Reused the same inspected disposable harness with a new cluster, not the prior dataset. Startup and actual Chrome script both matched index-DsQhcakF.js. At desktop1280×900, opening Categories focused moodboard-category-modal; Shift+Tab from Close wrapped to Save and Tab returned to Close. Escape removed the dialog and restored Editar categorías. At320×740 the panel bounds were x8..312/y83..721, document scrollWidth320; focus remained the panel. Screenshot /private/tmp/render2-goal399-categories-mobile.jpg inspected visually. Following a reload, Enter opened reference with focus on moodboard-detail-panel; Composer focused Cerrar referencia and fit x8..312/y72..732. Both clean Escape paths restored their invokers.
+
+Three post-login physical checks preserved all109 table hashes including xmin/ctid. Runner printed FINAL_OK and cleanup ENOENT for /private/tmp/render2-local-Fm5qmn, terminal0. Chrome temporary viewport reset and owned tab closed. This closes the final Categories native-focus gap only, not dirty-confirm/upload/all-role/screen-reader acceptance. No new product changes or build in399.
+
 ## Limits
 
 Native upload/FileReader acceptance remains pending due the previously documented browser permission limitation. Real dirty confirm, screen reader, zoom and all-role acceptance were not performed here. No production changes or deployment; the broader Render 2 rescue remains incomplete.

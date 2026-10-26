@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Correo transaccional: membresía vigente antes de entregar contenido privado — integración399
+
+Se corrige una brecha de privacidad por destinatarios capturados antes de una reasignación. Email ID-bound de comentario/bloqueada/correcciones revalida cuenta activa, membresía actual, espacio render_os y flags de archivo/papelera inmediatamente antes de sendMail; utiliza dirección/nombre actuales y excluye actor por ID. Sin roles/nombres/WhatsApp para inferir autoridad. Resto de motivos conserva política; no cambia destinatario371. Consulta de solo lectura sin locks durante transporte; no promete atomicidad ante revocación posterior, entrega real o outbox.
+
+Main integra email y prueba física; Hilbert37 regresiones independientes; Harvey revisión final sin P1/P2 en el delta. Focal55PASS; backend final2682PASS/178opt-inSKIP/0FAIL de2860. Primer backend restringido tuvo listener EPERM; rerun con permiso local pasó, sin omitir test. Física PostgreSQL nueva7PASS verifica revocación y cambio de correo tras selección para los3 motivos, scope oculto sin envío y109 tablas JSON/xmin/ctid invariantes después de mutaciones deliberadas del fixture. SMTP simulado, sin mensajes reales. Core ampliado39archivos: primera358PASS; renovación final358PASS/0FAIL/0SKIP,82.53s terminal0 (/private/tmp/render2-goal399-core-final.log), con cleanup de fixtures propios. Detalles, errores iniciales de fixture/contrato corregidos y límites en EMAIL_TASK_MEMBERSHIP_QA.md. Sin frontend/build nuevo, migraciones comerciales, proveedores ni despliegue; objetivo maestro abierto.
+
+### Moodboards: diálogos nativos y confirmación de foco final — integraciones398–399
+
+Commit5e89035 reutiliza Modal nativo para Composer, Categorías y Referencia, mantiene sus guardas de borrador/recuperación y agrega foco de retorno, nombres de cierre y apertura de tarjeta con Space/Enter. Se corrigieron dos fallos nativos reales: botones deshabilitados durante hidratación impedían foco inicial; detalle y categorías enfocan ahora su contenedor estable. CSS elimina offsets heredados del top-layer sin cambiar backend ni modelo comercial. Harvey escribió10 pruebas AST; Main integró producto y navegó; Hilbert preparó fixture aislado. Frontend final3307PASS/1SKIP/0FAIL, build index-DsQhcakF.js. No se atribuye prueba nativa a AST ni cierre global al build.
+
+Seguimiento399 confirma en Chrome el mismo hash de build que el servidor recién iniciado: Categorías toma foco, Shift+Tab/Tab envuelven entre Cerrar y Guardar, Escape devuelve al invocador. Escritorio1280×900 y móvil320×740 dentro del viewport; detalle y Composer también abren/cierran tras recarga con foco correcto en el build final. Tres checks JSON/xmin/ctid mantienen109 tablas intactas; root descartable Fm5qmn eliminado con ENOENT/terminal0. Vista temporal de Chrome cerrada y viewport restaurado. Captura y límites en MOODBOARD_NATIVE_DIALOG_QA.md. Esto cierra solo la brecha nativa de foco indicada398; upload/FileReader, dirty confirm nativo y aceptación global siguen pendientes. Sin despliegue, proveedores activados o datos comerciales modificados.
+
 ### Aprobación general: contexto inmutable y aviso por IDs tras commit — integración397
 
 Se cierra el pendiente de aviso del PATCH general descrito396. El handler persistía aprobación y decisión exacta de entrega, pero getStateNotification no define evento aprobada. Solo la ruta dedicada de publicación emitía su aviso propio: esa ruta y su publisher no se tocaron. No cambia política371, roles, cuotas ni evidencia de publicación real.

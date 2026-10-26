@@ -174,6 +174,28 @@ async function crearTransporter(env = process.env) {
   });
 }
 
+const membershipReasons = new Set(['comentario', 'bloqueada', 'correcciones']);
+const boundedId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+const membershipTaskId = value => boundedId(value) ? String(value)
+  : typeof value === 'string' && /^[1-9]\d{0,9}$/.test(value) && boundedId(Number(value)) ? value : null;
+
+// Captured recipients are not lasting authorization. Re-read membership and
+// the delivery address just before SMTP, without holding locks over transport.
+async function currentTaskEmailRecipient(pool, taskId, recipientId, actorId) {
+  if (taskId === null || !boundedId(recipientId) || !boundedId(actorId) || recipientId === actorId) return null;
+  const {rows} = await pool.query(`SELECT recipient.id,recipient.usuario,recipient.nombre,recipient.email_notificaciones
+    FROM usuarios recipient
+    WHERE recipient.id=$2 AND recipient.id<>$3 AND recipient.activo IS TRUE
+      AND EXISTS (SELECT 1 FROM tareas task JOIN tarea_asignaciones assignment
+        ON assignment.tarea_id=task.id AND assignment.usuario_id=recipient.id
+        WHERE task.id=$1 AND task.propiedades_extra->>'workspace'='render_os'
+          AND task.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+          AND task.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true')`,
+  [taskId, recipientId, actorId]);
+  const recipient = rows[0];
+  return recipient?.id === recipientId && recipient.email_notificaciones ? recipient : null;
+}
+
 export async function notificarAsignacionTarea({
   pool,
   tarea,
@@ -188,6 +210,8 @@ export async function notificarAsignacionTarea({
 }) {
   const byId = destinatarioIds !== undefined;
   const actorById = actorId !== undefined;
+  const membershipRequired = byId && membershipReasons.has(motivo);
+  const taskId = membershipRequired ? membershipTaskId(tarea?.id) : null;
   const positive = value => Number.isSafeInteger(value) && value > 0;
   if (actorById && !positive(actorId)
     || byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
@@ -207,7 +231,8 @@ export async function notificarAsignacionTarea({
     if (actorById && !positive(candidate.id)) return false;
     const esActor = actorById ? candidate.id === actorId
       : actorNormalizado && [candidate.nombre, candidate.usuario].some((value) => normalizarNombre(value) === actorNormalizado);
-    return !esActor && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index;
+    return !esActor && items.findIndex((item) => membershipRequired
+      ? item?.id === candidate.id : item?.email_notificaciones === candidate.email_notificaciones) === index;
   });
   if (destinatarios.length === 0) {
     return { enviado: false, razon: "responsable_sin_correo" };
@@ -223,7 +248,12 @@ export async function notificarAsignacionTarea({
   }
 
   const mailer = transporter || (await crearTransporter(env));
-  const deliveries = await Promise.all(destinatarios.map(async (destinatario) => {
+  const currentAddresses = new Set();
+  const results = await Promise.all(destinatarios.map(async (candidate) => {
+    const destinatario = membershipRequired
+      ? await currentTaskEmailRecipient(pool, taskId, candidate.id, actorId) : candidate;
+    if (!destinatario || currentAddresses.has(destinatario.email_notificaciones)) return null;
+    currentAddresses.add(destinatario.email_notificaciones);
     const contenido = crearContenidoCorreo({
       tarea,
       destinatario,
@@ -240,6 +270,8 @@ export async function notificarAsignacionTarea({
     });
     return { destinatario: destinatario.email_notificaciones, messageId: info.messageId };
   }));
+  const deliveries = results.filter(Boolean);
+  if (deliveries.length === 0) return { enviado: false, razon: 'responsable_sin_correo' };
 
   return {
     enviado: true,
