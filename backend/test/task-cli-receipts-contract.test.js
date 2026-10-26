@@ -227,3 +227,16 @@ test('WhatsApp correction binds escaped record ID and observed revision; cannot 
     assert.doesNotMatch(result.error,/secret|synthetic-token/);
   }
 });
+
+test('editing audit requires an explicit month and keeps historical scope separate from a stable editor ID', () => {
+  assert.deepEqual(cli('whatsapp',['editing-audit','--period','2026-10']).calls,
+    [{method:'GET',path:'/auditoria-edicion?periodo=2026-10'}]);
+  assert.deepEqual(cli('whatsapp',['editing-audit','--period','2026-10','--editor-id','9']).calls,
+    [{method:'GET',path:'/auditoria-edicion?periodo=2026-10&editor_id=9'}]);
+  for(const args of [[],['--period','0000-01'],['--period','2026-13'],['--period','2026-1'],
+    ['--period','2026-10&editor_id=1'],['--period','2026-10','--editor-id','0'],
+    ['--period','2026-10','--editor-id','2147483648']]) {
+    const result=cli('whatsapp',['editing-audit',...args]);
+    assert.ok(result.error);assert.deepEqual(result.calls,[]);
+  }
+});

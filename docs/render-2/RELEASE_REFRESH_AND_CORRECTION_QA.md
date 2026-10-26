@@ -35,3 +35,5 @@ Regresión backend de esta integración: 2.923 PASS, 184 pruebas opt-in omitidas
 - Configuración y proveedores reales, nuevo artefacto después de integrar cambios y su verificación. El candidato anterior no contiene esta corrección.
 
 No confundir estos resultados locales con despliegue ni con autorización para sustituir datos actuales por una copia.
+
+Checkpoint posterior de auditoría: módulos aislados y contrato EDITING_PROGRESS_CANONICAL_CONTRACT.md preparados,24 unitariasPASS, CLI21PASS, DDL sintético PG9PASS, general con borradores2.948PASS/185SKIP/0FAIL. Sin montar ruta ni writer y sin archivo de migración todavía; no se declara adaptación integrada. La guía Supabase exige generación y verificación de la migración, y el CLI no está disponible en este entorno. No se inventó un archivo094 ni se reejecutaron051/052. El siguiente paso es resolver esa generación y ensayar el upgrade preservando el historial antes de integrar.

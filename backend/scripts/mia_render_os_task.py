@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -204,6 +205,9 @@ def main():
     confirm_finalization.add_argument("--confirmation-token", required=True)
     production_videos = commands.add_parser("production-videos")
     production_videos.add_argument("--visit-id", required=True)
+    editing_audit = commands.add_parser("editing-audit")
+    editing_audit.add_argument("--period", required=True)
+    editing_audit.add_argument("--editor-id", type=int)
     preview_editing = commands.add_parser("preview-video-editing")
     preview_editing.add_argument("--payload", required=True)
     confirm_editing = commands.add_parser("confirm-video-editing")
@@ -329,6 +333,15 @@ def main():
         result = request("POST", "/lotes/finalizacion/previsualizar", args, payload={"task_ids": json.loads(args.task_ids)})
     elif args.cmd == "confirm-finalization":
         result = request("POST", "/lotes/finalizacion/confirmar", args, payload={"confirmacion_token": args.confirmation_token})
+    elif args.cmd == "editing-audit":
+        if not re.fullmatch(r"(?!0000)[0-9]{4}-(0[1-9]|1[0-2])", args.period):
+            raise RuntimeError("Elegí un período YYYY-MM válido.")
+        query = {"periodo": args.period}
+        if args.editor_id is not None:
+            if not 0 < args.editor_id <= 2147483647:
+                raise RuntimeError("Elegí un editor por ID positivo válido.")
+            query["editor_id"] = args.editor_id
+        result = request("GET", "/auditoria-edicion?" + urllib.parse.urlencode(query), args)
     elif args.cmd == "production-videos":
         try:
             visit_id = str(uuid.UUID(args.visit_id))
