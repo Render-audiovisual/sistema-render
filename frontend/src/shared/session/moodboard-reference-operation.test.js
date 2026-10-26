@@ -90,7 +90,7 @@ test('actual Composer submit/recovery callbacks use one model and never fake suc
  let saved=0,pending;const run=(action,done)=>pending=Promise.resolve().then(()=>action(model)).then(value=>done?.(value,model)).catch(()=>{});
  const draft={current:{kind:'link',url:'https://example.test',image:'',title:'x',note:'note',category:'1',tags:'a,b'}},baseline={current:''},syncDraft=()=>{};
  const completed=initializer('Composer','completed',{baseline,draft,syncDraft,saved:()=>saved++});
- const submit=initializer('Composer','submit',{operation:{busy:false},getModel:()=>model,run,draft,completed});
+ const submit=initializer('Composer','submit',{operation:{busy:false},getModel:()=>model,run,draft,completed,imageReading:{current:false}});
  submit({preventDefault(){}});await pending;assert.equal(saved,0);assert.equal(f.calls.length,2);
  await model.refresh();
  const finish=initializer('Composer','finish',{operation:{busy:false},getModel:()=>model,run,baseline,draft,syncDraft,saved:()=>saved++});finish();await pending;assert.equal(saved,1);assert.equal(f.calls.length,2);

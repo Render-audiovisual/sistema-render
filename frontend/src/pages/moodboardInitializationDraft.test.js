@@ -224,12 +224,14 @@ function composerPickFixture(f, {throwOnRead = false} = {}) {
     }
     walk(composer); assert.ok(found, `Actual Composer ${name}`); return found;
   };
-  const readers = [], errors = [], image = {value: ''};
+  const readers = [], errors = [], payloads = [], readingStates = [], image = {value: ''};
+  let current = true;
   const initial = {kind: 'image', image: '', url: '', title: '', category: 1, note: '', tags: ''};
   const d = {locked: false, operation: {busy: false}, getModel: () => ({snapshot: {phase: 'idle'}}),
-    captureCurrent: () => ({current: () => true}), reader: {current: null}, imageReading: {current: false},
+    captureCurrent: () => ({current: () => current}), reader: {current: null}, imageReading: {current: false},
     draftOwner: {current: Symbol('pending-image')}, draft: {current: {...initial}}, baseline: {current: JSON.stringify(initial)},
-    onBusy: f.onBusy, setError: value => errors.push(value),
+    onBusy: f.onBusy, setError: value => errors.push(value), setReadingImage: value => readingStates.push(value),
+    run: action => action({create: value => payloads.push(value)}), completed() {},
     FileReader: class {
       constructor() {readers.push(this); this.result = null;}
       abort() {this.aborted = true;}
@@ -245,8 +247,87 @@ function composerPickFixture(f, {throwOnRead = false} = {}) {
   d.syncDraft = evaluate(local('syncDraft'), d);
   d.change = evaluate(local('change'), d);
   const pick = evaluate(local('pick'), d);
-  return {d, readers, errors, image, pick() {pick({target: {files: [{name: 'qa-memory.jpg', type: 'image/jpeg', size: 12}]}});}};
+  const submit = evaluate(local('submit'), d);
+  return {d, readers, errors, payloads, readingStates, image, retire() {current = false;},
+    submit() {submit({preventDefault() {}});},
+    pick() {pick({target: {files: [{name: 'qa-memory.jpg', type: 'image/jpeg', size: 12}]}});}};
 }
+
+test('actual Composer submit cannot send an older image while its replacement is still being read', () => {
+  const own = composerPickFixture(fixture());
+  own.d.change('image', 'data:image/jpeg;base64,b2xk');
+  own.d.change('note', 'Keep the current note');
+  own.pick(); own.submit();
+  assert.deepEqual(own.payloads, [], 'No create operation may begin with stale image bytes');
+  own.readers[0].result = 'data:image/jpeg;base64,bmV3'; own.readers[0].onload();
+  own.submit();
+  assert.equal(own.payloads.length, 1);
+  assert.equal(own.payloads[0].image_data, 'data:image/jpeg;base64,bmV3');
+  assert.equal(own.payloads[0].note, 'Keep the current note');
+  assert.deepEqual(own.readingStates, [true, false]);
+});
+
+test('pending file blocks repeated and keyboard-style submit callbacks before any image is ready', () => {
+  const own = composerPickFixture(fixture());
+  own.pick(); own.submit(); own.submit();
+  assert.deepEqual(own.payloads, []);
+  assert.equal(own.errors.length, 2);
+  assert.equal(own.d.imageReading.current, true);
+});
+
+test('superseded FileReader cannot publish bytes or unlock the current selection', () => {
+  const own = composerPickFixture(fixture());
+  own.pick(); const first = own.readers[0]; own.pick();
+  assert.equal(first.aborted, true);
+  first.result = 'data:image/jpeg;base64,b2xk'; first.onload(); first.onerror();
+  assert.equal(own.image.value, '');
+  assert.equal(own.d.imageReading.current, true);
+  assert.deepEqual(own.readingStates, [true, true]);
+  own.submit(); assert.deepEqual(own.payloads, []);
+  const second = own.readers[1]; second.result = 'data:image/jpeg;base64,bmV3'; second.onload();
+  assert.equal(own.d.imageReading.current, false);
+  assert.deepEqual(own.readingStates, [true, true, false]);
+  own.submit(); assert.equal(own.payloads[0].image_data, second.result);
+});
+
+test('failed replacement keeps the visible prior image but never submits automatically', () => {
+  for (const throwOnRead of [false, true]) {
+    const own = composerPickFixture(fixture(), {throwOnRead});
+    own.d.change('image', 'data:image/jpeg;base64,b2xk');
+    own.pick(); if (!throwOnRead) own.readers[0].onerror();
+    assert.equal(own.image.value, 'data:image/jpeg;base64,b2xk');
+    assert.equal(own.d.imageReading.current, false);
+    assert.deepEqual(own.readingStates, [true, false]);
+    assert.deepEqual(own.payloads, []);
+    assert.equal(own.errors.at(-1), 'No se pudo leer la imagen.');
+    own.submit(); // A separate, explicit decision about the still-visible A.
+    assert.equal(own.payloads[0].image_data, own.image.value);
+  }
+});
+
+test('retired board/session does not publish file data or update reading state from late callbacks', () => {
+  const own = composerPickFixture(fixture());
+  own.pick(); own.retire(); const reader = own.readers[0];
+  reader.result = 'data:image/jpeg;base64,b2xk'; reader.onload(); reader.onerror();
+  assert.equal(own.image.value, ''); assert.deepEqual(own.readingStates, [true]);
+  assert.deepEqual(own.errors, []);
+});
+
+test('actual save control is disabled and labelled while reading, without locking every form field', () => {
+  const composer = nodes(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Composer')[0];
+  const button = nodes(node => ts.isJsxElement(node) && node.pos >= composer.pos && node.end <= composer.end
+    && node.openingElement.tagName.getText(file) === 'button'
+    && node.openingElement.attributes.properties.some(a => a.name?.getText(file) === 'className' && a.initializer?.text === 'primary'))[0];
+  assert.ok(button);
+  const label = button.children.find(ts.isJsxExpression)?.expression;
+  for (const [busy, readingImage, disabled, text] of [
+    [false, false, false, 'Guardar referencia'], [false, true, true, 'Leyendo imagen…'],
+    [true, false, true, 'Guardando…'], [true, true, true, 'Guardando…'],
+  ]) {
+    assert.equal(evaluate(prop(button.openingElement, 'disabled'), {busy, readingImage}), disabled);
+    assert.equal(evaluate(label, {busy, readingImage}), text);
+  }
+});
 
 for (const order of ['initialize-then-pick', 'pick-then-initialize']) {
   test(`accepted JPG is already dirty while actual FileReader is pending: ${order}`, async () => {
@@ -283,6 +364,8 @@ test('actual FileReader error and synchronous throw restore value-based dirty ow
     assert.equal(own.errors.length, 1);
     assert.equal(own.d.draft.current.title, dirtyTitle ? 'Keep this title' : '');
     assert.equal(own.image.value, '');
+    assert.equal(own.d.imageReading.current, false);
+    assert.deepEqual(own.readingStates, [true, false]);
     assert.equal(f.d.recoveryOwners.current.has(own.d.draftOwner.current), dirtyTitle);
   }
 });
