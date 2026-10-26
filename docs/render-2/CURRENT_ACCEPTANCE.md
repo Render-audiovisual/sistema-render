@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Producciones: segundo resultado nativo, histórico inmutable y aviso de versión — integración400
+
+Se cierra el recorrido pendiente de segunda versión, no toda Producciones. Dos fixtures nuevos con login Chrome real de qa_franco: registrar parcial→edición de video por cookie API de otro actor91002→Actualizar→segundo registro explícito→recarga. Revisión5→6→7→8; primer journal conserva JSON/xmin/ctid, ambos preservan UUID de videos/fotos y guiones;106 tablas ajenas no cambian y la tarea de origen no se finaliza ni se publica/contabiliza ninguna pieza. Segundo resultado sigue parcial por foto para repetir. No es cambio de cuenta nativo ni prueba de dos dispositivos. Fixtures rCXvd4 y JoIH10 terminan FINAL_OK/terminal0/cleanup ENOENT; viewport restaurado y pestañas propias cerradas.
+
+La prueba descubrió un aviso engañoso: ACK confirmado de revisión6 seguía mostrando éxito vigente tras editar visita7. Main corrige solo JSX de ProductionResultRegister: éxito por igualdad, aviso anterior si menor, actualizar si adelantado; evidencia registered actual sigue visible. Latch/modelo/recibo/guards >= intactos. Hilbert5 pruebas reales de JSX/callbacks RED2PASS/3FAIL→GREEN5PASS; focal30PASS. Frontend3312PASS/1SKIP/0FAIL, build index-QiAl1qiE.js. Harvey revisión sin P1/P2; repetición Chrome con ese hash confirmó aviso anterior, segundo registro y persistencia390×844 sin overflow horizontal. Detalles/captura en PRODUCTION_RESULT_SECOND_VERSION_QA.md. No cambios backend, proveedores ni producción; ACK perdido deliberado, Reportes y aceptación global no se acreditan por este recorrido.
+
 ### Correo transaccional: membresía vigente antes de entregar contenido privado — integración399
 
 Se corrige una brecha de privacidad por destinatarios capturados antes de una reasignación. Email ID-bound de comentario/bloqueada/correcciones revalida cuenta activa, membresía actual, espacio render_os y flags de archivo/papelera inmediatamente antes de sendMail; utiliza dirección/nombre actuales y excluye actor por ID. Sin roles/nombres/WhatsApp para inferir autoridad. Resto de motivos conserva política; no cambia destinatario371. Consulta de solo lectura sin locks durante transporte; no promete atomicidad ante revocación posterior, entrega real o outbox.

@@ -44,11 +44,15 @@ export function ProductionResultRegister({visit, capture, onState, onSaved, disa
   return <section aria-label="Registrar resultado de visita">
     {!state.locked && <button type="button" disabled={disabled || registered || working || state.busy || alreadyCurrent} onClick={() => {if(!disabled && !registered) void run(() => model.current.start({id:visit.id, revision:visit.revision}));}}>Registrar resultado</button>}
     {working && <p role="status">Verificando registro…</p>}
-    {registered && state.status !== 'confirmed' && <p role="status">Esta versión ya tiene un resultado registrado.</p>}
+    {registered && !(state.status === 'confirmed' && state.accepted?.revision_resultante === visit.revision) && <p role="status">Esta versión ya tiene un resultado registrado.</p>}
     {state.error && <p role="alert">{state.error}</p>}
     {['uncertain','conflict'].includes(state.status) && <button type="button" disabled={working || state.busy} onClick={() => run(() => model.current.verify())}>Verificar resultado</button>}
     {state.status === 'uncertain' && <button type="button" disabled={working || state.busy} onClick={() => run(() => model.current.retry())}>Reintentar mismo intento</button>}
-    {state.status === 'confirmed' && <p role="status">Resultado registrado. Los guiones pendientes se conservan para próximas visitas.</p>}
+    {state.status === 'confirmed' && (state.accepted?.revision_resultante === visit.revision
+      ? <p role="status">Resultado registrado. Los guiones pendientes se conservan para próximas visitas.</p>
+      : state.accepted?.revision_resultante < visit.revision
+        ? <p role="status">El resultado anterior quedó registrado. La visita cambió desde ese registro.</p>
+        : <p role="status">El resultado está registrado. Actualizá la visita para consultar su versión actual.</p>)}
     {readbackError && <p role="alert">{readbackError}</p>}
   </section>;
 }
