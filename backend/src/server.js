@@ -273,7 +273,7 @@ router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
   try { res.json(await readFeedbackTaskInventory(pool, req.auth, req.query)); }
   catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
 });
-router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
+router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool, notifyAssignment: notificarAsignacionSinInterrumpir }));
 router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
 router.use('/editorial-control', createEditorialControlRouter({ express, pool }));

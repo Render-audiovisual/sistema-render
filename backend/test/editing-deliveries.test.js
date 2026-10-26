@@ -73,7 +73,7 @@ function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = fal
     if (error) throw error instanceof Error ? error : Object.assign(new Error('Unexpected SQL failure'), { code: 'P0001' });
     if (sql.startsWith('BEGIN')) { snapshot = structuredClone(state); return { rows: [] }; }
     if (sql === 'ROLLBACK') { state = snapshot; return { rows: [] }; }
-    if (sql.startsWith('SELECT id,rol,activo,session_version FROM usuarios')) return { rows: [user] };
+    if (sql.startsWith('SELECT id,rol,activo,session_version,usuario,nombre FROM usuarios')) return { rows: [user] };
     if (sql.startsWith('SELECT id,publicacion_id FROM tareas')) return { rows: [{ id: 8, publicacion_id: linked ? 31 : null }] };
     if (sql.startsWith('SELECT s.id,s.tarea_id')) return { rows: linked ? [{ id: 51, tarea_id: 8, publicacion_id: 31, clave: 'cliente:7', periodo: '2026-01' }] : [] };
     if (sql.startsWith('SELECT v.id,v.tarea_origen_id')) return { rows: linked ? [{ id: VISIT, tarea_origen_id: 7 }] : [] };

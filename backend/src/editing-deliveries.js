@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { lockTaskOperationResources } from './task-operation-receipts.js';
-import { taskTransitionError } from './workflow-contract.js';
+import { isTaskApproved, taskTransitionError } from './workflow-contract.js';
+import { getStateNotification } from './task-workflow.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const ALLOWED_STATES = ['pendiente', 'en_progreso', 'en_revision', 'aprobada'];
@@ -43,14 +44,16 @@ export function editingDeliveryDto(row) {
 
 async function actor(db, auth, write) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || !Number.isSafeInteger(auth.session_version)) throw fail('Sesión requerida.', 401);
-  const user = (await db.query(`SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1${write ? ' FOR SHARE' : ''}`, [auth.id])).rows[0];
+  const user = (await db.query(`SELECT id,rol,activo,session_version,usuario,nombre FROM usuarios WHERE id=$1${write ? ' FOR SHARE' : ''}`, [auth.id])).rows[0];
   if (!user || user.activo !== true || user.session_version !== auth.session_version || user.rol !== auth.rol) throw fail('La sesión ya no está autorizada.', 401);
   if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso a entregas.', 403);
   return user;
 }
 
 async function readTask(db, id, user) {
-  const task = (await db.query(`SELECT t.id,t.revision,t.estado,t.tipo_tarea,t.propiedades_extra->>'workspace' AS workspace,
+  const task = (await db.query(`SELECT t.id,t.revision,t.estado,t.tipo_tarea,
+    t.titulo,t.cliente_id,t.prioridad,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.updated_at,t.propiedades_extra,
+    t.propiedades_extra->>'workspace' AS workspace,
     COALESCE(t.propiedades_extra->>'archivada_render_os','false') AS archived,
     COALESCE(t.propiedades_extra->>'papelera_render_os','false') AS trashed,
     EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$2) AS assigned
@@ -75,7 +78,7 @@ function domainConflict(error) {
 }
 
 /** Mount at /api/tareas-edicion. No task/production/editorial duplication. */
-export function createEditingDeliveriesRouter({ express, pool }) {
+export function createEditingDeliveriesRouter({ express, pool, notifyAssignment }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const handle = write => async (req, res, next) => {
@@ -93,7 +96,7 @@ export function createEditingDeliveriesRouter({ express, pool }) {
         await lockTaskOperationResources(db, id);
       }
       let task = await readTask(db, id, user);
-      let deliveryId, replayed = false;
+      let deliveryId, notification, replayed = false;
       if (write) {
         if (!mayWrite(task, user)) throw fail('No estás asignado a esta tarea.', 403);
         const hash = editingDeliveryPayloadHash(id, input);
@@ -107,20 +110,30 @@ export function createEditingDeliveriesRouter({ express, pool }) {
           if (!ALLOWED_STATES.includes(task.estado)) throw fail('Esta tarea ya no acepta nuevas entregas.', 409);
           const transition = taskTransitionError(task, 'en_revision', user);
           if (transition) throw fail(transition.error, transition.status);
+          const previousState = isTaskApproved(task) ? 'aprobada' : task.estado;
           const updated = (await db.query(`UPDATE tareas SET estado='en_revision',
             propiedades_extra=propiedades_extra || jsonb_build_object('revision_aprobada',false,
               'revision_aprobada_por',NULL,'revision_aprobada_por_id',NULL,'revision_aprobada_at',NULL,'finalizada_at',NULL,'revision_aprobada_entrega_id',NULL),
-            updated_at=clock_timestamp() WHERE id=$1 AND revision=$2 RETURNING id,revision,estado`, [id, input.expected_revision])).rows[0];
+            updated_at=clock_timestamp() WHERE id=$1 AND revision=$2 RETURNING id,revision,estado,propiedades_extra,updated_at`, [id, input.expected_revision])).rows[0];
           if (!updated) throw fail('La tarea cambió. Actualizá antes de reintentar.', 409);
           deliveryId = randomUUID();
           await db.query(`INSERT INTO task_editing_deliveries(id,task_id,actor_id,request_id,payload_hash,task_revision,url,notes)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [deliveryId, id, user.id, input.request_id, hash, updated.revision, input.url, input.notes]);
           task = { ...task, ...updated };
+          const event = getStateNotification(task, previousState);
+          if (event) notification = { pool, tarea: task, motivo: event.motivo,
+            nombresDestinatarios: event.recipients, actorId: user.id,
+            actor: user.nombre || user.usuario || `Usuario #${user.id}` };
         }
       }
       const body = { ...(await currentDto(db, task, user)), ...(write ? { delivery_id: deliveryId, replayed } : {}) };
       await db.query('COMMIT');
       res.status(write && !replayed ? 201 : 200).json(body);
+      // Delivery is already confirmed. Never enqueue during the transaction,
+      // replay an event, or turn a notifier failure into a false delivery error.
+      if (notification && typeof notifyAssignment === 'function') {
+        try { void Promise.resolve(notifyAssignment(notification)).catch(() => {}); } catch {}
+      }
     } catch (error) {
       if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; } }
       if (error.status) res.status(error.status).json({ error: error.message });
