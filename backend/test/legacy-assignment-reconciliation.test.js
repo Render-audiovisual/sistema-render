@@ -13,16 +13,17 @@ const choices = () => [
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function mock() {
   const queries=[], releases=[], committed=[];
-  const state={identity:{...identity},tasks:[{id:2,source_hash:'a'.repeat(32)},{id:9,source_hash:'b'.repeat(32)}],
+  const state={identity:{...identity},universe:[2,9],tasks:[{id:2,source_hash:'a'.repeat(32)},{id:9,source_hash:'b'.repeat(32)}],
     users:[21,22,23].map(id=>({id,usuario:`unit_${id}`,nombre:'Same synthetic label',rol:'edicion',activo:true,session_version:1})),
     existing:[],pending:[],connects:0,fail:null,onConnect:null,rowCount:null};
   const client={release:value=>releases.push(value),async query(sql,params){
     queries.push({sql,params:structuredClone(params)});
     if(state.fail){const error=state.fail(sql);if(error)throw error;}
     if(sql.includes('current_database()'))return {rows:[structuredClone(state.identity)]};
+    if(sql==='SELECT id FROM public.tareas ORDER BY id')return {rows:state.universe.map(id=>({id}))};
     if(sql.startsWith('SELECT t.id,md5('))return {rows:structuredClone(state.tasks)};
     if(sql.startsWith('SELECT id,usuario,nombre,rol,activo,session_version FROM usuarios'))return {rows:structuredClone(state.users)};
-    if(sql.startsWith('SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones'))return {rows:structuredClone(state.existing)};
+    if(sql.startsWith('SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones'))return {rows:structuredClone(state.existing.filter(row=>params[0].includes(row.tarea_id)))};
     if(sql.startsWith('INSERT INTO tarea_asignaciones')){
       assert.match(sql,/unnest\(\$1::int\[\],\$2::int\[\],\$3::text\[\]\)/);
       state.pending=params[0].map((tarea_id,i)=>({tarea_id,usuario_id:params[1][i],tipo:params[2][i]}));
@@ -31,6 +32,7 @@ function mock() {
     if(sql==='COMMIT'){committed.push(...state.pending);state.pending=[];return {rows:[]};}
     if(sql==='ROLLBACK'){state.pending=[];return {rows:[]};}
     if(sql==='LOCK TABLE public.tarea_asignaciones IN SHARE ROW EXCLUSIVE MODE')return {rows:[]};
+    if(sql==='LOCK TABLE public.tareas IN SHARE MODE')return {rows:[]};
     if(/^BEGIN|^SET LOCAL|^SELECT pg_advisory_xact_lock/.test(sql))return {rows:[]};
     throw Error('Unexpected SQL in isolated double');
   }};
@@ -43,13 +45,14 @@ const apply=(m,plan,extra={})=>applyLegacyAssignments(m.pool,plan,{...options(),
 test('dry-run is RR read-only with exact identity, full-task SQL hash and ID-only snapshots',async()=>{
   const m=mock(), original=choices(), frozen=structuredClone(original);
   const plan=await planLegacyAssignments(m.pool,original,options());
-  assert.deepEqual(original,frozen);assert.equal(plan.version,1);assert.equal(plan.environment,'test');
+  assert.deepEqual(original,frozen);assert.equal(plan.version,2);assert.equal(plan.environment,'test');
   assert.deepEqual(plan.identity,identity);
   assert.deepEqual(plan.choices,[{task_id:2,owner_id:22,collaborator_ids:[]},{task_id:9,owner_id:21,collaborator_ids:[22,23]}]);
-  assert.deepEqual(plan.snapshot,{tasks:m.state.tasks,users:m.state.users});
+  assert.deepEqual(plan.exceptions,[]);
+  assert.deepEqual(plan.snapshot,{task_universe_ids:[2,9],tasks:m.state.tasks,users:m.state.users,exception_assignments:[]});
   const {plan_hash,...body}=plan;assert.equal(plan_hash,hash(body));
   assert.equal(m.queries[0].sql,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-  assert.match(m.queries.find(q=>q.sql.includes('FROM tareas')).sql,/md5\(to_jsonb\(t\)::text\).*source_hash/s);
+  assert.match(m.queries.find(q=>q.sql.startsWith('SELECT t.id,md5(')).sql,/md5\(to_jsonb\(t\)::text\).*source_hash/s);
   assert.deepEqual(m.queries.find(q=>q.sql.includes('FROM usuarios')).params,[[21,22,23]]);
   assert.ok(m.queries.every(q=>!/FOR UPDATE|FOR SHARE|WHERE\s+nombre|OR\s+nombre/i.test(q.sql)));
   assert.deepEqual(writes(m),[]);assert.deepEqual(m.committed,[]);assert.deepEqual(m.releases,[undefined]);
@@ -109,7 +112,7 @@ test('plan rejects any existing membership, missing task, invalid hash or inacti
 
 test('exact approved hash is mandatory; closed/tampered plans reject without a lease',async()=>{
   const plan=await reviewed(mock());
-  for(const mutate of [p=>{p.version=2;},p=>{p.extra=true;},p=>{delete p.snapshot;},p=>{p.choices[0].owner_id=23;},
+  for(const mutate of [p=>{p.version=1;},p=>{p.extra=true;},p=>{delete p.snapshot;},p=>{p.choices[0].owner_id=23;},
     p=>{p.snapshot.tasks[0].source_hash='c'.repeat(32);},p=>{p.snapshot.users[0].nombre='Changed';},
     p=>{p.identity.database='other';},p=>{p.environment='sandbox';}]){
     const m=mock(),bad=structuredClone(plan);mutate(bad);await assert.rejects(apply(m,bad));assert.equal(m.state.connects,0);
@@ -122,17 +125,19 @@ test('exact approved hash is mandatory; closed/tampered plans reject without a l
 test('apply serializes, locks sorted IDs, rechecks then makes one bulk membership INSERT only',async()=>{
   const m=mock(),plan=await reviewed(m),before=structuredClone({tasks:m.state.tasks,users:m.state.users});
   const result=await apply(m,plan);
-  assert.deepEqual(result,{version:1,plan_hash:plan.plan_hash,tasks:2,assignments:4});
+  assert.deepEqual(result,{version:2,plan_hash:plan.plan_hash,tasks:2,assignments:4});
   assert.match(m.queries[0].sql,/^SELECT current_database\(\)/);
   assert.equal(m.queries[1].sql,'BEGIN ISOLATION LEVEL SERIALIZABLE');
   const tableLock=m.queries.findIndex(q=>q.sql==='LOCK TABLE public.tarea_asignaciones IN SHARE ROW EXCLUSIVE MODE');
+  const universeLock=m.queries.findIndex(q=>q.sql==='LOCK TABLE public.tareas IN SHARE MODE');
   const gate=m.queries.findIndex(q=>q.sql.includes('pg_advisory_xact_lock'));
   const task=m.queries.findIndex(q=>q.sql.includes('FROM tareas'));
   const user=m.queries.findIndex(q=>q.sql.includes('FROM usuarios'));
   assert.ok(tableLock>1&&tableLock<gate&&gate<task&&gate<user);
-  assert.equal(m.queries.filter(q=>q.sql.startsWith('LOCK TABLE')).length,1);
-  assert.ok(m.queries.slice(2,tableLock).every(q=>q.sql.startsWith('SET LOCAL')),
-    'No SELECT may establish a serializable snapshot before the assignment-table lock');
+  assert.equal(m.queries.filter(q=>q.sql.startsWith('LOCK TABLE')).length,2);
+  assert.ok(universeLock>1&&universeLock<tableLock);
+  assert.ok(m.queries.slice(2,tableLock).every(q=>q.sql.startsWith('SET LOCAL')||q.sql==='LOCK TABLE public.tareas IN SHARE MODE'),
+    'No SELECT may establish a serializable snapshot before both table locks');
   assert.match(m.queries[task].sql,/ORDER BY t\.id FOR UPDATE OF t/);assert.deepEqual(m.queries[task].params,[[2,9]]);
   assert.match(m.queries[user].sql,/ORDER BY id FOR SHARE/);assert.deepEqual(m.queries[user].params,[[21,22,23]]);
   assert.equal(writes(m).length,1);
@@ -179,4 +184,104 @@ test('serialization/query failures never retry; rollback failure discards and pr
     assert.equal(m.releases.at(-1),brokenRollback?rollback:undefined);
     assert.ok(!m.queries.some(q=>q.sql==='COMMIT'));
   }
+});
+
+test('full task universe is hash-bound; a new ID outside choices invalidates an otherwise identical snapshot',async()=>{
+  const m=mock(),plan=await reviewed(m),selected=structuredClone(plan.snapshot.tasks);
+  m.state.universe.push(50);
+  await assert.rejects(apply(m,plan),error=>error.status===409&&/universo/.test(error.message));
+  assert.deepEqual(m.state.tasks,selected);assert.deepEqual(writes(m),[]);assert.deepEqual(m.committed,[]);
+  assert.equal(m.queries.at(-1).sql,'ROLLBACK');
+});
+
+test('deleting or replacing an outside-choice exception ID also invalidates universe',async()=>{
+  for(const mutate of [ids=>ids.pop(),ids=>{ids[2]=70;}]){
+    const m=mock();m.state.universe.push(50);
+    const plan=await planLegacyAssignments(m.pool,choices(),{...options(),exceptions:[{task_id:50,reason:'Deferred by explicit review'}]});
+    m.queries.length=0;mutate(m.state.universe);
+    await assert.rejects(apply(m,plan),error=>error.status===409);assert.deepEqual(writes(m),[]);
+  }
+});
+
+test('coverage is exhaustive: omitted IDs fail, explicit closed exceptions are sorted and approved',async()=>{
+  const m=mock();m.state.universe.push(50,70);
+  await assert.rejects(planLegacyAssignments(m.pool,choices(),options()),error=>error.status===409);
+  assert.deepEqual(writes(m),[]);
+  const exceptions=[{task_id:70,reason:' Out of scope; no implicit reassignment '},{task_id:50,reason:'Already assigned; preserve'}];
+  m.state.existing=[{tarea_id:50,usuario_id:23,tipo:'responsable'},{tarea_id:70,usuario_id:22,tipo:'colaborador'}];
+  const before=structuredClone({tasks:m.state.tasks,users:m.state.users,existing:m.state.existing});
+  const plan=await planLegacyAssignments(m.pool,choices(),{...options(),exceptions});
+  assert.deepEqual(plan.exceptions,[{task_id:50,reason:'Already assigned; preserve'},{task_id:70,reason:'Out of scope; no implicit reassignment'}]);
+  assert.deepEqual(plan.snapshot.task_universe_ids,[2,9,50,70]);assert.deepEqual(plan.snapshot.exception_assignments,m.state.existing);
+  m.queries.length=0;const result=await apply(m,plan);assert.equal(result.assignments,4);
+  assert.deepEqual(writes(m)[0].params[0],[2,9,9,9]);assert.deepEqual({tasks:m.state.tasks,users:m.state.users,existing:m.state.existing},before);
+  assert.ok(!m.committed.some(row=>[50,70].includes(row.tarea_id)));
+});
+
+test('exception membership drift is rejected without overwriting existing relations',async()=>{
+  const m=mock();m.state.universe.push(50);m.state.existing=[{tarea_id:50,usuario_id:23,tipo:'responsable'}];
+  const plan=await planLegacyAssignments(m.pool,choices(),{...options(),exceptions:[{task_id:50,reason:'Preserve known normalized assignment'}]});
+  m.state.existing[0].usuario_id=22;m.queries.length=0;
+  await assert.rejects(apply(m,plan),error=>error.status===409);assert.deepEqual(writes(m),[]);assert.equal(m.state.existing[0].usuario_id,22);
+});
+
+test('exceptions reject unreviewed shapes, controls, duplicate IDs and choice overlap before leasing',async()=>{
+  for(const exceptions of [null,{},[{task_id:50}], [{task_id:50,reason:'ok',owner_id:21}],
+    [{task_id:50,reason:''}],[{task_id:50,reason:'   '}],[{task_id:50,reason:'x'.repeat(501)}],
+    [{task_id:50,reason:'bad\nreason'}],[{task_id:50,reason:'bad\0reason'}],
+    [{task_id:'50',reason:'ok'}],[{task_id:0,reason:'ok'}],[{task_id:50,reason:'ok'},{task_id:50,reason:'other'}],
+    [{task_id:2,reason:'Cannot be both selected and excepted'}]]){
+    const m=mock();await assert.rejects(planLegacyAssignments(m.pool,choices(),{...options(),exceptions}));assert.equal(m.state.connects,0);
+  }
+});
+
+test('nonexistent exception IDs cannot satisfy coverage and malformed universe results fail closed',async()=>{
+  for(const universe of [[2,9],[2,2,9],[9,2],['2',9],[0,2,9]]){
+    const m=mock();m.state.universe=universe;
+    await assert.rejects(planLegacyAssignments(m.pool,choices(),{...options(),exceptions:[{task_id:50,reason:'Not a live task'}]}),error=>error.status===409);
+    assert.deepEqual(writes(m),[]);
+  }
+});
+
+test('v1 plans are rejected before leasing; universe, exceptions and their observations cannot be tampered',async()=>{
+  const valid=await reviewed(mock());
+  const legacy={...valid,version:1};delete legacy.exceptions;delete legacy.snapshot.task_universe_ids;delete legacy.snapshot.exception_assignments;
+  const old=mock();await assert.rejects(apply(old,legacy));assert.equal(old.state.connects,0);
+  for(const mutate of [p=>{p.snapshot.task_universe_ids.push(99);},p=>{delete p.snapshot.task_universe_ids;},
+    p=>{p.exceptions.push({task_id:99,reason:'Late decision'});},p=>{p.snapshot.exception_assignments.push({tarea_id:99,usuario_id:21,tipo:'responsable'});}]){
+    const m=mock(),plan=await reviewed(m);mutate(plan);m.state.connects=0;
+    await assert.rejects(apply(m,plan));assert.equal(m.state.connects,0);assert.deepEqual(writes(m),[]);
+  }
+});
+
+test('choices and exceptions are captured before lease; queued mutations do not change the reviewed scope',async()=>{
+  const m=mock();m.state.universe.push(50);const exceptions=[{task_id:50,reason:'Keep task unchanged'}];
+  m.state.onConnect=()=>{exceptions[0].task_id=999;exceptions[0].reason='Changed while queued';};
+  const plan=await planLegacyAssignments(m.pool,choices(),{...options(),exceptions});
+  assert.deepEqual(plan.exceptions,[{task_id:50,reason:'Keep task unchanged'}]);
+  m.state.onConnect=()=>{plan.exceptions[0].task_id=999;plan.snapshot.task_universe_ids.push(999);};
+  const result=await apply(m,plan);assert.equal(result.assignments,4);assert.ok(!m.committed.some(row=>row.tarea_id===999));
+});
+
+test('task-table wait precedes the first serial snapshot so a newly committed outside ID rejects',async()=>{
+  const m=mock(),plan=await reviewed(m);let injected=false;
+  m.state.fail=sql=>{if(sql==='LOCK TABLE public.tareas IN SHARE MODE'){m.state.universe.push(50);injected=true;}return null;};
+  await assert.rejects(apply(m,plan),error=>error.status===409);assert.equal(injected,true);assert.deepEqual(writes(m),[]);
+  const begin=m.queries.findIndex(query=>query.sql.startsWith('BEGIN'));
+  const universe=m.queries.findIndex(query=>query.sql==='SELECT id FROM public.tareas ORDER BY id');
+  const parentLock=m.queries.findIndex(query=>query.sql==='LOCK TABLE public.tareas IN SHARE MODE');
+  const assignmentLock=m.queries.findIndex(query=>query.sql.startsWith('LOCK TABLE public.tarea_asignaciones'));
+  assert.ok(begin<parentLock&&parentLock<assignmentLock&&assignmentLock<universe);
+  assert.ok(m.queries.slice(begin+1,assignmentLock).every(query=>!query.sql.startsWith('SELECT')));
+});
+
+test('338 explicit owners plus 12 collaborators still produce exactly 350 bindings with source rows untouched',async()=>{
+  const m=mock();m.state.universe=Array.from({length:338},(_,index)=>index+1);
+  m.state.tasks=m.state.universe.map(id=>({id,source_hash:'a'.repeat(32)}));m.state.users=m.state.users.filter(user=>[21,22].includes(user.id));
+  const selected=m.state.universe.map((task_id,index)=>({task_id,owner_id:21,collaborator_ids:index<12?[22]:[]}));
+  const before=structuredClone({tasks:m.state.tasks,users:m.state.users});
+  const plan=await planLegacyAssignments(m.pool,selected,options());m.queries.length=0;
+  const result=await apply(m,plan);assert.equal(result.tasks,338);assert.equal(result.assignments,350);assert.equal(m.committed.length,350);
+  assert.equal(m.committed.filter(row=>row.tipo==='responsable').length,338);assert.equal(m.committed.filter(row=>row.tipo==='colaborador').length,12);
+  assert.deepEqual({tasks:m.state.tasks,users:m.state.users},before);assert.equal(writes(m).length,1);
 });

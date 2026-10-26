@@ -27,6 +27,17 @@ function normalizeChoices(choices) {
     return { task_id:c.task_id, owner_id:c.owner_id, collaborator_ids:[...c.collaborator_ids].sort((a,b)=>a-b) };
   }).sort((a,b)=>a.task_id-b.task_id);
 }
+function normalizeExceptions(exceptions = [], choices = []) {
+  if (!Array.isArray(exceptions) || exceptions.length > 10000) throw fail('Las excepciones deben ser una lista explícita por ID.');
+  const seen = new Set(choices.map(c => c.task_id));
+  return exceptions.map(exception => {
+    if (!keys(exception,['task_id','reason']) || !positive(exception.task_id) || seen.has(exception.task_id)
+      || typeof exception.reason !== 'string' || !exception.reason.trim() || exception.reason.length > 500
+      || /[\u0000-\u001f\u007f-\u009f]/.test(exception.reason)) throw fail('Excepción inválida, duplicada o superpuesta con la selección.');
+    seen.add(exception.task_id);
+    return {task_id:exception.task_id,reason:exception.reason.trim()};
+  }).sort((a,b) => a.task_id-b.task_id);
+}
 function guardOptions({ environment, expectedIdentity } = {}) {
   if (!['development','sandbox','test'].includes(environment) || !isLoopbackAddress(expectedIdentity?.address)
     || !positive(expectedIdentity?.port) || expectedIdentity.port > 65535
@@ -37,7 +48,14 @@ function guardOptions({ environment, expectedIdentity } = {}) {
   return { environment, expectedIdentity:{database:expectedIdentity.database,username:expectedIdentity.username,
     address:expectedIdentity.address,port:expectedIdentity.port} };
 }
-async function readSnapshot(db, choices, lock = false) {
+async function readSnapshot(db, choices, exceptions, lock = false) {
+  // ALL public task IDs, including archived/foreign-workspace/already assigned
+  // rows. Never infer that an unselected task is an approved exception.
+  const universe = (await db.query('SELECT id FROM public.tareas ORDER BY id')).rows.map(row => row.id);
+  if (universe.some((id,index) => !positive(id) || (index > 0 && id <= universe[index-1])))
+    throw fail('No se pudo verificar el universo de tareas.',409);
+  const covered = [...choices,...exceptions].map(row => row.task_id).sort((a,b) => a-b);
+  if (!same(universe,covered)) throw fail('El universo de tareas cambió o tiene IDs sin elección/excepción explícita. Revisá el plan completo.',409);
   const taskIds = choices.map(c=>c.task_id), userIds = [...new Set(choices.flatMap(c=>[c.owner_id,...c.collaborator_ids]))].sort((a,b)=>a-b);
   const tasks = (await db.query(`SELECT t.id,md5(to_jsonb(t)::text) AS source_hash FROM tareas t
     WHERE t.id=ANY($1::int[]) ORDER BY t.id${lock?' FOR UPDATE OF t':''}`, [taskIds])).rows;
@@ -48,7 +66,13 @@ async function readSnapshot(db, choices, lock = false) {
   const existing = (await db.query(`SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones
     WHERE tarea_id=ANY($1::int[]) ORDER BY tarea_id,usuario_id`,[taskIds])).rows;
   if (existing.length) throw fail('Hay asignaciones existentes: revisalas, no se sobrescriben.',409);
-  return { tasks:tasks.map(t=>({id:t.id,source_hash:t.source_hash})), users:users.map(u=>({id:u.id,usuario:u.usuario,nombre:u.nombre,rol:u.rol,activo:u.activo,session_version:u.session_version})) };
+  const exceptionIds = exceptions.map(row => row.task_id);
+  const exceptionAssignments = exceptionIds.length ? (await db.query(`SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones
+    WHERE tarea_id=ANY($1::int[]) ORDER BY tarea_id,usuario_id`,[exceptionIds])).rows : [];
+  return { task_universe_ids:universe,
+    tasks:tasks.map(t=>({id:t.id,source_hash:t.source_hash})),
+    users:users.map(u=>({id:u.id,usuario:u.usuario,nombre:u.nombre,rol:u.rol,activo:u.activo,session_version:u.session_version})),
+    exception_assignments:exceptionAssignments.map(row=>({tarea_id:row.tarea_id,usuario_id:row.usuario_id,tipo:row.tipo})) };
 }
 async function transact(pool, options, write, work) {
   const guard=guardOptions(options), db=await pool.connect();let discard;
@@ -65,10 +89,14 @@ async function transact(pool, options, write, work) {
     await db.query("SET LOCAL timezone='UTC'");
     await db.query("SET LOCAL statement_timeout='15000ms'");
     await db.query("SET LOCAL lock_timeout='3000ms'");
-    // A short offline reconciliation must also exclude direct assignment DML
-    // that does not follow the application's parent-task locking protocol.
-    // Take this lock before the first SELECT establishes the serial snapshot.
-    if(write)await db.query('LOCK TABLE public.tarea_asignaciones IN SHARE ROW EXCLUSIVE MODE');
+    // Short OFFLINE window only. SHARE prevents task inserts/deletes/updates
+    // after universe validation, including writers that ignore our advisory.
+    // Parent before assignments matches normal parent-task -> assignment order.
+    // Both locks must precede the first SELECT establishing the serial snapshot.
+    if(write){
+      await db.query('LOCK TABLE public.tareas IN SHARE MODE');
+      await db.query('LOCK TABLE public.tarea_asignaciones IN SHARE ROW EXCLUSIVE MODE');
+    }
     identity??=await readMigrationIdentity(db);
     assertMigrationTargetIdentity(identity,guard.expectedIdentity);
     if (!isLoopbackAddress(identity.address)) throw fail('La base actual no es la copia local autorizada.');
@@ -80,26 +108,30 @@ async function transact(pool, options, write, work) {
 }
 export async function planLegacyAssignments(pool, choices, options) {
   const selected=normalizeChoices(choices);
+  const exceptions=normalizeExceptions(options?.exceptions,selected);
   return transact(pool,options,false,async(db,environment,identity)=>{
-    const snapshot=await readSnapshot(db,selected);
-    const body={version:1,environment,identity,choices:selected,snapshot};
+    const snapshot=await readSnapshot(db,selected,exceptions);
+    const body={version:2,environment,identity,choices:selected,exceptions,snapshot};
     return {...body,plan_hash:digest(body)};
   });
 }
 export async function applyLegacyAssignments(pool, plan, options = {}) {
   guardOptions(options);
-  if (!keys(plan,['version','environment','identity','choices','snapshot','plan_hash']) || plan.version!==1
+  if (!keys(plan,['version','environment','identity','choices','exceptions','snapshot','plan_hash']) || plan.version!==2
     || !sha(plan.plan_hash) || options.approvedPlanHash!==plan.plan_hash) throw fail('Falta aprobar el hash exacto del plan.');
   const choices=normalizeChoices(plan.choices);
+  const exceptions=normalizeExceptions(plan.exceptions,choices);
   // Capture caller-owned objects before waiting for a connection. Mutating the
   // reviewed input must not change either the approval or the subsequent DML.
   let snapshot,identity;
   try {snapshot=structuredClone(plan.snapshot);identity=structuredClone(plan.identity);}catch{throw fail('Plan inválido.');}
-  const body={version:1,environment:plan.environment,identity,choices,snapshot};
-  if (!same(plan.choices,choices) || digest(body)!==plan.plan_hash || plan.environment!==options.environment) throw fail('El plan fue modificado.');
+  const body={version:2,environment:plan.environment,identity,choices,exceptions,snapshot};
+  if (!keys(snapshot,['task_universe_ids','tasks','users','exception_assignments'])
+    || !same(plan.choices,choices) || !same(plan.exceptions,exceptions)
+    || digest(body)!==plan.plan_hash || plan.environment!==options.environment) throw fail('El plan fue modificado.');
   return transact(pool,options,true,async(db,environment,currentIdentity)=>{
     if(environment!==body.environment || !same(currentIdentity,identity)) throw fail('La identidad del plan cambió.',409);
-    const current=await readSnapshot(db,choices,true);
+    const current=await readSnapshot(db,choices,exceptions,true);
     if(!same(current,snapshot)) throw fail('Los datos cambiaron desde la revisión. Generá y revisá otro plan.',409);
     const taskIds=[],userIds=[],types=[];
     for(const c of choices)for(const id of [c.owner_id,...c.collaborator_ids]){
@@ -109,6 +141,6 @@ export async function applyLegacyAssignments(pool, plan, options = {}) {
       SELECT tarea_id,usuario_id,tipo FROM unnest($1::int[],$2::int[],$3::text[]) AS selected(tarea_id,usuario_id,tipo)
       RETURNING tarea_id,usuario_id,tipo`,[taskIds,userIds,types]);
     if(result.rowCount!==taskIds.length)throw fail('No se confirmó toda la conciliación.',409);
-    return {version:1,plan_hash:digest(body),tasks:choices.length,assignments:result.rowCount};
+    return {version:2,plan_hash:digest(body),tasks:choices.length,assignments:result.rowCount};
   });
 }

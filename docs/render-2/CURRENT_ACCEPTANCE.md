@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Controles renovados y corrección audiovisual — 2026-10-26
+
+Ver RELEASE_REFRESH_AND_CORRECTION_QA.md. Respaldo nuevo de Supabase restaurado y verificado:64 tablas/7.732filas/338tareas; respaldo manual Hostinger completado. El contenido de tareas cambió desde el respaldo anterior aunque su conteo coincide: no reutilizar planes viejos ni sustituir la base viva. Corrección web/WhatsApp comparte regla de negocio; CLI+módulo74PASS y HTTP/PG aislado5PASS. Auditoría de edición expresamente requerida antes de salir sigue pendiente, igual que identidades independientes, configuración y ejecución productiva segura. No push/despliegue/migración productiva. Los apartados siguientes son evidencia histórica de sus respectivas etapas, no anulan esta actualización.
+
 ### WhatsApp preservado y probado en copia — 2026-10-26
 
 Ver WHATSAPP_CANONICAL_RELEASE_QA.md. Usuario eligió conservar ambas funciones, no reemplazarlas solo por web. Cierre privado con firma/identidad vigente, aprobación, CAS, evidencia de visita y token/recibo atómicos; no publica piezas. Avisos a líderes por IDs después del commit y sin repetición en replay. Edición desde visita parcial por video UUID, editor/entrega explícitos, reutiliza dispatcher web y no duplica tareas. Origen histórico agregado exige conciliación explícita, no videos inventados. Nuevos comandos CLI e instrucciones requieren actualización coordinada del agente externo antes de salir.

@@ -209,3 +209,21 @@ test('WhatsApp per-video editing preserves exact ID/revision/date/notification i
     assert.doesNotMatch(result.error, /private-token|secret/);
   }
 });
+
+test('WhatsApp correction binds escaped record ID and observed revision; cannot reuse generic task confirmation', () => {
+  const args = ['--task-id','8','--record-id','registro/á','--amount','2','--expected-revision','7'];
+  const payload = { expected_revision: 7, cantidad: 2 };
+  assert.deepEqual(cli('whatsapp', ['preview-production-correction',...args]).calls,
+    [{method:'POST',path:'/tareas/8/produccion/registros/registro%2F%C3%A1/previsualizar',payload}]);
+  assert.deepEqual(cli('whatsapp', ['correct-production',...args,...token]).calls,
+    [{method:'PATCH',path:'/tareas/8/produccion/registros/registro%2F%C3%A1',payload:{...payload,confirmacion_token:'synthetic-token'}}]);
+  for(const bad of [
+    ['correct-production','--task-id','8','--record-id','a','--amount','2',...token],
+    ['preview-production-correction',...args,'--expected-revision','0'],
+    ['preview-production-correction',...args,'--amount','-1'],
+    ['preview-production-correction',...args,'--record-id',' secret\nrecord '],
+  ]) {
+    const result=cli('whatsapp',bad);assert.ok(result.error);assert.deepEqual(result.calls,[]);
+    assert.doesNotMatch(result.error,/secret|synthetic-token/);
+  }
+});

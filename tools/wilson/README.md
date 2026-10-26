@@ -3,6 +3,31 @@
 Compatibilidad local bajo contrato; no certifica despliegue, transporte real
 ni entrega de notificaciones en producción.
 
+## Corregir un registro de grabación por WhatsApp
+
+Solo administrador humano vigente, firma v2 y conversación privada. Usar el
+ID exacto del registro y la revisión observada; no reemplazarlo por su posición
+en la lista ni buscar automáticamente una revisión nueva tras un conflicto.
+
+```bash
+python3 scripts/mia_render_os_task.py --actor-id '<actor-mapeado>' \
+  preview-production-correction --task-id 1421 --record-id '<id-registro>' \
+  --expected-revision 7 --amount 4
+
+python3 scripts/mia_render_os_task.py --actor-id '<actor-mapeado>' \
+  correct-production --task-id 1421 --record-id '<id-registro>' \
+  --expected-revision 7 --amount 4 --confirmation-token '<token-exacto>'
+```
+
+Mostrar la previsualización antes de confirmar. El token es exclusivo de esta
+corrección: no acepta un token genérico de edición de tarea. Una corrección
+recalcula los adelantos posteriores y revoca la aprobación anterior. Un 409
+exige revisar el estado actual con la persona, no reintentar con otro token
+sin confirmación. Si hay registros ambiguos o un origen canónico incompatible,
+se debe conciliar explícitamente. Repetir la confirmación exacta recupera el
+recibo sin volver a cambiar la cantidad. Este contrato debe trasladarse al
+agente externo antes de habilitar el flujo publicado.
+
 Este cliente reemplaza la creación de tareas en ClickUp. Wilson debe:
 
 1. obtener cliente y responsable desde `catalog`;

@@ -15,6 +15,7 @@ import { getProductionProgress, isProductionVisitTask } from "./production-visit
 import { rankTaskPriorities } from "./task-priority.js";
 import { registerWilsonFinalizationRoutes } from './wilson-finalization.js';
 import { registerWilsonVideoEditingRoutes, assertNoLegacyWilsonEditingSource } from './wilson-video-editing.js';
+import { registerWilsonProductionCorrectionRoutes } from './wilson-production-correction.js';
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
@@ -1103,6 +1104,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
   router.use(resolveWilsonUser(pool, env));
   registerWilsonFinalizationRoutes(router, { pool, notifyAssignment });
   registerWilsonVideoEditingRoutes(router, { pool, dispatchProductionVideoEditing, notifyAssignment });
+  registerWilsonProductionCorrectionRoutes(router, { pool });
   router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool,
     lockActor: (db, req) => lockFeedbackActor(db, req.wilson, {
       telegramUserId: telegramWilsonUserId(env, req.wilson.actorId),

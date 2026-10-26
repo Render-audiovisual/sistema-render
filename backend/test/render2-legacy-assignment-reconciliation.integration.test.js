@@ -29,6 +29,9 @@ test('explicit legacy ID reconciliation preserves original work and manual repor
   }return hashes;
  }
  const baseline=await snapshot();const stale=await planLegacyAssignments(pool,choices,options);assert.deepEqual(await snapshot(),baseline,'planning is read-only');
+ assert.equal(stale.version,2);assert.deepEqual(stale.exceptions,[]);
+ assert.deepEqual(stale.snapshot.task_universe_ids,tasks.map(task=>task.id).sort((a,b)=>a-b),
+  'the initial selection explicitly covers the entire synthetic task universe');
  await pool.query("UPDATE tareas SET titulo=titulo||' changed' WHERE id=$1",[tasks[1].id]);
  const beforeStale=await snapshot();await assert.rejects(applyLegacyAssignments(pool,stale,{...options,approvedPlanHash:stale.plan_hash}),e=>e.status===409);assert.deepEqual(await snapshot(),beforeStale);
  const plan=await planLegacyAssignments(pool,choices,options),before=await snapshot();
@@ -59,7 +62,16 @@ test('explicit legacy ID reconciliation preserves original work and manual repor
  const third=(await pool.query(`INSERT INTO tareas(titulo,asignado_a,tipo_tarea,propiedades_extra)
    VALUES('QA concurrent direct assignment','Untrusted label','diseno','{"workspace":"render_os"}') RETURNING id`)).rows[0];
  const concurrentChoices=[{task_id:third.id,owner_id:91004,collaborator_ids:[]}];
- const concurrentPlan=await planLegacyAssignments(pool,concurrentChoices,options);let insertedBeforeLock=false;
+ const beforeCoverage=await snapshot();
+ await assert.rejects(planLegacyAssignments(pool,concurrentChoices,options),e=>e.status===409&&/universo/.test(e.message));
+ assert.deepEqual(await snapshot(),beforeCoverage,'partial choices cannot silently omit previously reconciled tasks');
+ const exceptions=tasks.map(task=>({task_id:task.id,reason:'Preserve the three explicitly reconciled fixture bindings without reassigning'}));
+ const concurrentPlan=await planLegacyAssignments(pool,concurrentChoices,{...options,exceptions});let insertedBeforeLock=false;
+ assert.deepEqual(concurrentPlan.exceptions,exceptions.slice().sort((a,b)=>a.task_id-b.task_id));
+ assert.deepEqual(concurrentPlan.snapshot.task_universe_ids,[...tasks.map(task=>task.id),third.id].sort((a,b)=>a-b));
+ assert.deepEqual(concurrentPlan.snapshot.exception_assignments,(
+  await pool.query('SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=ANY($1::int[]) ORDER BY tarea_id,usuario_id',[tasks.map(task=>task.id)])).rows);
+ const beforeConcurrent=await snapshot();
  const guardedPool={async connect(){const db=await pool.connect();return{release:error=>db.release(error),async query(sql,params){
   if(sql.startsWith('LOCK TABLE public.tarea_asignaciones')){
    await pool.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,91001,'colaborador')",[third.id]);insertedBeforeLock=true;
@@ -70,4 +82,8 @@ test('explicit legacy ID reconciliation preserves original work and manual repor
  assert.equal(insertedBeforeLock,true);
  assert.deepEqual((await pool.query('SELECT usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=$1',[third.id])).rows,[{usuario_id:91001,tipo:'colaborador'}],
   'newly committed direct assignment is visible to the first serial snapshot and never overwritten');
+ const afterConcurrent=await snapshot();for(const name of Object.keys(beforeConcurrent))if(name!=='tarea_asignaciones')
+  assert.equal(afterConcurrent[name],beforeConcurrent[name],name+' remains physically unchanged after concurrent rejection');
+ assert.deepEqual((await pool.query('SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=ANY($1::int[]) ORDER BY tarea_id,usuario_id',
+  [tasks.map(task=>task.id)])).rows,concurrentPlan.snapshot.exception_assignments,'all prior excepted bindings remain exact');
 });

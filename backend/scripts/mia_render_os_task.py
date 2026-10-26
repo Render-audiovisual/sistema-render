@@ -209,6 +209,14 @@ def main():
     confirm_editing = commands.add_parser("confirm-video-editing")
     confirm_editing.add_argument("--payload", required=True)
     confirm_editing.add_argument("--confirmation-token", required=True)
+    for command in ("preview-production-correction", "correct-production"):
+        correction = commands.add_parser(command)
+        correction.add_argument("--task-id", required=True, type=int)
+        correction.add_argument("--record-id", required=True)
+        correction.add_argument("--amount", required=True, type=int)
+        correction.add_argument("--expected-revision", required=True, type=int)
+        if command == "correct-production":
+            correction.add_argument("--confirmation-token", required=True)
     ack_event = commands.add_parser("ack-event")
     ack_event.add_argument("--task-id", required=True, type=int)
     ack_event.add_argument("--event-id", required=True)
@@ -334,6 +342,17 @@ def main():
         if not isinstance(payload, dict) or "confirmacion_token" in payload:
             raise RuntimeError("Enviá el mismo objeto de intención sin confirmacion_token; usá --confirmation-token.")
         result = request("POST", "/produccion/edicion/confirmar", args, payload=operation_payload(payload, args.confirmation_token))
+    elif args.cmd in ("preview-production-correction", "correct-production"):
+        if not 0 < args.task_id <= 2147483647 or not 0 < args.expected_revision <= 2147483647 or not 0 < args.amount <= 9007199254740991:
+            raise RuntimeError("Tarea, revisión observada y cantidad deben ser enteros positivos válidos.")
+        if not args.record_id.strip() or args.record_id != args.record_id.strip() or len(args.record_id) > 200 or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in args.record_id):
+            raise RuntimeError("El registro debe tener un ID exacto válido.")
+        path = f"/tareas/{args.task_id}/produccion/registros/{urllib.parse.quote(args.record_id, safe='')}"
+        payload = {"expected_revision": args.expected_revision, "cantidad": args.amount}
+        if args.cmd == "preview-production-correction":
+            result = request("POST", path + "/previsualizar", args, payload=payload)
+        else:
+            result = request("PATCH", path, args, payload=operation_payload(payload, args.confirmation_token))
     elif args.cmd == "ack-event":
         result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
     elif args.cmd == "ack-group-digest":

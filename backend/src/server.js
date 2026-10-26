@@ -41,7 +41,7 @@ import { persistAssignedTask } from "./task-persistence.js";
 import {extractTaskCreateAttempt,prepareTaskCreation} from './task-create-input.js';
 import {readTaskCreationAttempt} from './task-create-recovery.js';
 import { assertCurrentPublicationRecipient } from './publication-recipient-authority.js';
-import { correctProductionRecord } from "./production-record-updates.js";
+import { correctLegacyProductionRegistration } from './production-registration-correction.js';
 import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
 import { loadClientCatalogSnapshot } from './client-catalog.js';
 import { loadUserCatalogSnapshot } from './user-catalog.js';
@@ -2204,48 +2204,10 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
   try {
     await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
     const actor = await retainLegacyProductionActor(client, capturedActor);
-    const params = [req.params.id];
-    const current = await client.query(
-      `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.tipo_tarea,t.subtipo,t.propiedades_extra,t.updated_at
-       FROM tareas t WHERE t.id=$1 AND t.propiedades_extra->>'workspace'='render_os' FOR UPDATE`, params,
-    );
-    const task = current.rows[0];
-    if (!task || !isProductionVisitTask(task)) throw Object.assign(new Error("Visita no encontrada o no asignada a tu cuenta."), { status: 404 });
-    await assertLegacyProductionTaskAccess(client, actor, task.id);
-    if (task.revision !== req.body.expected_revision) throw Object.assign(new Error("La visita cambió. Revisá sus registros antes de corregir."), { status: 409 });
-    await rejectMixedProductionRecording(client, task.id);
-    const { records: corrected, previous } = correctProductionRecord(task, {
-      recordId: req.params.recordId, amount, actorName: getTaskActor(actor), actorId: actor.id, now: new Date(),
+    const saved = await correctLegacyProductionRegistration(client, actor, {
+      taskId: Number(req.params.id), recordId: req.params.recordId,
+      expectedRevision: req.body.expected_revision, amount,
     });
-    const planned = getProductionProgress(task).planned;
-    const recorded = getProductionProgress({ propiedades_extra: { produccion_registros: corrected } }).recorded;
-    const nextState = getProductionTaskState({ planned, recorded });
-    const transition = taskTransitionError(task, nextState, actor);
-    if (transition) throw Object.assign(new Error(transition.error), { status: transition.status });
-    const properties = {
-      ...task.propiedades_extra,
-      produccion_registros: corrected,
-      produccion_esperando_confirmacion: nextState === "en_revision",
-      produccion_finalizada_at: nextState === "en_revision" ? new Date().toISOString() : null,
-      produccion_confirmada_at: null,
-      produccion_confirmada_por: null,
-      produccion_confirmada_por_id: null,
-      revision_aprobada: false,
-      revision_aprobada_por: null,
-      revision_aprobada_por_id: null,
-      revision_aprobada_at: null,
-      finalizada_at: null,
-      mia_notificacion_pendiente: { tipo: "correccion_grabacion", anterior: previous, nuevo: amount, creado_en: new Date().toISOString() },
-      workspace: "render_os",
-    };
-    const updated = await client.query(
-      `UPDATE tareas SET estado=$3,propiedades_extra=$2::jsonb,updated_at=now() WHERE id=$1
-       RETURNING id,revision,titulo,asignado_a,cliente_id,estado,propiedades_extra,
-       to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
-       prioridad,aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
-      [task.id, JSON.stringify(properties), nextState],
-    );
-    const [saved] = await annotateTaskAssignments(client, updated.rows);
     await client.query("COMMIT");
     return res.json(taskOperationalDto(saved, req.auth));
   } catch (error) {
