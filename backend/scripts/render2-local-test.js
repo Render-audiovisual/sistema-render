@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { createFixtureHttpJournal, isFixtureReadyMessage, observeFixtureHttp } from './fixture-http-observer.js';
 
 const self = fileURLToPath(import.meta.url);
 export const fixtureAccounts = Object.freeze([
@@ -58,7 +59,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {}, deferProductionResultsMigration = false, deferTaskCommentActorMigration = false, deferPersonalListBlockCreateReceiptsMigration = false } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, observeMoodboardHttp = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {}, deferProductionResultsMigration = false, deferTaskCommentActorMigration = false, deferPersonalListBlockCreateReceiptsMigration = false } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
@@ -74,6 +75,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
   if (typeof deferMoodboardReferenceMigration !== 'boolean') throw new Error('Invalid reference migration fixture option');
   if (typeof deferTaskCommentReceiptsMigration !== 'boolean' || (deferTaskCommentReceiptsMigration && !clusterOnly)) throw new Error('Comment migration rehearsal requires a cluster-only fixture');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
+  if (typeof observeMoodboardHttp !== 'boolean' || (observeMoodboardHttp && (!browserSessions || clusterOnly))) throw new Error('HTTP observation requires a browser fixture');
   if (browserPort !== undefined && (!browserSessions || clusterOnly || !Number.isInteger(browserPort)
     || browserPort < 1024 || browserPort > 65535 || browserPort === port)) throw new Error('Invalid browser HTTP fixture port');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
@@ -127,6 +129,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
       env: { ...env, ...wilsonEnv, MIA_SUPERVISOR_ENABLED: String(supervisorEnabled), DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
         ...(browserSessions ? { RENDER_BROWSER_SESSIONS: 'true', RENDER_BROWSER_ORIGIN: `http://127.0.0.1:${browserPort ?? 5195}`, RENDER_BROWSER_ALLOW_LOCAL_HTTP: 'true',
           ...(browserPort !== undefined ? { RENDER2_FIXTURE_HTTP_PORT: String(browserPort) } : {}) } : {}),
+        RENDER2_OBSERVE_MOODBOARD_HTTP: String(observeMoodboardHttp),
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_USER_ADMIN_MIGRATION: String(deferUserAdminMigration),
         RENDER2_DEFER_PRODUCTION_CREATE_RECEIPTS_MIGRATION: String(deferProductionCreateReceiptsMigration),
@@ -153,14 +156,19 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
         RENDER2_DEFER_MOODBOARD_REFERENCE_MIGRATION: String(deferMoodboardReferenceMigration),
         RENDER2_DEFER_TASK_COMMENT_RECEIPTS_MIGRATION: String(deferTaskCommentReceiptsMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    const journal = createFixtureHttpJournal(observeMoodboardHttp);
+    child.on('message', message => journal.accept(message));
     const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Fixture startup timeout')), 90000);
       child.once('error', error => { clearTimeout(timer); reject(error); });
       child.once('exit', code => { clearTimeout(timer); reject(new Error(`Fixture exited: ${code}`)); });
-      child.once('message', message => {
+      const onReady = message => {
+        if (!isFixtureReadyMessage(message)) return;
+        child.off('message', onReady);
         clearTimeout(timer);
         message.error ? reject(new Error(message.error)) : resolve(message);
-      });
+      };
+      child.on('message', onReady);
     });
     let sequence = 0;
     const launchActual = async ({ entry, args = [], env: overrides = {}, omitDatabaseUrl = false } = {}) => {
@@ -220,6 +228,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
       return handle;
     };
     return { ...ready, secret, root, cleanup, launchActual,
+      httpObservations: () => journal.snapshot(),
       query(sql, values = []) {
         const id = ++sequence;
         return new Promise((resolve, reject) => {
@@ -327,6 +336,9 @@ async function fixtureChild() {
     if (!Number.isInteger(httpPort) || httpPort < 0 || httpPort > 65535
       || (httpPort !== 0 && (httpPort < 1024 || process.env.RENDER_BROWSER_ORIGIN !== `http://127.0.0.1:${httpPort}`))) throw new Error('Unsafe fixture HTTP origin');
     server = app.listen(httpPort, '127.0.0.1');
+    if (process.env.RENDER2_OBSERVE_MOODBOARD_HTTP === 'true') {
+      observeFixtureHttp(server, event => process.send?.({ type: 'render-fixture-http', event }));
+    }
     await once(server, 'listening');
   }
   process.on('message', async ({ id, sql, values }) => {

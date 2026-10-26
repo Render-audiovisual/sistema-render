@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado391
+# Render 2.0 — corte de aceptación local372, actualizado393
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -54,6 +54,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 
 ## Evidencia vigente, sin sumar ejecuciones como recorridos únicos
 
+- Integración393: prueba nativa Moodboards de éxito demorado conserva formulario/título/nota en1280/390; POST200→GET200 observados en servidor, advisory real liberada,109 tablas invariantes y cleanup ENOENT/terminal0. Observador opt-in limitado al harness,13 pruebas focales aprobadas; backend2606PASS/174SKIP/0FAIL y core35archivos340PASS/0FAIL/0SKIP, terminal0. Cierra ese caso381/382, no FileReader ni aceptación global. Intento392 abortado y limpiado, no contabilizado como éxito. Detalles y capturas en CURRENT_ACCEPTANCE.md.
 - Principal369: `npm run qa:core:local`,29 archivos,288PASS/0FAIL/0SKIP; `/private/tmp/render2-goal369-final-core.log`. Es anterior a los cambios de copy370–371, no una ejecución372.
 - Adicional372: MasterC + calendario/proyectos + contenido/objetivos,19PASS/0FAIL/0SKIP, limpieza propia; `/private/tmp/render2-goal372-master-physical.log`.
 - Grafo App/Vite372:4PASS, `/private/tmp/render2-goal372-runtime-graph.log`; prueba de imports estáticos, no ausencia demostrada de cualquier comportamiento dinámico posible.
