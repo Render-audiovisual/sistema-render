@@ -259,7 +259,7 @@ test('both recovery surfaces use scoped quiet controls, shared gutters and 44px 
  const rule=selector=>{const start=css.indexOf(selector+'{');assert.notEqual(start,-1,selector);return css.slice(start,css.indexOf('}',start)+1)};
  const recovery=rule('.moodboard-recovery'),button=rule('.moodboard-recovery>button');
  assert.match(recovery,/flex-wrap:wrap/);assert.match(recovery,/gap:8px/);assert.match(recovery,/padding:16px/);assert.match(recovery,/font-size:13px/);
- for(const expected of [/min-height:44px/,/max-width:100%/,/min-width:0/,/font:inherit/,/font-size:13px/,/border:1px solid #d7dcd3/,/border-radius:9px/,/white-space:normal/])assert.match(button,expected);
+ for(const expected of [/min-height:44px/,/max-width:100%/,/min-width:0/,/font:inherit/,/font-size:13px/,/border:1px solid var\(--render-line\)/,/border-radius:var\(--render-radius-control\)/,/white-space:normal/])assert.match(button,expected);
  assert.match(rule('.moodboard-composer>.moodboard-recovery'),/margin:16px 22px/);
  assert.match(rule('.moodboard-composer>.moodboard-error'),/margin:14px 22px/);
  assert.match(rule('.moodboard-recovery>button:focus-visible'),/outline:2px solid/);

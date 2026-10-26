@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: base visual compartida — integración404, aceptación nativa parcial
+
+CSS canónico adopta tokens compartidos sin cambiar galería, API, permisos ni persistencia. Harvey detecta contadores con contraste insuficiente y foco recortado en rail; corregidos con render-muted y outline interior. Hilbert6 regresiones; focal49PASS, frontend3324PASS/1opt-inSKIP/0FAIL y build BfN1lEwj terminal0. Chrome verifica escritorio1280, rail72 y compositor390 con campos16px/44px, Escape y retorno de foco. Primer chequeo109tablas invariante. La salida final320 se truncó y el fixture venció antes del cierre: terminal1 ABORTED_NO_ACCEPTANCE/cleanup ENOENT iUnIA5. No FINAL_OK ni aceptación física final; repetir ese cierre. Viewport restaurado, sin pestañas propias. Ver MOODBOARD_SHARED_VISUAL_TOKENS_QA.md. No backend comercial/proveedores/despliegue; objetivo abierto.
+
 ### Inicio: base visual compartida y foco no recortado — integración403
 
 QuickHome.css adopta tokens comunes de colores/fuente/radios y canvas/tarjetas sin modificar JSX, métricas, orden ni permisos. Se corrige foco exterior recortado por tarjetas: links de tarea/contexto/sección usan el mismo outline3px hacia dentro. Hilbert6 regresiones de tokens/contraste/layout/foco; Main11focales y frontend final3318PASS/1SKIP/0FAIL; build DvAcg2vt. Chrome con fixture propietario verifica lista personal1..5, vencida→hoy alta/baja→revisión→sinfecha; no tarea propia finalizada6 ni ajena7 en próximo trabajo. Datos reales del fixture, no métricas ilustrativas. Desktop1280/móvil320 sin overflow horizontal; Tab muestra foco interior.109tablas invariantes, dos fixtures propios FINAL_OK/terminal0/ENOENT, Chrome restaurado.
