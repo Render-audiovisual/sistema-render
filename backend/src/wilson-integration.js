@@ -13,13 +13,15 @@ import { canonicalFeedbackIntent, feedbackIdempotencyKey, feedbackIntentHash, fe
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
 import { rankTaskPriorities } from "./task-priority.js";
+import { registerWilsonFinalizationRoutes } from './wilson-finalization.js';
+import { registerWilsonVideoEditingRoutes, assertNoLegacyWilsonEditingSource } from './wilson-video-editing.js';
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
 import { isTaskFinalized, isTaskApproved } from "./workflow-contract.js";
 import { taskOperationalDto, clientOperationalDto } from "./operational-dto.js";
-import { syncProductionVisitFromTask } from "./production-registry.js";
+import { syncProductionVisitFromTask, dispatchProductionVideoEditing } from "./production-registry.js";
 import { lockProductionObjectiveLinks } from "./production-editorial.js";
 import { productionEditorialConflict } from "./production-link-errors.js";
 import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
@@ -1099,6 +1101,8 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
   }
   router.use(requireWilsonService(env, () => Date.now(), { allowSignedUnknownWhatsappPrivate: true }));
   router.use(resolveWilsonUser(pool, env));
+  registerWilsonFinalizationRoutes(router, { pool, notifyAssignment });
+  registerWilsonVideoEditingRoutes(router, { pool, dispatchProductionVideoEditing, notifyAssignment });
   router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool,
     lockActor: (db, req) => lockFeedbackActor(db, req.wilson, {
       telegramUserId: telegramWilsonUserId(env, req.wilson.actorId),
@@ -1267,6 +1271,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
 
   router.post("/tareas/validar", async (req, res, next) => {
     try {
+      assertNoLegacyWilsonEditingSource(req.body);
       const result = await validate(pool, req.body, req.wilson);
       const permissionError = result.task
         ? await privateAssignmentListError(req, env, result.task, pool)
@@ -1538,6 +1543,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
 
   router.post("/confirmaciones", async (req, res, next) => {
     try {
+      assertNoLegacyWilsonEditingSource(req.body);
       const operation = String(req.body?.operacion || "").trim().toLowerCase();
       if (!CONFIRMABLE_OPERATIONS.has(operation)) return res.status(422).json({ error: "Operación no confirmable." });
       if(TASK_RECEIPT_OPERATIONS.includes(operation)) {
@@ -2045,6 +2051,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
   async function executeTaskReceiptOperation(req,res,next,operation) {
     let client,response,status=200,email=null;
     try {
+      assertNoLegacyWilsonEditingSource(req.body);
       requireTaskOperationHuman(req.wilson,operation);
       const intent=canonicalTaskOperationIntent(req.body||{}, {operation,targetId:operation==='crear'?null:Number(req.params.id)});
       const key=taskOperationKey(req.headers,req.body),payloadHash=taskOperationIntentHash(intent);

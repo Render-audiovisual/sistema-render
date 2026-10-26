@@ -171,3 +171,41 @@ test('WhatsApp wrapper remains a direct canonical delegation', () => {
   assert.match(wrapper, /"backend" \/ "scripts" \/ "mia_render_os_task.py"/);
   assert.match(wrapper, /runpy.run_path\(str\(CLIENT\), run_name="__main__"\)/);
 });
+
+test('WhatsApp private finalization uses its exact three-step contract, never revision aliases or automatic retries', () => {
+  for (const [args, path, payload] of [
+    [['resolve-finalization', '--references', '["QA approved"]'], '/tareas/resolver-finalizacion', { referencias: ['QA approved'] }],
+    [['preview-finalization', '--task-ids', '[8,9]'], '/lotes/finalizacion/previsualizar', { task_ids: [8,9] }],
+    [['confirm-finalization', ...token], '/lotes/finalizacion/confirmar', { confirmacion_token: 'synthetic-token' }],
+  ]) {
+    const result = cli('whatsapp', args);
+    assert.equal(result.error, null);
+    assert.deepEqual(result.calls, [{ method: 'POST', path, payload }]);
+  }
+  for (const command of ['resolve-finalization', 'preview-finalization', 'confirm-finalization']) {
+    const result = cli('whatsapp', [command]);
+    assert.ok(result.error);
+    assert.deepEqual(result.calls, []);
+  }
+});
+
+test('WhatsApp per-video editing preserves exact ID/revision/date/notification intention and token; no inferred video or date', () => {
+  const visit = 'ab111111-1111-4111-8111-111111111111';
+  const intent = { visita_id: visit, video_id: 'ab222222-2222-4222-8222-222222222222', expected_revision: 7,
+    editor_id: 21, fecha_entrega: '2026-11-03', notificar_asignacion: false };
+  assert.deepEqual(cli('whatsapp', ['production-videos', '--visit-id', visit]).calls,
+    [{ method: 'GET', path: `/produccion/visitas/${visit}/videos` }]);
+  assert.deepEqual(cli('whatsapp', ['preview-video-editing', '--payload', json(intent)]).calls,
+    [{ method: 'POST', path: '/produccion/edicion/previsualizar', payload: intent }]);
+  assert.deepEqual(cli('whatsapp', ['confirm-video-editing', '--payload', json(intent), ...token]).calls,
+    [{ method: 'POST', path: '/produccion/edicion/confirmar', payload: { ...intent, confirmacion_token: 'synthetic-token' } }]);
+  for (const args of [
+    ['production-videos', '--visit-id', '../secret'],
+    ['confirm-video-editing', '--payload', '[]', ...token],
+    ['confirm-video-editing', '--payload', '{"confirmacion_token":"private-token"}', ...token],
+  ]) {
+    const result = cli('whatsapp', args);
+    assert.ok(result.error); assert.deepEqual(result.calls, []);
+    assert.doesNotMatch(result.error, /private-token|secret/);
+  }
+});

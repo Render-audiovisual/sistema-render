@@ -134,14 +134,14 @@ async function sourceTask(db, id, { available = true } = {}) {
   if (!task || !isProductionVisitTask(task) || (available && (['true', true].includes(task.propiedades_extra?.papelera_render_os) || ['true', true].includes(task.propiedades_extra?.archivada_render_os)))) throw fail('La tarea origen no es una visita disponible de RENDER OS.', 404);
   return task;
 }
-async function lockVisit(db, id) {
+async function lockVisit(db, id, additionalTaskIds = []) {
   const link = (await db.query('SELECT tarea_origen_id FROM produccion_visitas WHERE id=$1', [id])).rows[0];
   if (!link) throw fail('Visita no encontrada.', 404);
   // Every writer takes the same domain before discovery: a new batch may add
   // another original mapping even when the earlier set was empty.
   await lockProductionObjectiveLinks(db);
   const adoptedTaskIds=await findProductionAdoptedEditingTasks(db,id);
-  const ids=[...new Set([link.tarea_origen_id,...adoptedTaskIds].filter(positive))].sort((a,b)=>a-b);
+  const ids=[...new Set([link.tarea_origen_id,...adoptedTaskIds,...additionalTaskIds].filter(positive))].sort((a,b)=>a-b);
   if(ids.length)await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',[ids]);
   if(JSON.stringify(await findProductionAdoptedEditingTasks(db,id))!==JSON.stringify(adoptedTaskIds))throw fail('La correspondencia histórica cambió. Recargá la visita.',409);
   if (link.tarea_origen_id) await sourceTask(db, link.tarea_origen_id, { available: false });
@@ -180,6 +180,74 @@ export async function syncProductionVisitFromTask(db, task, actorId) {
   if (!inserted.rows.length) return null;
   await replaceParticipants(db, id, ids);
   return (await readVisits(db, 'WHERE v.id=$1', [id]))[0];
+}
+
+/** Shared dispatch: caller retains current actor and owns transaction/notification.
+ * beforeDispatch runs under canonical source/editing-task -> visit -> video locks,
+ * before BOTH replay and mutation; throwing must roll back the caller transaction.
+ */
+export async function dispatchProductionVideoEditing(db, auth, { visita_id: id, video_id: videoId, ...input }, { beforeDispatch } = {}) {
+  if (auth?.rol !== 'admin' || !positive(auth?.id)) throw fail('Solo admin puede enviar a edición.',403);
+  if (!uuid(id) || !uuid(videoId)) throw fail('Visita o video inválido.');
+  keys(input,['expected_revision','editor_id','fecha_entrega']);revision(input);
+  if (!positive(input.editor_id) || !date(input.fecha_entrega)) throw fail('Elegí editor y fecha de entrega válidos.');
+  // Never discover an existing delivery task after taking a visit/video lock.
+  const discovered=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2`,[videoId,id])).rows[0];
+  if(!discovered) throw fail('Video no encontrado en esta visita.',404);
+  const context=discovered.publicacion_id ? await lockProductionEditorialContext(db,id,videoId,{}, {lockVisit}) : null;
+  const visit=context?.visit ?? await lockVisit(db,id, [discovered.tarea_edicion_id]);
+  const video=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2 FOR UPDATE OF pv`,[videoId,id])).rows[0];
+  if(!video) throw fail('Video no encontrado en esta visita.',404);
+  if((video.publicacion_id??null)!==(discovered.publicacion_id??null) || (video.tarea_entrega_id??null)!==(discovered.tarea_entrega_id??null)) throw fail('El vínculo editorial cambió. Recargá la visita.',409);
+  if((video.tarea_edicion_id??null)!==(discovered.tarea_edicion_id??null)) throw fail('El vínculo de edición cambió. Recargá la visita.',409);
+  if (beforeDispatch) await beforeDispatch({ db, visit, video });
+  if(video.tarea_edicion_id) {
+    if(video.editor_id!==input.editor_id||video.fecha_entrega!==input.fecha_entrega) throw fail('El video ya fue enviado con otro editor o fecha.',409);
+    if(visit.tarea_origen_id){
+      const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
+      await rejectLegacyProductionSource(db,visit,source,video.id);
+    }
+    const task=(await db.query("SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento FROM tareas t WHERE t.id=$1",[video.tarea_edicion_id])).rows[0];
+    if(!task) throw fail('Tarea vinculada no disponible.',404);
+    return {created:false,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};
+  }
+  checkRevision(visit,input.expected_revision);
+  if(video.estado!=='grabado') throw fail('Marcá el video como grabado antes de enviarlo a edición.',409);
+  const material=url(video.material_url||visit.drive_url);if(!material) throw fail('Vinculá el material del video o la carpeta de la visita.');
+  const [editor]=await activePeople(db,[input.editor_id],true);
+  if(visit.tarea_origen_id) {
+    const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
+    await rejectLegacyProductionSource(db,visit,source,video.id);
+  }
+  const metadata={workspace:'render_os',origen_produccion_video_id:video.id,produccion_visita_id:id,guiones:video.guion};
+  let task;
+  let collaboratorIds=[];
+  if(context) {
+    const canonical=context.task,publication=context.publication,slot=context.slot;
+    if(!canonical || canonical.id!==video.tarea_entrega_id || canonical.publicacion_id!==video.publicacion_id
+      || canonical.cliente_id!==visit.cliente_id || canonical.estado!=='pendiente' || canonical.historia_id
+      || canonical.tipo_tarea==='produccion' || canonical.propiedades_extra?.workspace!=='render_os'
+      || ['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(canonical.propiedades_extra?.[key]))
+      || !publication || publication.cliente_id!==visit.cliente_id || !['video','reel'].includes(publication.tipo)
+      || publication.estado!=='pendiente' || (slot && (slot.tarea_id!==canonical.id || slot.publicacion_id!==publication.id
+        || slot.estado!=='pendiente' || slot.completada_at))) throw fail('La entrega editorial ya empezó o dejó de ser compatible.',409);
+    const [assigned]=await annotateTaskAssignments(db,[canonical]);
+    const memberIds=[...new Set([assigned.asignado_a_id,...assigned.colaborador_ids].filter(id=>positive(id)&&id!==editor.id))];
+    const members=memberIds.length ? (await db.query('SELECT id,nombre FROM usuarios WHERE id=ANY($1::int[]) AND activo IS TRUE ORDER BY id FOR SHARE',[memberIds])).rows : [];
+    collaboratorIds=members.map(member=>member.id);
+    metadata.colaboradores=members.map(member=>member.nombre);
+    // Keep editorial copy/origin markers and workflow state; guion is separate.
+    task=(await db.query(`UPDATE tareas SET asignado_a=$2,fecha_vencimiento=$3,material_referencia=$4,
+      tipo_tarea='edicion',subtipo='video',propiedades_extra=propiedades_extra || $5::jsonb,updated_at=now()
+      WHERE id=$1 RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,
+    [canonical.id,editor.nombre,input.fecha_entrega,material,JSON.stringify(metadata)])).rows[0];
+  } else task=(await db.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,subtipo,fecha_vencimiento,material_referencia,aclaraciones,propiedades_extra)
+    VALUES($1,$2,$3,'pendiente','edicion','video',$4,$5,$6,$7::jsonb)
+    RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,[`${visit.cliente_nombre} | Edición | ${video.titulo}`,editor.nombre,visit.cliente_id,input.fecha_entrega,material,video.observaciones,JSON.stringify(metadata)])).rows[0];
+  await replaceTaskAssignments(db,task.id,{ownerId:editor.id,collaboratorIds});
+  await db.query('UPDATE produccion_videos SET tarea_edicion_id=$3,editor_id=$4,fecha_entrega=$5,actualizado_por_id=$6,updated_at=now() WHERE id=$1 AND visita_id=$2',[video.id,id,task.id,editor.id,input.fecha_entrega,auth.id]);
+  await bump(db,id,auth.id);
+  return {created:true,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};
 }
 
 export function createProductionRegistryRouter({ express, pool }) {
@@ -318,63 +386,9 @@ export function createProductionRegistryRouter({ express, pool }) {
     const id=routeId(req);if(!uuid(req.params.videoId)) throw fail('Video inválido.');
     keys(req.body,['expected_revision','editor_id','fecha_entrega']);revision(req.body);
     if(!positive(req.body.editor_id)||!date(req.body.fecha_entrega)) throw fail('Elegí editor y fecha de entrega válidos.');
-    const result=await transaction(pool,req.auth,true,async db=>{
-      // Never discover an existing delivery task after taking a visit/video lock.
-      const discovered=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2`,[req.params.videoId,id])).rows[0];
-      if(!discovered) throw fail('Video no encontrado en esta visita.',404);
-      const context=discovered.publicacion_id ? await lockProductionEditorialContext(db,id,req.params.videoId,{}, {lockVisit}) : null;
-      const visit=context?.visit ?? await lockVisit(db,id);
-      const video=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2 FOR UPDATE OF pv`,[req.params.videoId,id])).rows[0];
-      if(!video) throw fail('Video no encontrado en esta visita.',404);
-      if((video.publicacion_id??null)!==(discovered.publicacion_id??null) || (video.tarea_entrega_id??null)!==(discovered.tarea_entrega_id??null)) throw fail('El vínculo editorial cambió. Recargá la visita.',409);
-      if(video.tarea_edicion_id) {
-        if(video.editor_id!==req.body.editor_id||video.fecha_entrega!==req.body.fecha_entrega) throw fail('El video ya fue enviado con otro editor o fecha.',409);
-        if(visit.tarea_origen_id){
-          const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
-          await rejectLegacyProductionSource(db,visit,source,video.id);
-        }
-        const task=(await db.query("SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento FROM tareas t WHERE t.id=$1",[video.tarea_edicion_id])).rows[0];
-        if(!task) throw fail('Tarea vinculada no disponible.',404);
-        return {created:false,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],req.auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};
-      }
-      checkRevision(visit,req.body.expected_revision);
-      if(video.estado!=='grabado') throw fail('Marcá el video como grabado antes de enviarlo a edición.',409);
-      const material=url(video.material_url||visit.drive_url);if(!material) throw fail('Vinculá el material del video o la carpeta de la visita.');
-      const [editor]=await activePeople(db,[req.body.editor_id],true);
-      if(visit.tarea_origen_id) {
-        const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
-        await rejectLegacyProductionSource(db,visit,source,video.id);
-      }
-      const metadata={workspace:'render_os',origen_produccion_video_id:video.id,produccion_visita_id:id,guiones:video.guion};
-      let task;
-      let collaboratorIds=[];
-      if(context) {
-        const canonical=context.task,publication=context.publication,slot=context.slot;
-        if(!canonical || canonical.id!==video.tarea_entrega_id || canonical.publicacion_id!==video.publicacion_id
-          || canonical.cliente_id!==visit.cliente_id || canonical.estado!=='pendiente' || canonical.historia_id
-          || canonical.tipo_tarea==='produccion' || canonical.propiedades_extra?.workspace!=='render_os'
-          || ['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(canonical.propiedades_extra?.[key]))
-          || !publication || publication.cliente_id!==visit.cliente_id || !['video','reel'].includes(publication.tipo)
-          || publication.estado!=='pendiente' || (slot && (slot.tarea_id!==canonical.id || slot.publicacion_id!==publication.id
-            || slot.estado!=='pendiente' || slot.completada_at))) throw fail('La entrega editorial ya empezó o dejó de ser compatible.',409);
-        const [assigned]=await annotateTaskAssignments(db,[canonical]);
-        const memberIds=[...new Set([assigned.asignado_a_id,...assigned.colaborador_ids].filter(id=>positive(id)&&id!==editor.id))];
-        const members=memberIds.length ? (await db.query('SELECT id,nombre FROM usuarios WHERE id=ANY($1::int[]) AND activo IS TRUE ORDER BY id FOR SHARE',[memberIds])).rows : [];
-        collaboratorIds=members.map(member=>member.id);
-        metadata.colaboradores=members.map(member=>member.nombre);
-        // Keep editorial copy/origin markers and workflow state; guion is separate.
-        task=(await db.query(`UPDATE tareas SET asignado_a=$2,fecha_vencimiento=$3,material_referencia=$4,
-          tipo_tarea='edicion',subtipo='video',propiedades_extra=propiedades_extra || $5::jsonb,updated_at=now()
-          WHERE id=$1 RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,
-        [canonical.id,editor.nombre,req.body.fecha_entrega,material,JSON.stringify(metadata)])).rows[0];
-      } else task=(await db.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,subtipo,fecha_vencimiento,material_referencia,aclaraciones,propiedades_extra)
-        VALUES($1,$2,$3,'pendiente','edicion','video',$4,$5,$6,$7::jsonb)
-        RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,[`${visit.cliente_nombre} | Edición | ${video.titulo}`,editor.nombre,visit.cliente_id,req.body.fecha_entrega,material,video.observaciones,JSON.stringify(metadata)])).rows[0];
-      await replaceTaskAssignments(db,task.id,{ownerId:editor.id,collaboratorIds});
-      await db.query('UPDATE produccion_videos SET tarea_edicion_id=$3,editor_id=$4,fecha_entrega=$5,actualizado_por_id=$6,updated_at=now() WHERE id=$1 AND visita_id=$2',[video.id,id,task.id,editor.id,req.body.fecha_entrega,req.auth.id]);
-      await bump(db,id,req.auth.id);
-      return {created:true,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],req.auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};
-    });return res.status(result.created?201:200).json(result);
+    const result=await transaction(pool,req.auth,true,db=>dispatchProductionVideoEditing(db,req.auth,{
+      visita_id:id,video_id:req.params.videoId,...req.body,
+    }));return res.status(result.created?201:200).json(result);
   }));
   return router;
 }

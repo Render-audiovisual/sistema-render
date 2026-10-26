@@ -2,6 +2,8 @@
 
 ## Status, ownership and decision gate
 
+**User decision after this audit:** retain both P1 WhatsApp paths before release, adapted to canonical ID permissions, approval and per-video production contracts. Implementation and isolated verification are now authorized; no production access/write/deployment is authorized. The temporary web-only handoff is not the selected solution. Findings and test evidence below remain the original audit baseline until superseded by implementation acceptance evidence.
+
 Read-only source audit baseline: local `a99dc6a92de73f2683b2ce3c9b494c458ed07540` versus remote `43f02707e299293c5b0c2bb6f12386bd4642746b`; merge base `86b6396573d1c0ef39a58a74d3b8d5310e5cc37b`, 32 remote-only commits (including merges). This is divergent history, not 32 patches safe to apply in order.
 
 This change owns ONLY this document. No product changes, adapter implementation, deployment, migration, credential/configuration-value inspection, DB connection or provider call is authorized here. Existing untracked local previews are outside scope.

@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### WhatsApp preservado y probado en copia — 2026-10-26
+
+Ver WHATSAPP_CANONICAL_RELEASE_QA.md. Usuario eligió conservar ambas funciones, no reemplazarlas solo por web. Cierre privado con firma/identidad vigente, aprobación, CAS, evidencia de visita y token/recibo atómicos; no publica piezas. Avisos a líderes por IDs después del commit y sin repetición en replay. Edición desde visita parcial por video UUID, editor/entrega explícitos, reutiliza dispatcher web y no duplica tareas. Origen histórico agregado exige conciliación explícita, no videos inventados. Nuevos comandos CLI e instrucciones requieren actualización coordinada del agente externo antes de salir.
+
+Backend2.858PASS/182opt-inSKIP/0FAIL; cohorte43archivos375PASS/0FAIL/0SKIP; regresión ampliada Producciones/bloqueos26PASS/0FAIL. Nueva base dentro del cluster de restauración PG18.4 conserva físicamente todas las filas presentes de111tablas y343tareas previas (incluye cinco registros locales ya presentes sobre el respaldo338); base local de origen igual, cluster detenido. No afirmar343tareas productivas ni descartar datos posteriores al backup.
+
+Candidato nuevo `/private/tmp/render-whatsapp-release-XOSHXD/app`,328archivos, manifiestoSHA256 acc91376bbe4a0813e121b47e65e10090639dfc2d7ad52a58081ad358a3ea96f. Smoke real del artefacto con sus dependencias/servidor, frontend/cookies/finanzas y ambos recorridos firmados:9controlesPASS, bytes invariantes y cleanupENOENT. Audit runtime0conocidas. No cambio visual ni nueva certificación móvil/proveedores. Candidato anterior queda como evidencia histórica, no incluye esta funcionalidad.
+
+Permiso de evidencia privada viva confirmado por el usuario; no se renovó su captura en esta etapa. Siguen pendientes preflight/respaldo fresco/entorno del hosting/cuentas/ACL/proveedores/ventana y mecanismo productivo revisado. Corrección y auditoría P2 de WhatsApp del diagnóstico no se incluyeron: no afirmar paridad total. No push/despliegue ni escritura productiva. No reemplazar la base viva con la copia.
+
 ### Preparación forward-only, protección Data API y candidato Node — 2026-10-26
 
 Ver FORWARD_RELEASE_PREPARATION_QA.md. Sin prodwrites/push/despliegue. Rama publicada sigue43f0270; inspección viva UI read-only confirma338 tareas/3cierres/58migraciones y hash de tareas coincidente al respaldo, sin congelar cambios posteriores. Exportación de metadatos completos bloqueada, permiso solicitado; no se guardó por otra vía. Preflight SQL manual nuevo solo lectura/timeout, sin contraseñas/importes/títulos; resultados privados permanecen en dashboard salvo aprobación.

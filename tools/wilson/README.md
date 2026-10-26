@@ -149,6 +149,46 @@ visitas conservan sus controles de videos, Drive y confirmación de producción.
 Mía solo puede llevar estas tareas hasta `en_revision`; no finaliza, elimina ni
 reasigna mediante este flujo.
 
+## Finalización privada y edición por video (Render 2)
+
+Estos contratos se preparan y verifican localmente antes de publicar. No son
+aliases de `confirm-review`: enviar a revisión no aprueba ni finaliza trabajo.
+La identidad y el rol se verifican en el servidor; “Franco” o “Agustín” como
+etiqueta de transporte no conceden permisos.
+
+Para finalizar, en **chat privado**, ejecutar `resolve-finalization --references
+'["referencia de la tarea"]'`, resolver ambigüedades y luego
+`preview-finalization --task-ids '[1501]'`. Mostrar el resumen exacto devuelto y
+esperar una nueva confirmación humana. Solo entonces ejecutar
+`confirm-finalization --confirmation-token '<token>'`. Los flags de identidad
+van antes del subcomando. No reutilizar tokens de revisión o del contrato antiguo.
+
+El cierre requiere el permiso actual y trabajo aprobado. Las visitas conservan
+sus controles de evidencia; no se confirman ni crean edición al cerrarlas. Un
+empleado de Edición puede enviar a revisión, pero no obtiene permiso para cerrar
+trabajo no aprobado. Finalizar **nunca** publica una pieza ni carga una fecha de
+publicación real. Un rechazo no debe responderse como si hubiera finalizado.
+
+Para edición parcial, consultar `production-videos --visit-id '<uuid-visita>'`.
+Elegir explícitamente un `video_id` grabado, `editor_id` y `fecha_entrega`:
+
+```json
+{"visita_id":"<uuid-visita>","video_id":"<uuid-video>","expected_revision":7,"editor_id":21,"fecha_entrega":"2026-11-03","notificar_asignacion":false}
+```
+
+Los valores son ilustrativos: usar únicamente IDs y revisión observados.
+Enviar ese JSON a `preview-video-editing --payload '<json>'`, mostrar cliente,
+video, material, editor, entrega y decisión de aviso, y esperar confirmación.
+Después ejecutar `confirm-video-editing --payload '<mismo-json>'
+--confirmation-token '<token>'`. No cambiar datos ni notificación entre pasos.
+No inferir la entrega de la fecha de visita. Cada video tiene su propia tarea.
+
+Un conteo histórico de videos o `tarea_origen_id`/`tarea_padre_id` solos no
+identifican material individual: requieren conciliación explícita en Producciones.
+No inventar videos, repartir guiones automáticamente ni crear una edición
+agregada paralela. Un 409 exige nueva observación y confirmación, no reintentos
+con revisiones o tokens reemplazados silenciosamente.
+
 ## Consultas rápidas de trabajo
 
 Para responder `¿qué hago ahora?`, `¿qué tengo vencido?` o `¿cómo viene
