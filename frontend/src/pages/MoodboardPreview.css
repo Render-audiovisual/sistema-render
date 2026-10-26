@@ -44,3 +44,11 @@
 .moodboard-category-list button,.moodboard-delete{align-items:center;display:inline-flex;min-height:44px;font-size:11px}
 .moodboard-state-actions button,.moodboard-kind-tabs button,.moodboard-composer>footer button,.moodboard-category-modal footer button,.moodboard-category-list button,.moodboard-category-edit{transition:background-color 160ms ease,border-color 160ms ease,box-shadow 160ms ease,transform 160ms ease}
 .moodboard-state-actions button:active,.moodboard-kind-tabs button:active,.moodboard-composer>footer button:active,.moodboard-category-modal footer button:active,.moodboard-category-list button:active,.moodboard-category-edit:active{transform:scale(.975)}
+
+/* Native top-layer overlays cover the viewport; only their content scrolls.
+   Do not combine the old left/top offsets with the shared 100% dialog size. */
+.modal-overlay.render-native-dialog.moodboard-compose-layer{inset:0;align-items:center;justify-content:center;padding:18px;overflow:hidden;background:transparent}
+.modal-overlay.render-native-dialog.moodboard-panel-layer{inset:0;align-items:stretch;justify-content:flex-end;padding:0;overflow:hidden;background:transparent}
+.moodboard-composer,.moodboard-category-modal,.moodboard-detail-panel{overscroll-behavior:contain}
+.moodboard-card:focus-visible,.moodboard-dropzone:focus-within{outline:2px solid #556b42;outline-offset:3px}
+@media(max-width:980px){.modal-overlay.render-native-dialog.moodboard-compose-layer{padding:72px 8px 8px}}
