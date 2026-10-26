@@ -4,6 +4,7 @@ import { access } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { startLocalHarness, assertFixtureIdentity, fixturePassword, request } from '../scripts/render2-local-test.js';
 import { loadProductionReport } from '../src/production-reporting.js';
+import {buildProductionRegistryReport} from '../../frontend/src/shared/reports/production-registry-report.js';
 
 test('production result journal preserves partial evidence without completing tasks or consuming pending media', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 300000,
@@ -68,6 +69,35 @@ test('production result journal preserves partial evidence without completing ta
   const pick = (row, keys) => Object.fromEntries(keys.map(key => [key, row[key] ?? null]));
   const journalRaw = id => f.query('SELECT to_jsonb(r) AS row FROM produccion_resultados r WHERE id=$1', [id]);
   let mixed, saved, requestId, frozenRow;
+
+  async function sharedResultProjection(visit, result, vigente) {
+    const before=await snapshot();
+    const expected={...pick(result,['id','visita_revision','revision_resultante','registrado_at']),parcial:true,vigente};
+    for(const actor of [91001,91003]) {
+      const detail=await api(`/producciones/${visit.id}`,'GET',undefined,actor);
+      assert.equal(detail.status,200);assert.deepEqual(detail.body.visita.ultimo_resultado,expected);
+      const context=await api(`/producciones/tareas/${visit.tarea_origen_id}`,'GET',undefined,actor);
+      assert.equal(context.status,200);assert.deepEqual(context.body.vinculo.ultimo_resultado,expected);
+      const hub=await api(`/clientes/${client.id}/operacion?periodo=2026-10`,'GET',undefined,actor);
+      assert.equal(hub.status,200);
+      assert.deepEqual(hub.body.producciones.items.find(row=>row.id===visit.id).ultimo_resultado,expected);
+      const report=await api('/reportes/datos?mes_configuracion=2026-10&desde=2026-10-01&hasta=2026-11-01','GET',undefined,actor);
+      assert.equal(report.status,200);
+      const row=report.body.producciones.visitas.find(row=>row.id===visit.id);
+      assert.equal(row.revision,visit.revision);assert.deepEqual(row.ultimo_resultado,expected);
+      const projection=buildProductionRegistryReport(report.body.producciones,[],{desde:'2026-10-01',hasta:'2026-11-01'});
+      const displayed=projection.clients.flatMap(item=>item.visits).find(item=>item.id===visit.id);
+      assert.equal(displayed.resultado_estado.label,vigente?'Resultado parcial registrado':'Resultado desactualizado');
+      assert.deepEqual(displayed.videos.map(item=>item.id).sort(),visit.videos.map(item=>item.id).sort());
+      const calendar=await api('/calendario?desde=2026-10-01&hasta=2026-11-01&scope=team','GET',undefined,actor);
+      assert.equal(calendar.status,200);
+      const events=calendar.body.events.filter(event=>event.kind==='visita'&&event.source_id===visit.id);
+      assert.equal(events.length,1,'Recording snapshots never duplicate the visit calendar event');
+      assert.equal(events[0].date,visit.fecha);assert.equal(events[0].evidence,null);
+      assert.equal(calendar.body.events.some(event=>event.kind==='publicacion'),false,'Recording is not publication');
+    }
+    assert.deepEqual(await snapshot(),before,'Cross-sector owner/employee reads perform zero DML');
+  }
 
   await t.test('four recorded videos, two pending scripts and three photo types produce one immutable partial snapshot only', async () => {
     mixed = await visit(6);
@@ -156,12 +186,14 @@ test('production result journal preserves partial evidence without completing ta
     });
     assert.equal(changed.status, 200); const current = changed.body.visita;
     assert.equal(current.ultimo_resultado.id,saved.id);assert.equal(current.ultimo_resultado.vigente,false);
+    await sharedResultProjection(current,saved,false);
     const before = await snapshot(['produccion_resultados', 'produccion_visitas']);
     const correction = await save(current); assert.equal(correction.status, 201);
     assert.notEqual(correction.body.resultado.id, saved.id); assert.equal(correction.body.resultado.vigente, true);
     assert.equal(correction.body.resultado.resumen.conteos.videos_repetir, 1);
     assert.deepEqual(await snapshot(['produccion_resultados', 'produccion_visitas']), before);
     assert.deepEqual(await journalRaw(saved.id), frozenRow);
+    await sharedResultProjection({...current,revision:correction.body.resultado.revision_resultante},correction.body.resultado,true);
     const list = await api(`/producciones/${mixed.id}/resultados`);
     assert.equal(list.status, 200); assert.equal(list.body.revision, current.revision + 1);
     assert.equal(list.body.resultados.length, 2); assert.equal(list.body.next_before_revision, null);

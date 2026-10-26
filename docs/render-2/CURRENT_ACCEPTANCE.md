@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Resultado de producción compartido tras editar y volver a registrar — verificación401
+
+Se amplía la regresión física existente, sin modificar producto. Tras editar un video pendiente, dueño91001 y empleado91003 consultan visita, contexto de tarea, operación del cliente y Reportes: mismo UUID/revisión/evidencia anterior no vigente. Tras registrar corrección, todos exponen el nuevo resultado vigente. La función pura real del frontend consume el DTO HTTP y muestra Resultado desactualizado→Resultado parcial registrado; no es prueba DOM. Calendario mantiene una sola visita en su fecha, sin evidencia/publicación automática.109 hashes JSON/xmin/ctid invariantes alrededor de las consultas. Archivo físico18PASS; cohorte39archivos358PASS/0FAIL/0SKIP,86.73s terminal0 con limpieza propia. Backend2682PASS/178opt-inSKIP/0FAIL. Ver PRODUCTION_RESULT_CROSS_SECTOR_QA.md para logs y límites.
+
+Dos revisiones paralelas de permisos/navegación y proyectos no confirmaron P1/P2 nuevo en su alcance;57frontend+21backend y51unidades de proyectos pasaron. No se usa ausencia de hallazgos acotados como certificación global. No frontend/build nuevo, proveedores, bases comerciales ni despliegue. Preparación de fixture Mi lista/respuesta perdida no equivale a recorrido aceptado; objetivo maestro sigue abierto.
+
 ### Producciones: segundo resultado nativo, histórico inmutable y aviso de versión — integración400
 
 Se cierra el recorrido pendiente de segunda versión, no toda Producciones. Dos fixtures nuevos con login Chrome real de qa_franco: registrar parcial→edición de video por cookie API de otro actor91002→Actualizar→segundo registro explícito→recarga. Revisión5→6→7→8; primer journal conserva JSON/xmin/ctid, ambos preservan UUID de videos/fotos y guiones;106 tablas ajenas no cambian y la tarea de origen no se finaliza ni se publica/contabiliza ninguna pieza. Segundo resultado sigue parcial por foto para repetir. No es cambio de cuenta nativo ni prueba de dos dispositivos. Fixtures rCXvd4 y JoIH10 terminan FINAL_OK/terminal0/cleanup ENOENT; viewport restaurado y pestañas propias cerradas.
