@@ -6,6 +6,7 @@ import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTask
 import { normalizeSelectionRect, selectionRectsIntersect } from "../../frontend/src/features/render-os/utils/selection-geometry.js";
 import { parseJsonArrayResponse } from "../../frontend/src/shared/http/response-utils.js";
 import { getNavigationGroups } from "../../frontend/src/components/navigation.js";
+import { canonicalLegacyRoute } from "../../frontend/src/shared/navigation/legacy-routes.js";
 
 test("parseJsonArrayResponse acepta únicamente respuestas HTTP exitosas con listas", async () => {
   const items = [{ id: 1 }];
@@ -248,14 +249,22 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
+  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());
     for (const href of ["/sueldos", "/empleados", "/clientes?gestion=1"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
     assert.equal(links.some(link => link.href === "/wilson-conversaciones" || link.href.includes("wilson=open")), false);
+    assert.equal(links.some(link => ["/drive", "/moodboards"].includes(link.href)), false);
   }
   const adminLinks = getNavigationGroups("admin").flatMap(group => group.links);
+  assert.equal(adminLinks.some(link => ["/drive", "/moodboards"].includes(link.href)), false);
+  assert.doesNotMatch(appSource, /import\("\.\/pages\/(?:Drive|MoodboardPreview)\.jsx"\)/);
+  assert.doesNotMatch(appSource, /<(?:DrivePage|MoodboardPreviewPage)\b/);
+  for (const path of ["/drive", "/moodboards"]) {
+    assert.equal(canonicalLegacyRoute(path), "/inicio");
+    assert.equal(canonicalLegacyRoute(`${path}?task=42`), "/workspace/tareas?task=42");
+  }
   for (const href of ["/sueldos", "/empleados", "/calendario"]) assert.equal(adminLinks.some(link => link.href === href), true);
   assert.doesNotMatch(sidebarSource, /label: "Conversaciones"/);
   assert.doesNotMatch(sidebarSource, /wilson=open/);

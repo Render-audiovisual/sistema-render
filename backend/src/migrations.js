@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { validateEnvironment, normalizeDatabaseIdentity, isLoopbackAddress } from './startup-policy.js';
+import { isRecognizedDeployedMigration } from './deployed-migration-history.js';
 
 const migrationsDir = fileURLToPath(new URL('../migrations/', import.meta.url));
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -33,7 +34,7 @@ export async function readMigrationStatus(db, { deferredMigrations = [] } = {}) 
     if (applied.some(name => typeof name !== 'string' || !name) || new Set(applied).size !== applied.length) throw new Error();
     const allNames = files().map(file => file.name);
     return { ledgerExists, applied: applied.sort(), pending: local.filter(file => !applied.includes(file.name)),
-      unknownApplied: applied.filter(name => !allNames.includes(name)) };
+      unknownApplied: applied.filter(name => !allNames.includes(name) && !isRecognizedDeployedMigration(name)) };
   } catch { throw new MigrationPolicyError('Cannot inspect migration ledger.'); }
 }
 export function buildMigrationPlan({ environment, identity, status }) {
