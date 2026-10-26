@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Respaldo manual productivo y restauración operativa aislada — 2026-10-26
+
+Con autorización explícita se captura Supabasefehsetsugaoncjmmfvek mediante TLS verificado/CA oficial y transacción REPEATABLE READ READ ONLY. Dos archivos privados fuera de Git (dump lógico completo y public), mismo snapshot y hashes SHA256. Restauración public real en PG18 aislado:64tablas/7566filas idénticas por conteo+hash,244restricciones originales exactas y46secuencias iguales al archivo. Diferencia inicial409NOTNULL nuevos es cambio documentado de catálogoPG18; todos validados/enforced. No se borran diferencias ni se reinterpretan datos. Cluster local detenido y PID ausente antes de aceptar; terminal0. Red saliente/escritura exterior denegadas, pruebas sintéticas positivas/negativas/interrupción pasan.
+
+Ver MANUAL_PRODUCTION_BACKUP_QA.md. Directorio privado Documents/Render-Backups/2026-10-26-render-sKtlEV. Sin cambios productivos, migraciones, usuarios, contratación ni despliegue. No restore completo de servicios Supabase ni owners/ACL/archivos externos; fuente activa puede seguir cambiando después del snapshot. Este paso no elimina los gates de reconciliación de historias/migraciones, ensayo sobre otra copia e integraciones reales.
+
 ### Retiro de Drive/Moodboards y control previo a publicación — 2026-10-26
 
 A pedido del usuario se retiran secciones, mounts y accesos canónicos; bookmarks pasan por alias autenticado/guard existente a Inicio o tarea válida. Datos, archivos, APIs e integración de adjuntos se conservan. Recuperación de carga abre Google Drive externo explícitamente; no simula reconexión ni confirmación. Main integra, Hilbert revisa enlaces, Harvey audita publicación. Build local B1UabfNq correcto; no publicación ni acceso a DB existente.

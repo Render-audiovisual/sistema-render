@@ -8,6 +8,8 @@ Retirement is deliberately non-destructive. Existing PostgreSQL tables, referenc
 
 ## Publication is NOT performed
 
+Update2026-10-26: user confirmed Hostinger/sistema.rendercorrientes.com. Native panel verified deployed43f0270; Render Supabase account/project matched the hosting connection. Explicitly authorized manual database backup is now retained and operational public-schema restoration verified (MANUAL_PRODUCTION_BACKUP_QA.md). This replaces the earlier absence of database-backup evidence below, not the remaining release blockers. Files/provider services and migration reconciliation are still separate gates; no deployment occurred.
+
 Read-only git remote inspection and fetch identify origin/hostinger-deploy at43f02707e299293c5b0c2bb6f12386bd4642746b, newer than cached d88ec07. Before this retirement commit, local HEAD190101b and this remote diverge by400local/32remote commits. Remote contains live-fix history including atomic production handoff, PostgreSQL recovery and linked editing from partial visits. No force-push, merge or replacement is safe merely because the local build succeeds.
 
 There are conflicting migration histories: remote054_cierre_reportes_septiembre_2026.sql and055_cierre_reportes_identidad_septiembre_2026.sql versus local054_verified_user_sessions.sql and055_decouple_goal_publication.sql. The same numeric prefix is not proof of equivalent applied schema. Actual ledger, names, hashes and data need inspection. Never rename applied migrations or fabricate a baseline to satisfy startup.
