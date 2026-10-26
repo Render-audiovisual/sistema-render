@@ -19,6 +19,7 @@ test('actual report snapshot excludes archived and trashed Render OS tasks in it
       || compact.startsWith('SELECT c.id,c.nombre,c.activo')
       || compact === 'SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id'
       || compact.startsWith('SELECT id,editor_clave')
+      || compact === "SELECT to_regclass('public.reporte_cierres_mensuales') AS historical_closures_table"
       || compact.startsWith('SELECT v.id,v.tarea_origen_id')) return { rows: [] };
     assert.fail(`Unexpected query: ${compact}`);
   }, release(error) { calls.push({ sql: 'RELEASE', error }); } };

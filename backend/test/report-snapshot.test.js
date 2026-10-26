@@ -23,6 +23,7 @@ function fixture({actor={...auth(),activo:true},failureAt,rollbackFails=false,co
     if(compact.startsWith('SELECT c.id,c.nombre,c.activo'))return{rows:[{id:4,nombre:'Client',activo:true,cuota_reels:1,cuota_carruseles:2}]};
     if(compact==='SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id')return{rows:[{id:7,usuario:'actor',nombre:'Actor',rol:actor.rol},{id:8,usuario:'peer',nombre:'Peer',rol:'diseno'}]};
     if(compact.startsWith('SELECT id,editor_clave'))return{rows:[{id:30,editor_clave:'legacy',importe:'999.99'}]};
+    if(compact.startsWith("SELECT to_regclass('public.reporte_cierres_mensuales')"))return{rows:[{historical_closures_table:null}]};
     if(compact.startsWith('SELECT tarea_id, usuario_id, tipo'))return{rows:params[0].map(tarea_id=>({tarea_id,usuario_id:7,tipo:'responsable'}))};
     if(compact.startsWith('SELECT p.id AS piece_id'))return{rows:[]};
     if(compact.startsWith('SELECT v.id,v.tarea_origen_id'))return{rows:[{id:'11111111-1111-4111-8111-111111111111',cliente_id:4,cliente_nombre:'Client',fecha:'2026-10-20',titulo:'Visit',participante_ids:[7]}]};
@@ -54,7 +55,8 @@ test('all original base/assignment/evidence/production reads use one leased RR r
   const f=fixture(),result=await loadReportSnapshot(f.pool,auth(),selectors);
   assert.equal(f.leases,1);assert.equal(f.calls[0].sql,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   assert.deepEqual(f.calls[1].params,[7]);assert.match(f.calls[1].sql,/FROM usuarios WHERE id=\$1$/);
-  assert.deepEqual(Object.keys(result).sort(),['clientes','entregasEdicion','historias','producciones','publicaciones','resumenRenderOsPorDia','tareas','tareasRenderOs','usuarios'].sort());
+  assert.deepEqual(Object.keys(result).sort(),['cierresMensuales','clientes','entregasEdicion','historias','producciones','publicaciones','resumenRenderOsPorDia','tareas','tareasRenderOs','usuarios'].sort());
+  assert.deepEqual(result.cierresMensuales,{disponible:false,registros:[]});
   assert.equal(result.tareas[0].asignado_a_id,7);assert.equal(result.tareasRenderOs[0].asignado_a_id,7);
   assert.equal(result.historias[0].publicacion_evidencia.revision,0);assert.equal(result.publicaciones[0].publicacion_evidencia.classification,'no_publicada');
   assert.equal(result.entregasEdicion[0].importe,undefined,'Owner reports are operational, not financial');

@@ -5,6 +5,7 @@ import { cleanEnvironment } from './render2-local-test.js';
 
 // Fixed principal-system journeys, not a caller-selected command or DB target.
 export const coreAcceptanceFiles = Object.freeze([
+  'test/render2-legacy-assignment-reconciliation.integration.test.js',
   'test/render2-cross-sector-workflow.integration.test.js',
   'test/render2-production-full-workflow.integration.test.js',
   'test/render2-cookie-role-financial-boundary.integration.test.js',

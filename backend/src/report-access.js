@@ -1,5 +1,6 @@
 import { editorialEvidenceDto } from './operational-dto.js';
 import { productionResultProjection } from './production-result-projection.js';
+import { historicalClosuresDto } from './historical-report-closures.js';
 
 function normalize(value = "") {
   return String(value)
@@ -162,6 +163,7 @@ function operationalReportDto(data) {
     entregasEdicion: rows("entregasEdicion", (item) => ({ ...pickScalars(item, ["id", "editor_clave", "fecha_entrega", "cliente_etiqueta", "categoria", "fuente", "fuente_item", "confirmado_por"]),
       ...(positiveId(ownValue(item, 'editor_id')) ? { editor_id: ownValue(item, 'editor_id') } : {}) })),
     ...(ownValue(data, 'producciones') !== undefined ? { producciones: productionReportDto(ownValue(data, 'producciones')) } : {}),
+    ...(ownValue(data, 'cierresMensuales') !== undefined ? { cierresMensuales: historicalClosuresDto(ownValue(data, 'cierresMensuales')) } : {}),
   };
 }
 

@@ -10,6 +10,7 @@ import { pushUrlContext, readUrlContext, replaceUrlContext } from '../shared/nav
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { productionReportVisitHref } from '../shared/reports/production-report-links.js';
+import { verifyHistoricalClosures } from '../shared/reports/historical-closures.js';
 import { reportParticipantLabel, buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
 import './ReportProductionRegistry.css';
 
@@ -111,6 +112,7 @@ function ReportesContent({ session }) {
   const editorialSummary = summarizeEditorialRecords(editorial, range);
   const quotas = clientQuotaReport(data?.clientes, editorial, range);
   const quotaMonth = period === 'mes_pasado' ? range.desde.slice(0, 7) : today.slice(0, 7);
+  const closures = data?.cierresMensuales === undefined ? null : verifyHistoricalClosures(data.cierresMensuales);
   return <main className="rpr-page" aria-label="Reportes del equipo"><div className="frame"><div className="content">
     <header className="rpr-heading"><span className="rpr-eyebrow">Reportes</span><h1>Trabajo y producción</h1><p>Registros del período, sin información económica ni objetivos estimados.</p></header>
     <nav className="rpr-periods" aria-label="Período del reporte">{PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => { pushUrlContext({ periodo: id }); notifyViewPreferenceChange(window); setPeriod(id); }}>{label}</button>)}</nav>
@@ -146,6 +148,12 @@ function ReportesContent({ session }) {
         <ReportTable caption="Estado de las tareas por persona" columns={PERSON_COLUMNS}>{employees.rows.map(person => <React.Fragment key={person.id}><tr role="row"><th scope="row" role="rowheader"><button type="button" className="rpr-person-button" aria-expanded={selectedPerson === person.id} aria-controls={'rpr-person-' + person.id} onClick={() => setSelectedPerson(selectedPerson === person.id ? null : person.id)}>{person.nombre} · Ver tareas</button><small>#{person.id} · {ROL_LABELS[person.rol] || 'Sin rol'}</small></th><ReportCell label={PERSON_COLUMNS[1]}>{person.total}</ReportCell><ReportCell label={PERSON_COLUMNS[2]}>{person.enRevision}</ReportCell><ReportCell label={PERSON_COLUMNS[3]}>{person.aprobadas}</ReportCell><ReportCell label={PERSON_COLUMNS[4]}>{person.finalizadas}</ReportCell><ReportCell label={PERSON_COLUMNS[5]}>{person.pendientes}</ReportCell><ReportCell label={PERSON_COLUMNS[6]}>{person.vencidas}</ReportCell></tr><tr className="rpr-detail-row" role="row" hidden={selectedPerson !== person.id}><td className="rpr-detail-cell" role="cell" colSpan={7} id={'rpr-person-' + person.id}>{selectedPerson === person.id && <PersonDetails person={person} tasks={tasks} data={data} range={range}/>}</td></tr></React.Fragment>)}</ReportTable>
         {!employees.rows.length && <p className="rpr-muted">No hay personas identificadas disponibles en esta respuesta.</p>}
         <p className="rpr-muted">Finalizar una tarea no demuestra publicación real. Revisión y aprobación se muestran por separado.</p>
+      </section>
+      <section className="rpr-panel" aria-labelledby="rpr-closures"><header><h2 id="rpr-closures">Cierres mensuales históricos</h2><p>Registros manuales de todos los períodos disponibles, independientes del rango de tareas seleccionado. No acreditan tareas finalizadas ni publicaciones verificadas y no modifican las métricas operativas.</p></header>
+        {!closures ? <p role="status">No se pudo verificar el archivo de cierres históricos.</p>
+          : !closures.disponible ? <p>El archivo de cierres históricos no está disponible en esta instalación.</p>
+          : !closures.registros.length ? <p>No hay cierres mensuales históricos registrados.</p>
+          : <ReportTable caption="Registros manuales de cierres mensuales históricos" columns={['Período', 'Persona registrada', 'Porcentaje manual', 'Fecha de registro']}>{closures.registros.map(row => <tr key={`${row.periodo}:${row.usuario_id}`} role="row"><th scope="row" role="rowheader"><time dateTime={row.periodo.slice(0, 7)}>{row.periodo.slice(0, 7)}</time></th><ReportCell label="Persona registrada">{row.nombre_snapshot || 'Sin nombre registrado'} · #{row.usuario_id}</ReportCell><ReportCell label="Porcentaje manual">{row.porcentaje}%</ReportCell><ReportCell label="Fecha de registro">{row.registrado_at === null ? 'Sin fecha registrada' : <time dateTime={row.registrado_at}>{new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Cordoba', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(row.registrado_at))}</time>}</ReportCell></tr>)}</ReportTable>}
       </section>
       <section className="rpr-panel" aria-labelledby="rpr-history"><header><h2 id="rpr-history">Histórico · Filmaciones agregadas</h2><p>Cantidades del sistema anterior, sin videos individuales verificables. No se suman al registro normalizado ni se atribuyen por nombres.</p></header>
         <p className="rpr-muted">Se excluyen tareas de origen marcadas por la base con registros individuales, aunque la visita haya cambiado de fecha. Las asignaciones mensuales solo se muestran en períodos de mes completo.</p>

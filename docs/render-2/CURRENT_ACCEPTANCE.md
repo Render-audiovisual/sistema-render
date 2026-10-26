@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Asignaciones históricas y cierres de Reportes resueltos en copia — 2026-10-26
+
+Ver LEGACY_ASSIGNMENTS_AND_REPORT_CLOSURES_QA.md. Usuario confirma cuentas existentes y Líder sin repartir. Conciliación offline porIDs/plan SHA exacto, identidad local, snapshots, transacción y revalidación:338 responsables+12 colaboradores en la copia; solo cambia tarea_asignaciones, otras110 tablas físicamente invariantes. Reinicio confirma350 vínculos, Inicio de8 cuentas según scope real y asignaciones de Reportes. Sin cambio de roles, tareas, estados, workspace, piezas ni usuarios. Se conserva la cuenta compartida por decisión explícita; no acredita dos dueños independientes.
+
+Cierres legados: lectura opcional dentro de snapshot RR del reporte, DTO cerrado sin notas/importes, UI muestra todos los meses como registro manual separado de métricas. HTTP real sobre el respaldo confirma3 cierres originales porID. Prueba física nueva verifica plan obsoleto/replay, invariancia y asignación directa concurrente antes del primer snapshot. Backend2722PASS/179opt-inSKIP/0FAIL; frontend3335PASS/1SKIP/0FAIL; cohorte40archivos359PASS/0FAIL/0SKIP; build MhFIu74X. IAB sintético1280/390/320 sin overflow, recarga y110 tablas invariantes, FINAL_OK/cleanupENOENT, viewport restaurado. Main integra backend/aplica plan aprobado, Harvey frontend, Hilbert prueba/revisa conciliación.
+
+Estos dos gates quedan resueltos solo en desarrollo/copia. No restaurar snapshot sobre base viva, no subir fixture ni reutilizar el plan del clon en producción. Pendientes globales de conciliación rama publicada/Wilson/WhatsApp, cuentas dueñas reales, ACL/proveedores y ejecución productiva explícitamente autorizada siguen vigentes. CLI/módulo mantienen rechazo de producción. No publicación, push ni conexión productiva en esta etapa.
+
 ### Actualización real sobre otra copia del respaldo — 2026-10-26
 
 Ver ISOLATED_UPGRADE_REHEARSAL_QA.md. Otra restauración privada, independiente de la copia ya verificada; sin conexión productiva, proveedores ni despliegue. Se reconoce por nombre exacto el historial de cinco migraciones publicadas, sin ejecutar su DML ni modificar ledger. Plan explícito sandbox aplica40 migraciones054–093:64 tablas/7.566 filas originales y338 tareas preservadas por conteo/hash de columnas originales; ledger58→98,0 pendientes/desconocidas,47 tablas nuevas sin datos comerciales inventados. Hilbert revisa reconocimiento, plan y evidencia; no certifica por ello todos los triggers ni ACL del destino.

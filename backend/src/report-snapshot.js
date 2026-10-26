@@ -3,6 +3,7 @@ import { annotateTaskAssignments } from './task-assignments.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
 import { productionReportRange, loadProductionReport } from './production-reporting.js';
 import { filterReportDataForUser } from './report-access.js';
+import { loadHistoricalReportClosures } from './historical-report-closures.js';
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -92,6 +93,7 @@ export async function loadReportSnapshot(pool, auth, query = {}) {
         cliente_etiqueta,categoria,fuente,fuente_item,confirmado_por
         FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`);
     const assignedTasks = await annotateTaskAssignments(db, tareas.rows);
+    const cierresMensuales = await loadHistoricalReportClosures(db);
     const assignedWorkspaceTasks = await annotateTaskAssignments(db, tareasRenderOs.rows);
     const producciones = await loadProductionReport(db, productionRange);
     const historiasConEvidencia = await annotateEditorialEvidence(db, 'historia', historias.rows);
@@ -105,6 +107,7 @@ export async function loadReportSnapshot(pool, auth, query = {}) {
       tareasRenderOs: assignedWorkspaceTasks,
       entregasEdicion: entregasEdicion.rows,
       producciones,
+      cierresMensuales,
     }, actor);
     await db.query('COMMIT');
     return result;
