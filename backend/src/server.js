@@ -24,6 +24,7 @@ import {
   notificarAsignacionSinInterrumpir as notificarAsignacionPorCorreoSinInterrumpir,
 } from "./email-notifications.js";
 import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { prepareTaskApprovalNotification } from './task-approval-notifications.js';
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
@@ -1811,6 +1812,8 @@ router.patch("/tareas/:id", async (req, res, next) => {
       valores.push(acceso.value);
     }
 
+    const applyingApproval = body.estado === 'aprobada' && estadoAnterior !== 'aprobada';
+    let approvalNotification = null;
     const result = await persistAssignedTask(pool,
       `UPDATE tareas AS t SET ${sets.join(", ")}
        WHERE ${where}
@@ -1820,12 +1823,15 @@ router.patch("/tareas/:id", async (req, res, next) => {
           if (tareaAnteriorCompleta?.revision !== body.expected_revision) throw Object.assign(new Error('La tarea cambió. Recargá antes de finalizarla.'), { status: 409 });
           await assertProductionTaskFinalization(db, task, tareaAnteriorCompleta, expectedProductionVisit ?? undefined);
         }
-        if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') {
+        if (applyingApproval) {
           const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
-          if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
+          if (deliveryId) await recordEditingApproval(db, task, assignmentNotificationActor, deliveryId);
         }
-        await syncProductionVisitFromTask(db, task, req.auth.id);
-      }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, assignmentNotificationActor)
+        await syncProductionVisitFromTask(db, task, assignmentNotificationActor.id);
+        if (esRenderOS && applyingApproval) {
+          approvalNotification = await prepareTaskApprovalNotification(db, task, assignmentNotificationActor);
+        }
+      }, applyingApproval ? db => assertCurrentEditingApprover(db, assignmentNotificationActor)
         : db => assertCurrentTaskWriteActor(db, assignmentNotificationActor),
       assignment ? { assignmentNotificationActor, assignmentNotificationTaskId: Number(id) } : {},
     );
@@ -1855,7 +1861,14 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     const actor = getTaskActor(req.auth);
 
-    if (result.assignmentNotification?.destinatarioIds.length) {
+    if (approvalNotification) {
+      // The approved decision supersedes a separate reassignment notice from
+      // the same PATCH. Neither transport failure nor replay can undo COMMIT.
+      try {
+        void Promise.resolve(notificarAsignacionSinInterrumpir({ pool, ...approvalNotification,
+          motivo: 'aprobada', detalle: `${approvalNotification.actor} aprobó el trabajo.` })).catch(() => {});
+      } catch {}
+    } else if (result.assignmentNotification?.destinatarioIds.length) {
       notificarAsignacionSinInterrumpir({
         pool,
         ...result.assignmentNotification,

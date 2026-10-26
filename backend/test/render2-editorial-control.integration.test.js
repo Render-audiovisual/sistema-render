@@ -22,7 +22,8 @@ test('editorial control HTTP: closed team buckets, stable union paging and verif
     to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD') AS today,
     to_char((statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date-1,'YYYY-MM-DD') AS yesterday,
     to_char((statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date+1,'YYYY-MM-DD') AS tomorrow,
-    to_char((statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date+730,'YYYY-MM-DD') AS distant`);
+    to_char((statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date+730,'YYYY-MM-DD') AS distant,
+    clock_timestamp()-interval '1 minute' AS occurred_at`);
   await fixture.query("ALTER ROLE render2_fixture SET timezone='Pacific/Kiritimati'");
   await fixture.query("ALTER ROLE render2_fixture SET log_statement='all'");
   const [client] = await fixture.query("INSERT INTO clientes(nombre,activo) VALUES ('QA Editorial Control active',true) RETURNING id,nombre");
@@ -100,7 +101,9 @@ test('editorial control HTTP: closed team buckets, stable union paging and verif
     const path = `/editorial-publicacion/${piece.domain}/${piece.id}`;
     const current = expect(await api(path, { token: admin }));
     const response = expect(await api(`${path}/confirmar`, { token: admin, method: 'POST', body: {
-      request_id: randomUUID(), expected_revision: current.piece.revision, occurred_at: `${dates.today}T12:00:00Z`,
+      // A fixed noon can be in the future during early-day runs. Use an
+      // observed past instant, while keeping the real API validation enabled.
+      request_id: randomUUID(), expected_revision: current.piece.revision, occurred_at: dates.occurred_at,
     } }), 201);
     assert.equal(response.classification, 'confirmada_manualmente');
     piece.estado = 'publicada'; piece.publication_classification = 'confirmada_manualmente';

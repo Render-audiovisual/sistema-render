@@ -19,6 +19,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-editing-reviews.integration.test.js',
   'test/render2-editing-correction-notifications.integration.test.js',
   'test/render2-editing-approval.integration.test.js',
+  'test/render2-task-approval-notifications.integration.test.js',
   'test/render2-task-board-order.integration.test.js',
   'test/render2-unified-three-video-journey.integration.test.js',
   'test/render2-personal-list-persistence.integration.test.js',

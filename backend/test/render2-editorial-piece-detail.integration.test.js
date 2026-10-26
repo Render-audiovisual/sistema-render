@@ -18,7 +18,8 @@ test('editorial piece detail HTTP: closed identity/content, byte limit, visibili
     host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
   assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port: 55654,
     url: 'postgresql://render2_fixture@127.0.0.1:55654/render2_local_test', identity });
-  const [clock] = await fixture.query(`SELECT to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD') AS today`);
+  const [clock] = await fixture.query(`SELECT to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD') AS today,
+    clock_timestamp()-interval '1 minute' AS occurred_at`);
   await fixture.query("ALTER ROLE render2_fixture SET log_statement='all'");
   const [client] = await fixture.query("INSERT INTO clientes(nombre,activo) VALUES ('QA Detail active',true) RETURNING id,nombre");
   const [inactive] = await fixture.query("INSERT INTO clientes(nombre,activo) VALUES ('QA Detail inactive',false) RETURNING id,nombre");
@@ -86,7 +87,8 @@ test('editorial piece detail HTTP: closed identity/content, byte limit, visibili
     const path = `/editorial-publicacion/${piece.domain}/${piece.id}`;
     const current = expect(await api(path, { token: admin }));
     const confirmed = expect(await api(`${path}/confirmar`, { token: admin, method: 'POST', body: {
-      request_id: randomUUID(), expected_revision: current.piece.revision, occurred_at: `${clock.today}T12:00:00Z`,
+      // Proof must be in the past regardless of the hour this fixture runs.
+      request_id: randomUUID(), expected_revision: current.piece.revision, occurred_at: clock.occurred_at,
     } }), 201);
     assert.equal(confirmed.classification, 'confirmada_manualmente');
     piece.state = 'publicada'; piece.classification = 'confirmada_manualmente';

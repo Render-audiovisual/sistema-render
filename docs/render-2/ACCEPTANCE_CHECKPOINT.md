@@ -1,4 +1,6 @@
-# Render 2.0 — corte de aceptación local372, actualizado396
+# Render 2.0 — corte de aceptación local372, actualizado397
+
+Actualización397: 2026-10-26; el corte base siguiente conserva su fecha histórica.
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -54,6 +56,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 
 ## Evidencia vigente, sin sumar ejecuciones como recorridos únicos
 
+- Integración397: PATCH general de aprobación prepara snapshot inmutable con actor DB/IDs vigentes y notifica postcommit; aprobación+reasignación emite solo aprobada al nuevo miembro.40 focales, física4PASS/cleanup ENOENT y backend2645PASS/177SKIP/0FAIL. Cohorte final38archivos351PASS/0FAIL/0SKIP,83.62s terminal0. Primera corrida con timeouts no aceptada; cuatro módulos aislados55PASS. Segunda corrida detectó fixtures positivos con hora futura: se corrigió su reloj de prueba sin relajar backend;12 físicas y18 guardas renovadas. No cambia publicación real, ruta dedicada ni política371. Detalle/límites en CURRENT_ACCEPTANCE.md.
 - Integración396: correcciones canónicas emiten motivo explícito a asignados actuales por ID después de COMMIT/201; replay/rechazos no duplican. Predicado privado revalida membresía.97 focales, física4PASS con journal/dos avisos,106 tablas invariantes y retirada posterior de colaborador comprobada sin envío externo; backend2631PASS/176SKIP/0FAIL. Cohorte final37archivos347PASS/0FAIL/0SKIP, terminal0; primera corrida fallida por expectativa de cola se conserva y se reforzó con aviso exacto condicional al ganador. No cambia aprobación dedicada ni política371, no prueba email con membresía vigente al envío ni outbox atómico. Detalles en CURRENT_ACCEPTANCE.md.
 - Integración395: entrega canónica de edición conecta notifier existente postcommit, sin aviso por replay/GET/rechazo ni falsa respuesta de error si falla el notifier. Actor DB e ID retenidos; aprobación histórica efectiva contemplada.42 focales y física real3PASS con ledger/cola única,106 tablas invariantes y cleanup ENOENT. Cohorte ampliada36archivos343PASS/0FAIL/0SKIP; backend2618PASS/175SKIP/0FAIL, terminal0. No cambia destinatarios371 ni acredita proveedor/entrega externa/outbox atómico. Detalles en CURRENT_ACCEPTANCE.md.
 - Integración394: corregido submit de imagenA mientras FileReader deB está pendiente; guard síncrono más botón/estado de lectura. RED real de callbacks,70 focales, frontend3297PASS/1SKIP/0FAIL, build CW_g4KQn y core340PASS/0FAIL/0SKIP. Intento de upload nativo rechazado por permiso de archivos locales de Chrome, sin ampliar permisos; abort/cleanup ENOENT y pestaña cerrada. No hay aceptación nativa FileReader/upload/persistencia de archivos en394. Detalles en CURRENT_ACCEPTANCE.md.
