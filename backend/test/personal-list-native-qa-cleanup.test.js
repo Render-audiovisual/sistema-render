@@ -28,7 +28,7 @@ test('manual native QA refuses missing opt-in and target arguments before starti
   }
 });
 
-function fixture({connected=true,sendThrows=false,exitCode=0,alreadyExited=false}={}){
+function fixture({connected=true,sendThrows=false,exitCode=0,alreadyExited=false,checkBlockThrows=false}={}){
   const events=[],output=[],timers=new Set();
   const fakeProcess={exitCode:undefined,stdin:{pause(){events.push('stdin.pause');}}};
   const f={root:'/synthetic/no-files-used',async cleanup(){events.push('fixture.cleanup');}};
@@ -47,12 +47,12 @@ function fixture({connected=true,sendThrows=false,exitCode=0,alreadyExited=false
       send(message){events.push(['child.send',message.type]);
         if(options.sendThrows)throw new Error('Synthetic IPC send failure');completeExit();},
       kill(signal){events.push(['child.kill',signal]);completeExit();return true;}};
-    const checkBlock=async()=>{events.push('checkBlock');};
+    const checkBlock=async()=>{events.push('checkBlock');if(options.checkBlockThrows)throw new Error('Synthetic block oracle failure');};
     const finish=(${callbackText});
     return {finish,getClosed:()=>closed};
   `);
   const instance=instantiate(assert,f,access,input,fakeProcess,console,setTimeout,clearTimeout,events,
-    {connected,sendThrows,exitCode,alreadyExited});
+    {connected,sendThrows,exitCode,alreadyExited,checkBlockThrows});
   return {...instance,events,output,process:fakeProcess,timers};
 }
 async function settle(f,abort){
@@ -64,6 +64,21 @@ function assertCleanup(f){
 }
 const accepted=f=>f.output.some(row=>row[0]==='log'&&row[1]==='QA402_FINAL_OK');
 const failed=f=>f.output.some(row=>row[0]==='error'&&row[1]==='QA402_FINAL_FAILED');
+
+for(const connected of [true,false])test(`block oracle failure still stops child before cleanup; connected=${connected}`,async()=>{
+  const f=fixture({connected,checkBlockThrows:true});
+  await settle(f,false);
+  assertCleanup(f);
+  assert.equal(accepted(f),false);
+  assert.equal(f.process.exitCode,1);
+  assert.ok(failed(f),'Oracle failure must remain visible');
+  const stopIndex=f.events.findIndex(event=>Array.isArray(event)&&
+    (connected?event[0]==='child.send'&&event[1]==='stop':event[0]==='child.kill'&&event[1]==='SIGTERM'));
+  assert.ok(stopIndex>=0,'Oracle failure must not skip stopping the independent HTTP child');
+  assert.ok(stopIndex<f.events.indexOf('fixture.cleanup'),'Stop child before removing its owned fixture');
+  assert.ok(f.output.some(row=>row[0]==='log'&&row[1]==='QA402_CLEANUP_ENOENT'));
+  assert.equal(f.timers.size,0);
+});
 
 test('closed IPC uses SIGTERM instead of send and still cleans owned fixture on abort',async()=>{
   const f=fixture({connected:false,sendThrows:true});

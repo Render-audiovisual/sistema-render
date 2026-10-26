@@ -78,17 +78,19 @@ async function main(){
  const finish=async(abort=false)=>{if(closed)return;closed=true;clearTimeout(timer);let accepted=false;
   try{
    if(abort)console.log('QA402_ABORTED_NO_ACCEPTANCE');else{assert.equal(blockChecked,true);await checkBlock();}
+   accepted=!abort;
+  }catch(e){process.exitCode=1;console.error('QA402_FINAL_FAILED',e.message);}
+  finally{try{
    if(child&&!exitInfo){const kill=setTimeout(()=>child.kill('SIGKILL'),5000);let sendError;
     try{try{if(child.connected)child.send({type:'stop'});else child.kill('SIGTERM');}
      catch(error){sendError=error;child.kill('SIGTERM');}
      await exited;if(sendError)throw sendError;
     }finally{clearTimeout(kill);}}
    if(child){assert.equal(exitInfo?.code,0,'Own HTTP child must stop cleanly');assert.equal(exitInfo?.signal,null);}
-   accepted=!abort;
-  }catch(e){process.exitCode=1;console.error('QA402_FINAL_FAILED',e.message);}
+  }catch(error){accepted=false;process.exitCode=1;console.error('QA402_FINAL_FAILED',error.message);}
   finally{try{if(f){await f.cleanup();await assert.rejects(access(f.root),e=>e.code==='ENOENT');console.log('QA402_CLEANUP_ENOENT',f.root);}}
    catch(error){accepted=false;process.exitCode=1;console.error('QA402_FINAL_FAILED',error.message);}
-   finally{input?.close();process.stdin.pause();}}
+   finally{input?.close();process.stdin.pause();}}}
   if(accepted)console.log('QA402_FINAL_OK');};
  try{
   const html=await readFile(repo+'/frontend/dist/index.html','utf8');entry=html.match(/<script\b[^>]*\bsrc="(\/assets\/index-[A-Za-z0-9_-]+\.js)"/)?.[1];assert.ok(entry);staticBefore=await staticHash();

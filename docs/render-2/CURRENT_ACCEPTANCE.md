@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Inicio: base visual compartida y foco no recortado — integración403
+
+QuickHome.css adopta tokens comunes de colores/fuente/radios y canvas/tarjetas sin modificar JSX, métricas, orden ni permisos. Se corrige foco exterior recortado por tarjetas: links de tarea/contexto/sección usan el mismo outline3px hacia dentro. Hilbert6 regresiones de tokens/contraste/layout/foco; Main11focales y frontend final3318PASS/1SKIP/0FAIL; build DvAcg2vt. Chrome con fixture propietario verifica lista personal1..5, vencida→hoy alta/baja→revisión→sinfecha; no tarea propia finalizada6 ni ajena7 en próximo trabajo. Datos reales del fixture, no métricas ilustrativas. Desktop1280/móvil320 sin overflow horizontal; Tab muestra foco interior.109tablas invariantes, dos fixtures propios FINAL_OK/terminal0/ENOENT, Chrome restaurado.
+
+Harvey detectó además un residual en herramienta manual402: checkBlock fallido omitía stop del hijo independiente. Stop/salida pasan a finally antes de cleanup incondicional.8tests del cierre pasan; smoke negativo deliberado finaliza1 sin FINAL_OK, root xxtGVO ENOENT y ambos listeners propios sin respuesta. Backend2690PASS/178opt-inSKIP/0FAIL. No cambios comerciales/esquema, cohorte física general, proveedores ni despliegue. Evidencia/límites en HOME_SHARED_VISUAL_TOKENS_QA.md. La aceptación visual global/roles/dispositivos y objetivo maestro siguen abiertos.
+
 ### Mi lista: recuperación nativa sin duplicación tras perder el201 confirmado — verificación402
 
 Chrome real qa_luciano/build QiAl1qiE, PostgreSQL descartable y baseline postlogin109tablas. Primer POST listas-personales confirma página2/recibo/sección y pierde201 por socket destruido en res.end del hijo de QA, después del commit. UI muestra incertidumbre y bloquea nuevas plantillas; Verificar creación hace1GET por el mismo UUID, sin segundo POST. Contadores finales1POST/1creación201/1drop/1GET. Misma página recuperada permite editar título y crear/guardar un bloque; recarga390×844 conserva texto/título/URL, scrollWidth390. Una página/recibo y un bloque/recibo;104tablas ajenas y filas privadas del otro usuario físicamente invariantes. FINAL_OK/terminal0/cleanup ENOENT KcQE7T, viewport restaurado y pestaña propia cerrada. No recuperación del intento tras desmontaje ni dos dispositivos.
