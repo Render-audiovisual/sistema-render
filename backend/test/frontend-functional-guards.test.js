@@ -167,7 +167,7 @@ test("Tareas evita renders globales y mantiene los hooks en el nivel del compone
   assert.match(workspaceSource, /const TaskCard = React\.memo/);
   assert.match(workspaceSource, /const TasksByClient = React\.memo/);
   assert.match(workspaceSource, /const move = useCallback/);
-  assert.match(workspaceSource, /const nextCount = Math\.max/);
+  assert.doesNotMatch(workspaceSource, /refreshFeedbackCount|newFeedbackCount|\/api\/notas\/nuevas/);
   assert.doesNotMatch(workspaceSource, /const incorporateRelatedTasks = useCallback\(\(items\) => \{\s*const refreshFeedbackCount/);
 });
 

@@ -15,9 +15,11 @@ const community = {id:2,rol:"community"};
 const owner = {id:3,rol:"diseno"};
 const task = {id:10,estado:"en_revision",tipo_tarea:"diseno",asignado_a_id:3,colaborador_ids:[]};
 
-test("five canonical states; legacy alias projects into final column without changing the DTO", () => {
+test("five business states in four display columns; review includes approval without changing DTOs", () => {
   assert.deepEqual(STATUSES.map(s=>s.id),["pendiente","en_progreso","en_revision","aprobada","finalizada"]);
-  assert.equal(BOARD_COLUMNS.length,5);
+  assert.equal(BOARD_COLUMNS.length,4);
+  assert.deepEqual(BOARD_COLUMNS.find(column=>column.id==='en_revision').states,['en_revision','aprobada']);
+  assert.equal(BOARD_COLUMNS.some(column=>column.id==='aprobada'),false);
   for (const estado of [...STATUSES.map(s=>s.id),"publicada"]) {
     const dto = Object.freeze({...task,estado});
     const projected = canonicalTaskState(dto.estado);
@@ -117,7 +119,10 @@ test("effective approval display never replaces the raw business state or grants
 });
 
 test("actual move callback keeps historical approval display out of generic business writes", () => {
-  const body = source.slice(source.indexOf('  const move = useCallback((task, status) =>'), source.indexOf('  const openFeedback = useCallback'));
+  const start = source.indexOf('  const move = useCallback((task, status) =>');
+  const end = source.indexOf('  const clearFilters = ', start);
+  assert.ok(start>=0 && end>start,'Extract exactly the real move callback without depending on a removed shortcut');
+  const body = source.slice(start,end);
   assert.ok(body.startsWith('  const move = useCallback'));
   const writes = [], approvals = [], errors = [], openings = [];
   const context = { useCallback: callback => callback, orderState: { busy: false, locked: false },
@@ -152,7 +157,7 @@ test("source wiring covers all views, effective state filter, generic approval P
   assert.match(source,/if \(status === canonicalTaskState\(task.estado\)\) return/);
   assert.match(source,/if \(!canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\)/);
   assert.match(source,/Aprobada \(registro histórico; sin evidencia de entrega\)/);
-  assert.match(source,/repeat\(5, minmax\(220px, 1fr\)\)/);
+  assert.match(source,/repeat\(\$\{BOARD_COLUMNS.length\}, minmax\(220px, 1fr\)\)/);
   assert.match(source,/const canApproveForOriana = isLeader && task.estado === "en_revision";/);
   assert.match(source,/Aprobar revisión/);
   assert.match(source,/updateTask\(task.id, \{ estado: "aprobada", \.\.\.deliveryPrecondition \}/);

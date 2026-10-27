@@ -1,3 +1,4 @@
+import { parseOwnerProfiles } from './owner-profiles.js';
 const BINDING = /^[A-Za-z0-9_-]{43}$/;
 // Weak ownership metadata stays outside serialized DTOs. A copied context is
 // not a captured request intent and cannot silently adopt a newer observation.
@@ -12,7 +13,7 @@ export function isBrowserSessionIntentCurrent(intent) {
 }
 export function parseBrowserSession(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).some(key => !['usuario', 'session_context', 'csrf_token'].includes(key))
+    || Object.keys(value).some(key => !['usuario', 'session_context', 'csrf_token', 'owner_profiles'].includes(key))
     || !BINDING.test(value.session_context) || !BINDING.test(value.csrf_token)
     || value.session_context === value.csrf_token) throw new Error('Respuesta de sesión inválida.');
   const user = value.usuario;
@@ -22,7 +23,8 @@ export function parseBrowserSession(value) {
   // Closed projection: no JWT, hash, financial bags or browser storage authority.
   const identity = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol };
   if (user.foto_perfil === null || typeof user.foto_perfil === 'string') identity.foto_perfil = user.foto_perfil;
-  return Object.freeze({ usuario: Object.freeze(identity), session_context: value.session_context, csrf_token: value.csrf_token });
+  return Object.freeze({ usuario: Object.freeze(identity), session_context: value.session_context, csrf_token: value.csrf_token,
+    ...(Object.hasOwn(value, 'owner_profiles') ? { owner_profiles: parseOwnerProfiles(value.owner_profiles, identity.id) } : {}) });
 }
 
 // In-memory observation only. Authentication/authorization always remain server-side.

@@ -9,7 +9,8 @@ import {loginHrefForDestination} from './login-destination.js';
 import {createRememberedViewOwner} from './rememberedViewOwner.js';
 import {saveRememberedView} from './rememberedViews.js';
 import {personalHomeNavigate} from '../../pages/personalHome.js';
-import {ownerAccessLabel,rememberOwnerAccessChoice} from '../session/owner-access-choice.js';
+import {ownerProfileCapability} from '../session/owner-profiles.js';
+import {createOwnerProfileActions} from '../session/owner-profile-actions.js';
 const source=readFileSync(new URL('../../App.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('App.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function declaration(name){let found;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(tree)===name)found=node;ts.forEachChild(node,visit);}visit(tree);assert.ok(found);return found;}
@@ -40,32 +41,35 @@ test('actual logout saves current preferences before withdrawing identity but st
   f.setSnapshot({...f.snapshot});logout();assert.deepEqual(calls,['preferences','logout']);
 });
 
-test('actual owner access rejects non-admin, stale observations and invalid hints without logout or storage writes',async()=>{
-  for(const condition of ['employee','stale','invalid','unavailable']){
-    const f=fixture(),writes=[],calls=[];
-    const admin={status:'authenticated',session:{usuario:{id:1,rol:'admin'}}};
-    f.deps.sessionSnapshot=condition==='employee'?f.snapshot:admin;f.setSnapshot(f.deps.sessionSnapshot);
-    if(condition==='stale')f.setSnapshot({...admin});
-    if(condition==='unavailable')f.fail();
-    Object.assign(f.deps,{ownerAccessPending:{current:false},ownerAccessLabel,rememberOwnerAccessChoice,logout:()=>calls.push('logout')});
-    f.win.sessionStorage={setItem:(...args)=>writes.push(args)};
-    const change=evaluate(declaration('changeOwnerAccess').initializer.arguments[0],f.deps);
-    assert.equal(await change(condition==='invalid'?'admin':'agustin'),false);
-    assert.deepEqual(calls,[]);assert.deepEqual(writes,[]);
+function ownerFixture(){
+  const f=fixture(),store=createBrowserSessionState(),calls=[];
+  store.acceptBootstrap(store.beginBootstrap(),{usuario:{id:91001,usuario:'shared-qa',nombre:'No inference',rol:'admin'},
+    session_context:'A'.repeat(43),csrf_token:'C'.repeat(43),owner_profiles:{principal_id:91001,active:null,
+      profiles:[{key:'franco',user_id:91005,name:'Franco QA'},{key:'agustin',user_id:91006,name:'Agustín QA'}]}});
+  const runtime={mode:'browser',getSession:store.getSession,changeProfile:options=>{calls.push(options);return Promise.resolve({ok:false});}};
+  f.win.location=new URL('https://render.test/inicio');f.win.sessionStorage={setItem(){assert.fail('profile storage write');}};
+  Object.assign(f.deps,{sessionSnapshot:store.getSnapshot(),getApplicationSessionSnapshot:store.getSnapshot,
+    ownerProfileCapability,createOwnerProfileActions,getApplicationSession:()=>runtime,ownerProfileActions:{current:null},
+    setOwnerProfileState(){},logout(){assert.fail('profile logout');}});
+  return{...f,store,runtime,profileCalls:calls,change:()=>evaluate(declaration('changeOwnerAccess').initializer.arguments[0],f.deps)};
+}
+test('actual owner access requires current server capability and Inicio, not admin/name inference or local hints',async()=>{
+  for(const condition of ['no-capability','stale','invalid','unavailable','route']){
+    const f=ownerFixture();
+    if(condition==='no-capability'){const value={...f.store.getSession()};delete value.owner_profiles;f.store.acceptBootstrap(f.store.beginBootstrap(),value);f.deps.sessionSnapshot=f.store.getSnapshot();}
+    if(condition==='stale'){const value=f.store.getSession();f.store.acceptBootstrap(f.store.beginBootstrap(),value);}
+    if(condition==='unavailable')f.deps.getApplicationSessionSnapshot=()=>{throw Error('unavailable');};
+    if(condition==='route')f.win.location=new URL('https://render.test/clientes');
+    assert.equal(await f.change()(condition==='invalid'?'admin':'agustin'),false);assert.deepEqual(f.profileCalls,[]);
   }
 });
-
-test('actual owner access uses real logout once on double click and can retry after failed withdrawal',async()=>{
-  const f=fixture(),admin={status:'authenticated',session:{usuario:{id:1,rol:'admin'}}},writes=[];
-  f.deps.sessionSnapshot=admin;f.setSnapshot(admin);f.win.sessionStorage={setItem:(...args)=>writes.push(args)};
-  let finish,count=0;
-  Object.assign(f.deps,{ownerAccessPending:{current:false},ownerAccessLabel,rememberOwnerAccessChoice,
-    logout:()=>{count++;return new Promise(resolve=>{finish=resolve;});}});
-  const change=evaluate(declaration('changeOwnerAccess').initializer.arguments[0],f.deps);
-  const pending=change('agustin');assert.equal(await change('franco'),false);assert.equal(count,1);
-  assert.deepEqual(writes,[['render.owner-access-choice','agustin']]);
-  finish(false);assert.equal(await pending,false);assert.equal(f.deps.ownerAccessPending.current,false);
-  const retry=change('franco');assert.equal(count,2);finish(true);assert.equal(await retry,true);
+test('actual owner access dispatches runtime change once on double click, never logout or selected IDs',async()=>{
+  const f=ownerFixture();let finish;
+  f.runtime.changeProfile=options=>{f.profileCalls.push(options);return new Promise(resolve=>{finish=resolve;});};
+  const change=f.change(),pending=change('agustin');assert.equal(await change('franco'),false);assert.equal(f.profileCalls.length,1);
+  assert.equal(f.profileCalls[0].profile,'agustin');assert.equal(f.profileCalls[0].sessionIntent.session,f.store.getSession());
+  assert.equal(Object.hasOwn(f.profileCalls[0],'user_id'),false);finish({ok:false});assert.equal(await pending,false);
+  const retry=change('franco');assert.equal(f.profileCalls.length,2);finish({ok:false});assert.equal(await retry,false);
 });
 
 test('actual Sidebar callback captures route/runtime identity and supplies one guarded controlled request',async()=>{
@@ -167,8 +171,8 @@ function homeFixture() {
   visit(tree);assert.ok(quickHome);
   assert.equal(quickHome.attributes.properties.find(attr=>attr.name?.getText(tree)==='onNavigate').initializer.expression.getText(tree),'navigateSidebar');
   const js=ts.transpileModule(`const element=(${quickHome.getText(tree)});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
-  const element=Function('React','QuickHomePage','sesion','navigateSidebar','changeOwnerAccess',`${js};return element;`)(
-    {createElement:(type,props)=>({type,props})},()=>null,store.getSession(),callback,()=>false);
+  const element=Function('React','QuickHomePage','sesion','navigateSidebar','changeOwnerAccess','ownerProfileState',`${js};return element;`)(
+    {createElement:(type,props)=>({type,props})},()=>null,store.getSession(),callback,()=>false,{busy:false});
   return{...f,store,login,values,viewOwner:owner,home:element.props.onNavigate,element};
 }
 

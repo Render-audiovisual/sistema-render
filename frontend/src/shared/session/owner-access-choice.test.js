@@ -20,18 +20,18 @@ test('unavailable optional storage cannot grant identity or crash login',()=>{
   assert.equal(rememberOwnerAccessChoice('franco',denied),false);
   assert.equal(readOwnerAccessChoice(null),null);
 });
-test('home owner access uses existing real logout and login still requires server authentication',()=>{
+test('home uses verified runtime profiles, never legacy display hints or logout; Login remains authentication only',()=>{
   const app=readFileSync(new URL('../../App.jsx',import.meta.url),'utf8');
   const callback=app.slice(app.indexOf('const changeOwnerAccess'),app.indexOf('const changeOwnerAccess')+1300);
-  assert.match(callback,/usuario\?\.rol !== 'admin'/);
+  assert.match(callback,/ownerProfileCapability\(sessionSnapshot.session\)/);
   assert.match(callback,/getApplicationSessionSnapshot\(\) !== sessionSnapshot/);
-  assert.match(callback,/Promise.resolve\(logout\(\)\)/);
-  assert.doesNotMatch(callback,/guardarSesion|password|qa_franco|qa_agustin/);
+  assert.match(callback,/ownerProfileActions.current.change\(choice, sessionSnapshot\)/);
+  assert.doesNotMatch(callback,/guardarSesion|password|qa_franco|qa_agustin|logout\(|sessionStorage/);
   const login=readFileSync(new URL('../../pages/Login.jsx',import.meta.url),'utf8');
   assert.match(login,/iniciarSesion\('password', \{ usuario, password \}\)/);
   assert.doesNotMatch(login,/login-owner-access|login-owner-hint|OWNER_ACCESS_CHOICES|ownerChoice/);
   const home=readFileSync(new URL('../../pages/QuickHome.jsx',import.meta.url),'utf8');
-  assert.match(home,/Cambiar cuenta de dueño/);
-  assert.match(home,/Franco · dueño/);
-  assert.match(home,/Agustín · dueño/);
+  assert.match(home,/Elegir perfil activo de Cuenta Render/);
+  assert.match(home,/ownerProfiles.profiles.map/);
+  assert.match(home,/aria-pressed=\{ownerProfiles.active === profile.key\}/);
 });

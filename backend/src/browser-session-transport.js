@@ -1,6 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { issueUserToken, requireCurrentIdentity } from './auth.js';
+import { assertOwnerProfileSessionMaterial } from './owner-profile-authority.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -12,7 +13,7 @@ const same = (a, b) => typeof a === 'string' && typeof b === 'string'
 
 // No environment, DB, sockets, cookie parser or principal route activation at import.
 // This factory is the one browser boundary; external bearer/Wilson stay separate.
-export function createBrowserSessionTransport({ origin, secret, development = false, pool }) {
+export function createBrowserSessionTransport({ origin, secret, development = false, pool, ownerProfiles = null }) {
   let url;
   try { url = new URL(origin); } catch { throw new Error('Invalid browser session configuration'); }
   const local = ['127.0.0.1', '[::1]'].includes(url.hostname);
@@ -24,7 +25,7 @@ export function createBrowserSessionTransport({ origin, secret, development = fa
   const secure = url.protocol === 'https:';
   const sessionName = secure ? '__Host-render_session' : 'render_dev_session';
   const challengeName = secure ? '__Host-render_login' : 'render_dev_login';
-  const currentIdentity = requireCurrentIdentity(pool);
+  const currentIdentity = requireCurrentIdentity(pool, { ownerProfilePolicy: ownerProfiles?.policy });
   const bind = (purpose, value) => createHmac('sha256', secret)
     .update(`render-browser-v1:${purpose}\0`).update(origin).update('\0').update(value).digest('base64url');
   const contextFor = token => Object.freeze({
@@ -80,11 +81,15 @@ export function createBrowserSessionTransport({ origin, secret, development = fa
 
   // Call only after existing password/Google verification, rate limiting and
   // active account lookup. This is a serializer, not an authentication endpoint.
-  function establishSession(user, res) {
-    const token = issueUserToken(user, secret);
+  function establishSession(user, res, { delegation } = {}) {
+    const claims = delegation ? assertOwnerProfileSessionMaterial(user, delegation, ownerProfiles?.policy) : null;
+    const token = claims ? jwt.sign({ id: user.id, session_version: user.session_version, ...claims, exp: claims.root_exp }, secret,
+      { algorithm: 'HS256', issuer: 'render', audience: 'render-api', jwtid: randomUUID() }) : issueUserToken(user, secret);
     noStore(res);
-    res.set('Set-Cookie', cookie(sessionName, token, 8 * 60 * 60));
-    return contextFor(token); // JWT never enters the browser-readable JSON DTO.
+    res.set('Set-Cookie', cookie(sessionName, token, claims ? Math.max(0, claims.root_exp - Math.floor(Date.now() / 1000)) : 8 * 60 * 60));
+    const context = contextFor(token);
+    res.set('X-Render-Session-Context', context.session_context);
+    return context; // JWT never enters the browser-readable JSON DTO.
   }
 
   async function authenticate(req, res, next) {
@@ -119,5 +124,5 @@ export function createBrowserSessionTransport({ origin, secret, development = fa
 
   // Intentionally no cookie clearing/refresh here. Browsers apply Set-Cookie
   // before JavaScript race guards: old logout/401 must not erase a new login.
-  return Object.freeze({ sessionName, challengeName, issueLoginChallenge, requireLoginChallenge, establishSession, authenticate });
+  return Object.freeze({ sessionName, challengeName, issueLoginChallenge, requireLoginChallenge, establishSession, authenticate, ownerProfiles });
 }

@@ -1,7 +1,7 @@
 import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { useApplicationSession } from './shared/session/use-application-session.js';
-import { getApplicationSessionSnapshot, subscribeApplicationSession } from './shared/session/application-session-access.js';
+import { getApplicationSession, getApplicationSessionSnapshot, subscribeApplicationSession } from './shared/session/application-session-access.js';
 import { createExplicitLogoutNavigation } from './shared/navigation/explicitLogoutNavigation.js';
 import { useNavigationConfirmation } from './components/NavigationDiscardHost.jsx';
 import { sessionViewKey } from './shared/session/session-view.js';
@@ -9,7 +9,8 @@ import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
-import { ownerAccessLabel, rememberOwnerAccessChoice } from './shared/session/owner-access-choice.js';
+import { createOwnerProfileActions } from './shared/session/owner-profile-actions.js';
+import { ownerProfileCapability } from './shared/session/owner-profiles.js';
 import { navigateWithinApp, navigateWithConfirmation, readRouteKey } from "./shared/navigation/location.js";
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
 import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
@@ -93,18 +94,22 @@ export function App() {
   }, [sessionSnapshot]);
   React.useEffect(() => () => explicitLogout.current?.clear(), []);
 
-  const ownerAccessPending = React.useRef(false);
+  const ownerProfileActions = React.useRef(null);
+  const [ownerProfileState, setOwnerProfileState] = React.useState({ busy: false, error: null });
   const changeOwnerAccess = React.useCallback((choice) => {
     try {
-      if (ownerAccessPending.current || !ownerAccessLabel(choice) || sessionSnapshot.session?.usuario?.rol !== 'admin'
-        || getApplicationSessionSnapshot() !== sessionSnapshot) return Promise.resolve(false);
+      if (getApplicationSessionSnapshot() !== sessionSnapshot || sessionSnapshot.status !== 'authenticated'
+        || readRouteKey(window).split(/[?#]/, 1)[0] !== '/inicio'
+        || !ownerProfileCapability(sessionSnapshot.session)) return Promise.resolve(false);
+      if (!ownerProfileActions.current) ownerProfileActions.current = createOwnerProfileActions({
+        getRuntime: getApplicationSession, readSnapshot: getApplicationSessionSnapshot,
+        onState: state => setOwnerProfileState(previous => ({ ...previous, ...state })),
+      });
+      rememberedViews.current?.save();
+      return ownerProfileActions.current.change(choice, sessionSnapshot);
     } catch { return Promise.resolve(false); }
-    ownerAccessPending.current = true;
-    try { rememberOwnerAccessChoice(choice, window.sessionStorage); } catch { /* Optional label, not authentication. */ }
-    // Revoke the real session through the existing controller. Selecting a
-    // label must NEVER replace usuario locally or grant the chosen identity.
-    return Promise.resolve(logout()).finally(() => { ownerAccessPending.current = false; });
-  }, [logout, sessionSnapshot]);
+  }, [sessionSnapshot]);
+  React.useEffect(() => () => { ownerProfileActions.current?.dispose(); ownerProfileActions.current = null; }, []);
 
   React.useEffect(() => {
     const syncPath = () => {
@@ -204,7 +209,7 @@ export function App() {
       return <ProductionsPage sesion={sesion} />;
     }
     if (path === "/inicio") {
-      return <QuickHomePage sesion={sesion} onNavigate={navigateSidebar} onChangeOwner={changeOwnerAccess} />;
+      return <QuickHomePage sesion={sesion} onNavigate={navigateSidebar} onChangeOwner={changeOwnerAccess} ownerProfileState={ownerProfileState} />;
     }
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;

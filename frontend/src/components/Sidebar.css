@@ -119,3 +119,4 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar :is(.sidebar-link, .sidebar-drawer, .sidebar-backdrop) { transition: none; }
 }
+.sidebar .user-owner-profile{font-size:11px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}

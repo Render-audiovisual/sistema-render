@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { inicialesUsuario } from "../utils.jsx";
 import { getNavigationGroups, isNavigationActive } from "./navigation.js";
 import "./Sidebar.css";
+import { activeOwnerProfileLabel } from '../shared/session/owner-profiles.js';
 
 function SidebarIcon({ name }) {
   if (name === "drive") return <svg className="sidebar-icon sidebar-drive-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0F9D58" d="m8.1 3-5.8 10 3.2 5.5 5.8-10z"/><path fill="#4285F4" d="M5.5 18.5h11.6l3.2-5.5H8.7z"/><path fill="#F4B400" d="M8.1 3h6.4l5.8 10h-6.4z"/></svg>;
@@ -32,6 +33,7 @@ export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion,
   const menuRoot = useRef(null);
   const rutaPrincipal = "/inicio";
   const primerNombre = sesion?.usuario?.nombre?.trim().split(/\s+/)[0] || "equipo";
+  const ownerProfileLabel = activeOwnerProfileLabel(sesion);
 
   const groups = getNavigationGroups(sesion?.usuario?.rol);
   const enlacesCuenta = groups.find((group) => group.id === "account").links;
@@ -154,6 +156,7 @@ export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion,
               </div>
               <div className="user-info">
                 <div className="user-name">{sesion?.usuario?.nombre}</div>
+                {ownerProfileLabel && <div className="user-owner-profile">{ownerProfileLabel}</div>}
                 <div className="user-role">{getRolLabel?.(sesion?.usuario?.rol) || ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
               </div>
             </div>

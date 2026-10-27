@@ -61,15 +61,17 @@ test("Feedback adapta la grilla y el detalle a pantallas móviles", () => {
   assert.match(feedbackStyles, /overscroll-behavior-y:contain/);
 });
 
-test("Tareas abre Feedback sin recargar ni romper el marco de la aplicación", () => {
+test("Tareas elimina su shortcut de Feedback; la página dedicada y su retorno seguro permanecen", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(appSource, /window\.addEventListener\("popstate", syncPath\)/);
-  assert.match(workspaceSource, /fromTasks: window\.location\.href/);
-  assert.match(workspaceSource, /window\.history\.pushState\([\s\S]*?"\/feedback"\)/);
-  assert.match(workspaceSource, /onClick=\{openFeedback\}/);
-  assert.match(workspaceSource, /<button className=\{`ros-feedback-link/);
+  assert.doesNotMatch(workspaceSource, /const openFeedback|onClick=\{openFeedback\}|newFeedbackCount|refreshFeedbackCount/);
+  assert.doesNotMatch(workspaceSource, /<button className=\{`ros-feedback-link/);
+  assert.match(appSource, /path === "\/feedback"/);
+  assert.match(appSource, /return <FeedbackPage sesion=\{sesion\}/);
+  const navigation = readFileSync(new URL('../../frontend/src/components/navigation.js', import.meta.url), 'utf8');
+  assert.match(navigation, /\/feedback/);
   assert.match(feedbackSource, /← Volver a tareas/);
   assert.match(feedbackSource, /window\.history\.state\?\.fromTasks/);
   assert.match(feedbackSource, /return navigateWithinApp\(window, `\$\{origin.pathname\}\$\{origin.search\}\$\{origin.hash\}`\)/);

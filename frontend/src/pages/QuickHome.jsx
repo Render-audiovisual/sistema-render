@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 import { getSesion } from '../utils.jsx';
+import { ownerProfileCapability, activeOwnerProfileLabel } from '../shared/session/owner-profiles.js';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
@@ -44,7 +45,7 @@ function TaskRows({ items, today, onNavigate }) {
   })}</ol>;
 }
 
-export function QuickHomePage({ sesion, onNavigate, onChangeOwner, request = apiRequest }) {
+export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileState, request = apiRequest }) {
   const [editorialRecordOpen, setEditorialRecordOpen] = useState(false);
   const editorialRecordOpenRef = useRef(false);
   const recordOpenChanged = useCallback(open => {
@@ -52,6 +53,7 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, request = api
     setEditorialRecordOpen(open);
   }, []);
   const identity = useSessionView(sesion);
+  const ownerProfiles = ownerProfileCapability(sesion);
   const { id: userId, role, active } = identity;
   const identityRef = useRef(identity);
   identityRef.current = identity;
@@ -95,16 +97,20 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, request = api
         <div><span className="qh-eyebrow">Mi trabajo</span><h1>{firstName ? `Hola, ${firstName}.` : "Tu inicio"}</h1>
           <p>{data ? homeDate(data.today, true) : "Tu trabajo asignado y los próximos pasos."}</p></div>
         <div className="qh-header-actions">
-        {role === 'admin' && typeof onChangeOwner === 'function' && <div className="qh-owner-access" role="group" aria-label="Cambiar cuenta de dueño">
-          <span>Cambiar cuenta</span>
-          <button type="button" disabled={editorialRecordOpen} onClick={() => onChangeOwner('franco')}>Franco · dueño</button>
-          <button type="button" disabled={editorialRecordOpen} onClick={() => onChangeOwner('agustin')}>Agustín · dueño</button>
+        {ownerProfiles && typeof onChangeOwner === 'function' && <div className="qh-owner-access" role="group" aria-label="Elegir perfil activo de Cuenta Render">
+          <span>{activeOwnerProfileLabel(sesion)}</span>
+          {ownerProfiles.profiles.map(profile => <button type="button" key={profile.key}
+            aria-pressed={ownerProfiles.active === profile.key}
+            disabled={!validIdentity || editorialRecordOpen || ownerProfileState?.busy}
+            onClick={() => onChangeOwner(profile.key)}>{profile.name}</button>)}
         </div>}
         <button type="button" className="qh-refresh" onClick={refresh} disabled={loading || !validIdentity || editorialRecordOpen}>
           <span aria-hidden="true">↻</span> Actualizar
         </button>
         </div>
       </header>
+
+      {ownerProfileState?.error && ownerProfiles && <p className="qh-error" role="alert">{ownerProfileState.error}</p>}
 
       {loading && <div className="qh-status" role="status">{data ? "Actualizando tu trabajo…" : "Cargando tu trabajo…"}</div>}
       {error && <div className="qh-error" role="alert"><p>{error}</p>

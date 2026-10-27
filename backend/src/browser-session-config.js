@@ -1,14 +1,18 @@
 import { createBrowserSessionTransport } from './browser-session-transport.js';
 import { requireAuthentication, requireCurrentIdentity } from './auth.js';
+import { configuredOwnerProfiles } from './owner-profile-authority.js';
 
 export function configuredBrowserSessions(env, pool) {
+  // Validate an explicitly supplied mapping even if browser sessions are off;
+  // production must never silently retain an unsupported delegation config.
+  const ownerProfiles = configuredOwnerProfiles(env, pool);
   if (env.RENDER_BROWSER_SESSIONS === undefined || env.RENDER_BROWSER_SESSIONS === 'false') return null;
   if (env.RENDER_BROWSER_SESSIONS !== 'true'
     || ![undefined, 'false', 'true'].includes(env.RENDER_BROWSER_ALLOW_LOCAL_HTTP)
     || (env.RENDER_BROWSER_ALLOW_LOCAL_HTTP === 'true' && !['development', 'test'].includes(env.NODE_ENV)))
     throw new Error('Invalid browser session configuration');
   return createBrowserSessionTransport({ origin: env.RENDER_BROWSER_ORIGIN, secret: env.JWT_SECRET,
-    development: env.RENDER_BROWSER_ALLOW_LOCAL_HTTP === 'true', pool });
+    development: env.RENDER_BROWSER_ALLOW_LOCAL_HTTP === 'true', pool, ownerProfiles });
 }
 
 export function createPrincipalAuthentication({ browserTransport, pool }) {

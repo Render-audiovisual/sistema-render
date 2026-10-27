@@ -69,6 +69,14 @@ test('unavailable or throwing channel never retries or falls back to identity tr
   }
 });
 
+test('profile rotation broadcasts only an invalidation reason, never actor IDs or profile authority', () => {
+  const b = bus(), source = createBrowserSessionCoordination(b), peer = createBrowserSessionCoordination(b), received = [];
+  source.subscribe(() => assert.fail('no local echo')); peer.subscribe(hint => received.push(hint));
+  source.notifyChange({ reason: 'profile' }); assert.deepEqual(received, [{ reason: 'profile' }]);
+  assert.throws(() => source.notifyChange({ reason: 'profile', user_id: 91005 }), TypeError);
+  source.dispose(); peer.dispose();
+});
+
 test('observer and post failures do not change transport authority or interrupt other observers', () => {
   const b = bus(), model = createBrowserSessionCoordination(b); let calls = 0;
   model.subscribe(() => { throw new Error('observer'); }); model.subscribe(() => calls++);

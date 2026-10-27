@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
+import { hasOwnerProfileClaims, authenticateOwnerProfile, rememberOwnerProfileSession } from './owner-profile-authority.js';
 
 export function requireAuthentication(req, res, next) {
   const authorization = req.get?.("authorization") || req.headers?.authorization || "";
@@ -22,7 +23,7 @@ export function requireAuthentication(req, res, next) {
 
 // JWT claims identify a session, never its current authority. All operational
 // routes must reload the account so disabling it or revoking sessions is immediate.
-export function requireCurrentIdentity(pool) {
+export function requireCurrentIdentity(pool, { ownerProfilePolicy = null } = {}) {
   return async (req, res, next) => {
     const id = req.auth?.id;
     const version = req.auth?.session_version;
@@ -32,6 +33,15 @@ export function requireCurrentIdentity(pool) {
       return res.status(401).json({ error: "Volvé a iniciar sesión para verificar tu identidad." });
     }
     try {
+      if (hasOwnerProfileClaims(req.auth)) {
+        const claims = req.auth;
+        const user = await authenticateOwnerProfile(pool, claims, ownerProfilePolicy);
+        req.auth = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol,
+          session_version: version, root_id: claims.root_id, root_session_version: claims.root_session_version,
+          root_exp: claims.root_exp, owner_profile: claims.owner_profile, exp: claims.exp };
+        rememberOwnerProfileSession(req.auth, claims);
+        return next();
+      }
       const { rows } = await pool.query(
         "SELECT id, usuario, nombre, rol, activo, session_version FROM usuarios WHERE id=$1",
         [id],
@@ -40,9 +50,12 @@ export function requireCurrentIdentity(pool) {
       if (!user || user.activo !== true || Number(user.session_version) !== version) {
         return res.status(401).json({ error: "La sesión fue revocada o el usuario está inactivo." });
       }
+      const claims = req.auth;
       req.auth = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol, session_version: version };
+      rememberOwnerProfileSession(req.auth, claims);
       return next();
     } catch (error) {
+      if (error.status === 401 || error.status === 403) return res.status(401).json({ error: "La sesión delegada ya no está autorizada." });
       // Fail closed: a database outage must not fall back to stale token roles.
       return next(error);
     }

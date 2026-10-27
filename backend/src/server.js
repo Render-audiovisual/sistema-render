@@ -28,6 +28,7 @@ import { prepareTaskApprovalNotification } from './task-approval-notifications.j
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
+import { ownerProfileLogoutSubject } from './owner-profile-authority.js';
 import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt, reserveProfileCredentialAttempt } from "./login-abuse.js";
 import { administerUser, withUserAdministration, withSelfIdentityChange, UserAdministrationAuthorityError } from "./user-administration.js";
@@ -240,9 +241,14 @@ router.use("/integraciones/wilson", createWilsonRouter({
 
 const loginHandlers = createLoginHandlers({
   pool, allowLoginAttempt, googleClient, googleAudience: process.env.GOOGLE_CLIENT_ID,
-  sendSuccess(user, res, browser) {
+  async sendSuccess(user, res, browser) {
     const usuario = loginUserDto(user);
-    if (browser) return res.json({ usuario, ...browserSessions.establishSession(user, res) });
+    if (browser) {
+      const profiles = await browserSessions.ownerProfiles?.describe(user);
+      const context = browserSessions.establishSession(user, res);
+      res.setHeader('X-Render-Session-Context', context.session_context);
+      return res.json({ usuario, ...context, ...(profiles ? { owner_profiles: profiles } : {}) });
+    }
     return res.json({ token: issueUserToken(user), usuario });
   },
 });
@@ -263,6 +269,25 @@ if (browserSessions) {
 router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
 router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }));
+router.post('/sesion/perfil-dueno', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.browserSession || !browserSessions?.ownerProfiles)
+    return res.status(403).json({ error: 'El cambio de perfil no está habilitado para esta cuenta.' });
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).length !== 1
+    || !['franco', 'agustin'].includes(req.body.profile))
+    return res.status(400).json({ error: 'Elegí un perfil de dueño válido.' });
+  try {
+    const { user, delegation } = await browserSessions.ownerProfiles.switchProfile(req.auth, req.body.profile);
+    const profiles = await browserSessions.ownerProfiles.describe({ ...user, ...delegation, exp: delegation.root_exp });
+    const context = browserSessions.establishSession(user, res, { delegation });
+    res.set('X-Render-Session-Context', context.session_context);
+    return res.json({ usuario: loginUserDto(user), ...context, owner_profiles: profiles });
+  } catch (error) {
+    if ([401, 403, 409, 503].includes(error.status))
+      return res.status(error.status).json({ code: 'owner_profile_unavailable', error: 'No se pudo confirmar el perfil. Volvé a verificar la sesión.' });
+    return next(error);
+  }
+});
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/clientes', createClientOperationRouter({ express, pool }));
@@ -294,8 +319,9 @@ router.get("/sesion", async (req, res, next) => {
       return res.status(401).json({ error: 'La sesión cambió. Volvé a iniciar sesión.' });
     }
     const user = result.rows[0];
+    const profiles = await browserSessions?.ownerProfiles?.describe(req.auth);
     return res.json({ usuario: { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol,
-      foto_perfil: user.foto_perfil }, ...req.browserSession });
+      foto_perfil: user.foto_perfil }, ...req.browserSession, ...(profiles ? { owner_profiles: profiles } : {}) });
   } catch (error) { next(error); }
 });
 router.post("/logout", async (req, res, next) => {
@@ -303,8 +329,9 @@ router.post("/logout", async (req, res, next) => {
     // This first rollout revokes all sessions of the account, not other users.
     // Recheck the observed epoch atomically: a delayed request cannot revoke a
     // newer epoch after a password change, administrative revoke or other logout.
+    const subject = ownerProfileLogoutSubject(req.auth);
     const revoked = await pool.query(`UPDATE usuarios SET session_version=session_version+1
-      WHERE id=$1 AND session_version=$2 AND activo=true RETURNING id`, [req.auth.id, req.auth.session_version]);
+      WHERE id=$1 AND session_version=$2 AND activo=true RETURNING id`, [subject.id, subject.session_version]);
     if (revoked.rowCount !== 1) return res.status(401).json({ error: "La sesión ya no está vigente." });
     res.json({ ok: true });
   } catch (error) { next(error); }
@@ -313,7 +340,7 @@ router.post("/logout", async (req, res, next) => {
 router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next) => {
   try {
     const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'access',id);
-    if (id === req.auth.id && !input.activo) return res.status(409).json({ error: "No podés desactivar tu propia cuenta." });
+    if ([req.auth.id, req.auth.root_id].includes(id) && !input.activo) return res.status(409).json({ error: "No podés desactivar tu propia cuenta." });
     const { rows } = await administerUser(pool, id, input, db => db.query(`UPDATE usuarios SET activo=$2,session_version=session_version+1
       WHERE id=$1 RETURNING id,usuario,nombre,rol,activo,${USER_ADMIN_REVISION_SQL} AS admin_revision`, [id, input.activo]), req.auth);
     if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado." });

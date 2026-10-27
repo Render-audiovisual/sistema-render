@@ -1,5 +1,6 @@
 import { parseBrowserSession } from './browser-session-state.js';
 import { createBrowserApiFetch } from './browser-api-fetch.js';
+import { ownerProfileCapability } from './owner-profiles.js';
 
 export const BROWSER_SESSION_LOCK = 'render:browser-session:v1';
 export class BrowserSessionControllerError extends Error {
@@ -35,7 +36,7 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
     // Publish only after ownership is installed: synchronous subscribers may
     // dispose/cancel while loading or authenticated snapshots are emitted.
     active = op;
-    if (kind !== 'logout' && kind !== 'profile_refresh') {
+    if (kind !== 'logout' && kind !== 'profile_refresh' && kind !== 'owner_profile') {
       op.ticket = store.beginBootstrap();
       if (op.cancelled) store.cancelBootstrap(op.ticket);
     }
@@ -79,7 +80,8 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
     if (response.headers.get('X-Render-Session-Context') !== value.session_context)
       throw new BrowserSessionControllerError('browser_bootstrap_unverified');
     if (expected && (value.session_context !== expected.session_context || value.csrf_token !== expected.csrf_token
-      || value.usuario.id !== expected.usuario.id)) throw new BrowserSessionControllerError('browser_login_context_changed');
+      || value.usuario.id !== expected.usuario.id || JSON.stringify(value.owner_profiles) !== JSON.stringify(expected.owner_profiles)))
+      throw new BrowserSessionControllerError('browser_login_context_changed');
     if (strictRole && value.usuario.rol !== expected.usuario.rol)
       throw new BrowserSessionControllerError('browser_profile_context_changed');
     const previousRevision = store.getSnapshot().revision;
@@ -123,6 +125,44 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
         op.ticket = store.beginBootstrap();
         if (op.cancelled) { store.cancelBootstrap(op.ticket); return cancelled(op); }
         return observe(op, expected, true);
+      });
+    },
+    changeProfile({ profile, sessionIntent, signal } = {}) {
+      if (!store.isCurrent(sessionIntent)) throw new BrowserSessionControllerError('browser_profile_intent_obsolete');
+      const original = sessionIntent.session, capability = ownerProfileCapability(original);
+      const target = capability?.profiles.find(item => item.key === profile);
+      if (!target) throw new BrowserSessionControllerError('browser_owner_profile_unavailable');
+      if (active) throw new BrowserSessionControllerError('browser_session_busy');
+      if (capability.active === profile) return Promise.resolve({ ok: true, session: original });
+      const op = start('owner_profile', signal);
+      return run(op, async () => {
+        if (!store.isCurrent(sessionIntent)) return { ok: false, reason: 'obsolete' };
+        op.ticket = store.beginBootstrap();
+        if (op.cancelled) { store.cancelBootstrap(op.ticket); return cancelled(op); }
+        let sent = false;
+        try {
+          // This is the ONLY coordinated cookie-rotation transport. Ordinary
+          // API fetch correctly rejects new contexts and cannot publish actors.
+          // Do not abort an unresolved cookie setter or release its lock early.
+          sent = true;
+          const response = await raw('/api/sesion/perfil-dueno', {
+            method: 'POST', headers: { 'Content-Type': 'application/json',
+              'X-Render-Session-Context': original.session_context, 'X-Render-CSRF': original.csrf_token },
+            body: JSON.stringify({ profile }),
+          });
+          if (op.cancelled) return cancelled(op);
+          if (!response.ok) throw new BrowserSessionControllerError('browser_owner_profile_rejected');
+          const receipt = parseBrowserSession(await response.json());
+          if (op.cancelled) return cancelled(op);
+          if (response.headers.get('X-Render-Session-Context') !== receipt.session_context
+            || receipt.session_context === original.session_context || receipt.csrf_token === original.csrf_token
+            || receipt.usuario.id !== target.user_id || receipt.owner_profiles?.principal_id !== capability.principal_id
+            || receipt.owner_profiles.active !== profile
+            || JSON.stringify(receipt.owner_profiles.profiles.map(p => [p.key, p.user_id]).sort())
+              !== JSON.stringify(capability.profiles.map(p => [p.key, p.user_id]).sort()))
+            throw new BrowserSessionControllerError('browser_owner_profile_unconfirmed');
+          return await observe(op, receipt, true);
+        } finally { if (sent) notify('profile'); }
       });
     },
     login({ kind, body, signal }) {

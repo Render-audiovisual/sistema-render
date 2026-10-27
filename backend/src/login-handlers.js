@@ -17,7 +17,7 @@ export function createLoginHandlers({ pool, allowLoginAttempt, googleClient, goo
           const passwordValida = await bcrypt.compare(password, usuarioDB.password_hash);
           if (!passwordValida || usuarioDB.activo !== true)
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
-          return sendSuccess(usuarioDB, res, browser);
+          return await sendSuccess(usuarioDB, res, browser);
         } catch (error) {
           if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
           return next(error);
@@ -40,7 +40,7 @@ export function createLoginHandlers({ pool, allowLoginAttempt, googleClient, goo
             || typeof payload.email !== 'string' || !payload.email)
             return res.status(401).json({ error: 'Tu cuenta de Google no tiene el email verificado.' });
           const usuarioDB = await resolveGoogleLoginIdentity(pool, payload);
-          return sendSuccess(usuarioDB, res, browser);
+          return await sendSuccess(usuarioDB, res, browser);
         } catch (error) {
           if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
           const identityErrors = {

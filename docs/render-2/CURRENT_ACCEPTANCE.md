@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Perfiles dentro de la misma sesión — 2026-10-27
+
+Reemplaza el comportamiento histórico de cierre de sesión descrito abajo. Inicio permite seleccionar Franco/Agustín sin nuevo ingreso mediante delegación por ID verificada en el servidor. Se muestra el perfil activo en Inicio y barra lateral; Login no tiene selector. Las tareas de Líder no se trasladan ni se reparten. Ver `LOCAL_OWNER_PROFILES.md` para contrato y limitación estricta a entornos locales.
+
+Frontend completo: 3.358 PASS, sin fallos. Backend completo: 3.092 PASS, 191 pruebas optativas omitidas, sin fallos; después del ajuste final de respuesta403 se repitieron las20 pruebas unitarias de autoridad y9 de integración HTTP, todas PASS. Build correcto. Prueba HTTP con PostgreSQL nuevo y datos sintéticos cubre cambio sin contraseña, tareas personales, recarga, asignaciones intactas, CSRF, cuentas no autorizadas, revocación y logout. Revisión visual local52922 confirma principal→Franco→Agustín→recarga, siempre dentro de Inicio y con tareas distintas. Captura `/private/tmp/render-owner-profiles-same-session.png`. La revisión anterior52920 se dejó intacta.
+
+No habilitado ni aceptado para producción: falta incorporar la validación transaccional del principal a todos los escritores antes de permitir delegación productiva. No se modificaron cuentas, tareas, base ni configuración de hosting de producción.
+
 ### Corrección de ubicación de accesos de dueños — 2026-10-27
 
 Aclaración del usuario: Franco/Agustín aparecen únicamente dentro de Inicio, nunca en Login. Se retiran botones, hint y CSS del login; Inicio y el cierre/autenticación segura existentes permanecen. Frontend3.333PASS/0FAIL/0SKIP y build correcto. Verificación visual: Login sin selector, ingreso con cuenta local y ambos accesos visibles dentro de Inicio; capturas `/private/tmp/render-login-without-owner-selector.png` y `/private/tmp/render-owner-selector-home-only.png`. Se reinició solo el HTTP de revisión conservando PostgreSQL y sus cuatro tareas de prueba. Sin producción; el paquete anterior sigue pendiente de regeneración antes de publicar.

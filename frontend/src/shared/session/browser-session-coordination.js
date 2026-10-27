@@ -4,7 +4,7 @@ function validHint(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Reflect.ownKeys(value);
   return keys.length === 1 && keys[0] === 'reason'
-    && ['login', 'logout'].includes(value.reason);
+    && ['login', 'logout', 'profile'].includes(value.reason);
 }
 
 // Document-owned advisory transport only. A hint can withdraw authority, never
