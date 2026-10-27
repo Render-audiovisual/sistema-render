@@ -2,6 +2,8 @@
 
 Este procedimiento describe el contrato local de seguridad, no una aprobación de despliegue. Render2 no se declara listo para producción. Ver [contrato de arranque](render-2/STARTUP_SAFETY_CONTRACT.md) y [estado de integración](render-2/STATUS.md).
 
+Preparación offline de Hostinger: [protocolo, variables propuestas y controles de datos nuevos](render-2/HOSTINGER_SAFE_PUBLICATION_RUNBOOK.md). No importar su plantilla sobre variables existentes ni confundir prepare/check con ejecución productiva. Los correos personales pendientes no autorizan borrar SMTP. Ningún comando nuevo habilita apply/deploy.
+
 Último candidato verificado (27/10/2026): [auditoría integrada y preparación de publicación](render-2/EDITING_AUDIT_INTEGRATION_AND_RELEASE_CANDIDATE.md). Incluye la migración oficial `20261027144706_editing_progress_unified_ledger.sql`, ensayo de41 migraciones sobre otra restauración del respaldo reciente y preservación de tareas/datos. Arranque rechaza el binding de auditoría faltante, deshabilitado o alterado. No hay actualización productiva ni ejecutor productivo habilitado; el procedimiento local descrito abajo no es una vía para sortear ese bloqueo. No reejecutar051/052 ni reemplazar la base viva por la copia.
 
 ## Separar build, migración y arranque

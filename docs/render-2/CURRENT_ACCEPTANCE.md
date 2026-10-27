@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Procedimiento seguro y propuesta Hostinger — 2026-10-27
+
+Actualización de QA del candidato:12 controles smokePASS desde su propio servidor/dependencias, CLI help offline correcto, inventario invariante y0 vulnerabilidades runtime conocidas. No nuevas pruebas de proveedores o UI móvil. Ver los límites y las rutas privadas en el protocolo.
+
+Ver HOSTINGER_SAFE_PUBLICATION_RUNBOOK.md y ops/hostinger-release.env.example. Preparación offline con reporte de variables sin valores secretos, preservación de URL/JWT y SMTP/WhatsApp; correos personales diferidos no desactivan proveedores. CLI prepare/check/config no conecta, no ofrece apply/deploy y nunca autoriza ejecución. Huella SHA256 estricta solo con cliente RR READ ONLY: detecta tareas nuevas/ediciones/ACL incluso si el plan SQL sigue igual.47 focalesPASS, backend3.000PASS/189SKIP/0FAIL, cohorte50archivos426PASS/0FAIL/0SKIP. Otro ensayo readonly en la copia restaurada111tablas con reinicio; no observación nueva productiva. Candidato337archivos/manifest229963d0a5f71c997cc009c15fdb32c0b69bbd22e4fcfd3c0f723fc7f28bb24c, en QA local. Panel/configuración/despliegue intactos. El ejecutor productivo permanece sin implementar/habilitar por este preparador: sigue siendo gate junto con ventana, backup final, estado vivo y accesos independientes. No se declara listo globalmente ni publicado.
+
 ### Auditoría integrada y nuevo candidato — 2026-10-27
 
 Ver EDITING_AUDIT_INTEGRATION_AND_RELEASE_CANDIDATE.md. Auditoría montada tras firma/identidad y writer de entrega atómico; estados nuevos y crédito por ID separados de históricos. Migración oficial `20261027144706_editing_progress_unified_ledger.sql`, sin051/052replay. Otra copia del respaldo reciente aplica41 migraciones y preserva64tablas/7.732filas/338tareas; asignacionesv2 nuevas338responsables+12colaboradores,62Líder sin repartir y110tablas restantes físicamente invariantes. Artefacto definitivo333archivos/manifest4eacd18bdc8b7597658c08cebc99c910caec853883880b85bfd20cf15ba7e920 preparado en ruta privada; aceptación final de suites se registra en el informe. No producción ni push. Correos diferidos por usuario; siguen pendientes procedimiento productivo, ventana, configuración y controles vivos, no solo correos. Los apartados siguientes son evidencia histórica.

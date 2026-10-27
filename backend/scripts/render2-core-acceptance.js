@@ -9,6 +9,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-wilson-production-correction.integration.test.js',
   'test/render2-editing-progress-audit.integration.test.js',
   'test/render2-editing-progress-startup.integration.test.js',
+  'test/render2-release-preparation.integration.test.js',
   'test/render2-editing-progress-upgrade.integration.test.js',
   'test/render2-editing-progress-schema.integration.test.js',
   'test/render2-assignment-universe.integration.test.js',
