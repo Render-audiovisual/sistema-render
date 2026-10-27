@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Corrección de ubicación de accesos de dueños — 2026-10-27
+
+Aclaración del usuario: Franco/Agustín aparecen únicamente dentro de Inicio, nunca en Login. Se retiran botones, hint y CSS del login; Inicio y el cierre/autenticación segura existentes permanecen. Frontend3.333PASS/0FAIL/0SKIP y build correcto. Verificación visual: Login sin selector, ingreso con cuenta local y ambos accesos visibles dentro de Inicio; capturas `/private/tmp/render-login-without-owner-selector.png` y `/private/tmp/render-owner-selector-home-only.png`. Se reinició solo el HTTP de revisión conservando PostgreSQL y sus cuatro tareas de prueba. Sin producción; el paquete anterior sigue pendiente de regeneración antes de publicar.
+
 ### Ajuste de Tareas y acceso de dueños — 2026-10-27
 
 Tareas queda con cuatro columnas, sin Aprobadas independiente. Las tareas aprobadas conservan su estado y etiqueta y aparecen en Para revisar; no se borran ni se finalizan/publican automáticamente. El grupo mixto no permite orden manual ambiguo, conservando movimientos válidos y el orden de las otras columnas. Feedback deja de aparecer como acceso del encabezado de Tareas y se elimina su polling allí; su página y navegación propia permanecen.

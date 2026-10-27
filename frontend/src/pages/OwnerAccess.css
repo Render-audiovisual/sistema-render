@@ -1,6 +1,0 @@
-.login-owner-access{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin:16px 0 8px}
-.login-owner-access .btn{min-height:44px;padding:8px 20px;border:1px solid var(--render-line,#dededb);border-radius:8px;background:var(--render-surface,#fff);color:var(--render-ink,#252525);font:inherit;cursor:pointer}
-.login-owner-access .btn[aria-pressed="true"]{border-color:var(--render-accent,#0068d4);background:var(--render-accent-soft,#edf4ff);color:var(--render-accent,#0068d4)}
-.login-owner-access .btn:focus-visible{outline:3px solid var(--render-accent,#0068d4);outline-offset:2px}
-.login-owner-access .btn:disabled{opacity:.55;cursor:default}
-.login-owner-hint{color:var(--render-muted,#666);font-size:13px;text-align:center;margin:8px 0 16px;overflow-wrap:anywhere}

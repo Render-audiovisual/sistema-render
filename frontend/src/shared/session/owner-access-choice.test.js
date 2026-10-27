@@ -29,5 +29,9 @@ test('home owner access uses existing real logout and login still requires serve
   assert.doesNotMatch(callback,/guardarSesion|password|qa_franco|qa_agustin/);
   const login=readFileSync(new URL('../../pages/Login.jsx',import.meta.url),'utf8');
   assert.match(login,/iniciarSesion\('password', \{ usuario, password \}\)/);
-  assert.match(login,/Ingresá con tu cuenta personal/);
+  assert.doesNotMatch(login,/login-owner-access|login-owner-hint|OWNER_ACCESS_CHOICES|ownerChoice/);
+  const home=readFileSync(new URL('../../pages/QuickHome.jsx',import.meta.url),'utf8');
+  assert.match(home,/Cambiar cuenta de dueño/);
+  assert.match(home,/Franco · dueño/);
+  assert.match(home,/Agustín · dueño/);
 });
