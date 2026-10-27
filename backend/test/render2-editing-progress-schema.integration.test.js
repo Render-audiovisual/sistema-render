@@ -43,7 +43,7 @@ const compact = text => text.replace(/\s+/g, '');
 test('proposed editing-progress schema deparses strictly and enforces identity/delivery pairs on real PG', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
 }, async t => {
-  const port = 55990, f = await startLocalHarness({ port, clusterOnly: true });
+  const port = 55990, f = await startLocalHarness({ port, clusterOnly: true, deferEditingProgressMigration: true });
   let db;
   t.after(async () => {
     try { await db?.query('ROLLBACK').catch(() => {}); await db?.end(); }
@@ -89,7 +89,7 @@ test('proposed editing-progress schema deparses strictly and enforces identity/d
     assert.deepEqual(Object.fromEntries(columns.map(c => [c.name, [c.type, c.notNull]])), EDITING_PROGRESS_SCHEMA.columns);
     const constraints = (await db.query(`SELECT conname AS name,pg_get_constraintdef(oid) AS definition,
       convalidated AS validated,condeferrable AS deferred FROM pg_constraint
-      WHERE conrelid='public.progreso_edicion_entregas'::regclass ORDER BY conname`)).rows;
+      WHERE conrelid='public.progreso_edicion_entregas'::regclass AND contype<>'n' ORDER BY conname`)).rows;
     assert.equal(constraints.length, 6);
     const mismatches = constraints.filter(row => compact(row.definition) !== compact(EDITING_PROGRESS_SCHEMA.constraints[row.name] ?? ''));
     if (mismatches.length) t.diagnostic(`STRICT_DEPARSE_MISMATCH ${JSON.stringify(mismatches)}`);

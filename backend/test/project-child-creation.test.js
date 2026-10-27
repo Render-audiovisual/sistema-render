@@ -133,6 +133,7 @@ test('readiness requires088 columns/types and enabled immutable trigger binding 
   for(const mode of ['ok','missing','wrongtype','trigger']){
     const queries=[];const db={async query(sql,params){queries.push({sql,params});
       if(sql.includes('current_schemas'))return{rows:[{schemas:['public']}]};
+      if(sql.includes('editing_progress_ready'))return{rows:[{editing_progress_ready:true}]};
       if(sql.includes('pg_constraint'))return{rows:[{comment_actor_ready:true}]};
       if(sql.includes('information_schema'))return{rows:rows.flatMap(r=>r.table_name==='project_child_create_receipts'&&r.column_name==='payload_hash'?(mode==='missing'?[]:mode==='wrongtype'?[{...r,data_type:'jsonb'}]:[r]):[r])};
       assert.match(sql,/project_child_create_receipts'::regclass/);assert.match(sql,/t\.tgtype=27/);assert.equal(params[3],'project_child_create_receipt_immutable');

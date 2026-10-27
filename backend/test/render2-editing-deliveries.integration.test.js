@@ -110,6 +110,13 @@ test('editing deliveries: explicit immutable versions on canonical principal pro
     assert.deepEqual(await snapshot(), current);
     assert.deepEqual(await fixture.query('SELECT * FROM task_editing_reviews'), []);
     await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', ['068_task_editing_reviews.sql']);
+    // Current delivery writes additionally project operational credit. Install
+    // that dependent forward schema only after065/068 preservation checks.
+    const progressBefore = await snapshot();
+    await fixture.query(await readFile(new URL('../migrations/20261027144706_editing_progress_unified_ledger.sql', import.meta.url), 'utf8'));
+    assert.deepEqual(await snapshot(), progressBefore);
+    assert.deepEqual(await fixture.query('SELECT * FROM progreso_edicion_entregas'), []);
+    await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', ['20261027144706_editing_progress_unified_ledger.sql']);
   });
   await t.test('existing handed-off artifacts/states do not infer events; closed shared GET is read-only', async () => {
     assert.deepEqual(await fixture.query('SELECT * FROM task_editing_deliveries'), []);
@@ -256,6 +263,7 @@ test('editing deliveries: explicit immutable versions on canonical principal pro
     }
     const [standalone] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,tipo_tarea,estado,propiedades_extra)
       VALUES ('QA delivery restrictive task','QA fixture admin','edicion','pendiente','{"workspace":"render_os"}') RETURNING id`);
+    await fixture.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,108001,'responsable')", [standalone.id]);
     checked(await submit(standalone.id, await input(standalone.id), admin), 201);
     const before = await snapshot();
     assert.equal((await api(`/tareas/${standalone.id}?workspace=render_os`, admin, 'DELETE')).status, 409);

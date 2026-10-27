@@ -1,10 +1,11 @@
-# Editing progress v1 — frozen sidecar draft
+# Editing progress v1 — contract and historical draft verification
 
-Status: NOT INTEGRATED. No route mount, writer hook, migration, configured DB,
-production access or deployment is included. Main owns critical-file integration
-and schema reservation. 051/052 are recognition-only: never replay their data
-operations. This unit's mock tests are separate from Main's reported b65d8d3
-core 387/backend 2923 passing baseline, which excludes these drafts.
+Current status (2026-10-27): integrated in development. See
+EDITING_AUDIT_INTEGRATION_AND_RELEASE_CANDIDATE.md for the migration, mounted
+route, transactional writer, restored-copy verification and release gates.
+No production access or deployment. The draft-stage statements below record
+their historical scope; they do not override the current acceptance report.
+051/052 remain recognition-only: never replay their data operations.
 
 ## Checkpoint verification — 2026-10-26
 

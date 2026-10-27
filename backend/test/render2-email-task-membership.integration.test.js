@@ -18,7 +18,7 @@ test('email revalidates current task membership and address against disposable P
     VALUES('QA399 private correction','Luciano QA','edicion','en_progreso','media','2026-10-30',
       '{"workspace":"render_os"}') RETURNING id,titulo`);
   const tables=(await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(r=>r.tablename);
-  assert.equal(tables.length,109);
+  assert.equal(tables.length,110,'All current public tables, including the editing-progress ledger, are hashed');
   const snapshot=async()=>{
     const hashes={};for(const table of tables){assert.match(table,/^[a-z_][a-z0-9_]*$/);
       hashes[table]=(await f.query(`SELECT md5(coalesce(jsonb_agg(jsonb_build_array(to_jsonb(r),r.xmin::text,r.ctid::text)

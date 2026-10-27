@@ -7,6 +7,10 @@ import { cleanEnvironment } from './render2-local-test.js';
 export const coreAcceptanceFiles = Object.freeze([
   'test/render2-wilson-release-parity.integration.test.js',
   'test/render2-wilson-production-correction.integration.test.js',
+  'test/render2-editing-progress-audit.integration.test.js',
+  'test/render2-editing-progress-startup.integration.test.js',
+  'test/render2-editing-progress-upgrade.integration.test.js',
+  'test/render2-editing-progress-schema.integration.test.js',
   'test/render2-assignment-universe.integration.test.js',
   'test/render2-wilson-finalization-locks.integration.test.js',
   'test/render2-release-object-security.integration.test.js',

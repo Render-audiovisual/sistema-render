@@ -36,7 +36,7 @@ test('block creation: private cookie HTTP receipts and real frontend lost-ACK re
   const own = await page('QA384 private owner'), second = await page('QA384 second owner');
   const foreign = await page('QA384 private admin',admin);
   const tables = (await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(r=>r.tablename);
-  assert.equal(tables.length,109,'Explicit current public-table coverage');
+  assert.equal(tables.length,110,'Explicit current public-table coverage including the editing-progress ledger');
   async function snapshot() {
     const hashes = {};
     for (const table of tables) {

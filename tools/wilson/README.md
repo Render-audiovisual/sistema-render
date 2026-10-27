@@ -3,6 +3,28 @@
 Compatibilidad local bajo contrato; no certifica despliegue, transporte real
 ni entrega de notificaciones en producción.
 
+## Auditoría operativa de edición
+
+WhatsApp privado y administrador humano vigente. Requiere la migración e
+integración de auditoría de Render2; no ejecutar contra una versión anterior.
+
+```bash
+python3 scripts/mia_render_os_task.py --actor-id '<actor-mapeado>' \
+  editing-audit --period 2026-10 --editor-id '<id-verificado-del-editor>'
+```
+
+Resolver el ID mediante el catálogo y confirmarlo, no deducirlo de un nombre ni
+fijarlo en9. La consulta con `--editor-id` devuelve crédito nuevo atribuido por
+asignación ID. Omitir ese flag consulta **solo el registro histórico de clave
+luciano**, con identidad no verificada: no equivale a todo el trabajo actual de
+Luciano ni debe mezclarse silenciosamente con el alcance por ID.
+
+Mostrar el alcance y separar en revisión, aprobadas y finalizadas. Finalizada no
+significa publicada. Un503 por esquema/fuente no disponible es un error, nunca
+un resultado de cero entregas. La adaptación de instrucciones y CLI del agente
+externo debe coordinarse antes de publicar; actualizar este repositorio no
+actualiza automáticamente ese servicio.
+
 ## Corregir un registro de grabación por WhatsApp
 
 Solo administrador humano vigente, firma v2 y conversación privada. Usar el

@@ -32,6 +32,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   personal_list_block_create_receipts: { actor_user_id:'integer', request_id:'uuid', payload_hash:'text', list_id:'bigint', block_id:'bigint', committed_at:'timestamp with time zone' },
   task_comment_create_receipts: { actor_user_id: 'integer', request_id: 'uuid', payload_hash: 'text', tarea_id: 'integer', comment_id: 'integer', workspace: 'text', committed_at: 'timestamp with time zone' },
   task_editing_deliveries: { id: 'uuid', task_id: 'integer', actor_id: 'integer', request_id: 'uuid', payload_hash: 'text', task_revision: 'integer', url: 'text', notes: 'text', recorded_at: 'timestamp with time zone' },
+  progreso_edicion_entregas: { id:'bigint', tarea_id:'bigint', editor_clave:'text', estado_actual:'text', entregada_at:'timestamp with time zone', activa:'boolean', editor_user_id:'integer', origen_registro:'text', delivery_id:'uuid', task_revision:'integer' },
   task_editing_reviews: { id: 'uuid', task_id: 'integer', delivery_id: 'uuid', actor_id: 'integer', action: 'text', task_revision: 'integer', notes: 'text', recorded_at: 'timestamp with time zone', request_id: 'uuid', payload_hash: 'text' },
   proyectos: { id: 'uuid', cliente_id: 'integer', responsable_id: 'integer', revision: 'integer', request_hash: 'text' },
   project_child_create_receipts: { actor_id:'integer', request_id:'uuid', proyecto_id:'uuid', recurso_tipo:'text', recurso_id:'uuid', expected_revision:'integer', payload_hash:'text', committed_at:'timestamp with time zone' },
@@ -132,4 +133,23 @@ export async function assertCoreSchemaReady(db) {
     ) AS comment_actor_ready`)).rows?.[0]?.comment_actor_ready;
   } catch { throw new Error('Cannot inspect principal comment actor.'); }
   if(commentActor!==true)throw new Error('Principal comment actor is not compatible. No repair was attempted.');
+  let editingProgress;
+  try {
+    editingProgress=(await db.query(`SELECT EXISTS (
+      SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='public.tareas'::regclass AND t.tgname='editing_progress_v1_task_projection'
+        AND NOT t.tgisinternal AND t.tgenabled IN ('O','A') AND t.tgtype=17
+        AND t.tgconstraint=0 AND t.tgnargs=0 AND t.tgattr::text='' AND t.tgqual IS NOT NULL
+        AND md5(pg_get_triggerdef(t.oid))='583dfe7e6ebfd59a5ed15e5b1e10f1e2'
+        AND n.nspname='public' AND p.proname='project_existing_editing_progress_task'
+        AND p.pronargs=0 AND p.prokind='f' AND p.prorettype='trigger'::regtype
+        AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog']::text[]
+        AND md5(p.prosrc)='923763e6510401c7cefe345cbbe74714'
+    ) AND NOT EXISTS (
+      SELECT 1 FROM pg_trigger WHERE tgrelid='public.tareas'::regclass
+        AND tgname='progreso_edicion_tarea_cambio' AND NOT tgisinternal
+    ) AS editing_progress_ready`)).rows?.[0]?.editing_progress_ready;
+  } catch { throw new Error('Cannot inspect principal editing progress projection.'); }
+  if(editingProgress!==true)throw new Error('Principal editing progress projection is not compatible. No repair was attempted.');
 }

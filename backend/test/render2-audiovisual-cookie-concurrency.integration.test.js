@@ -107,7 +107,8 @@ test('cookie audiovisual concurrency preserves exact artifacts, CAS and independ
   async function siblingSnapshot() {
     const rows = {};
     for (const [table, column] of [['tareas', 'id'], ['tarea_asignaciones', 'tarea_id'],
-      ['tarea_comentarios', 'tarea_id'], ['task_editing_deliveries', 'task_id'], ['task_editing_reviews', 'task_id']]) {
+      ['tarea_comentarios', 'tarea_id'], ['task_editing_deliveries', 'task_id'], ['task_editing_reviews', 'task_id'],
+      ['progreso_edicion_entregas', 'tarea_id']]) {
       rows[table] = hash(await f.query(`SELECT to_jsonb(r) value,r.xmin::text xmin,r.ctid::text ctid
         FROM ${table} r WHERE ${column}=ANY($1::int[]) ORDER BY to_jsonb(r)::text,r.ctid::text`, [siblingIds]));
     }
@@ -174,6 +175,17 @@ test('cookie audiovisual concurrency preserves exact artifacts, CAS and independ
     const shared = await task(); assert.equal(shared.estado, 'en_revision'); assert.equal(shared.revision, first.task_revision);
     const correction = correctionBody(shared.revision, first.id, 'race'), replacement = deliveryBody(shared.revision, 'race-replacement');
     const beforeRace = await snapshot();
+    const readProgress = () => f.query(`SELECT to_jsonb(p) AS row,p.xmin::text AS xmin,p.ctid::text AS ctid
+      FROM progreso_edicion_entregas p ORDER BY p.id`);
+    const beforeProgress = await readProgress();
+    const priorCredit = beforeProgress.filter(item => String(item.row.tarea_id) === String(taskId));
+    assert.equal(priorCredit.length, 1, 'V1 created exactly one canonical task credit before the race');
+    // The current writer crosses node-postgres Date (millisecond precision).
+    // Assert that exact contract initially, then preserve the literal stored
+    // credit timestamp below; no rounding is allowed across the race itself.
+    const [firstCreditDate] = await f.query("SELECT to_jsonb(date_trunc('milliseconds',d.recorded_at))#>>'{}' AS exact_date FROM task_editing_deliveries d WHERE id=$1 AND task_id=$2", [first.id, taskId]);
+    assert.equal(priorCredit[0].row.entregada_at, firstCreditDate.exact_date, 'Initial credit matches the first delivery at the writer’s explicit Date precision');
+    assert.equal(new Date(priorCredit[0].row.entregada_at).toISOString(), first.recorded_at);
     const readNotices = () => f.query(`SELECT to_jsonb(n) AS row,n.xmin::text AS xmin,n.ctid::text AS ctid
       FROM mia_private_task_notifications n ORDER BY n.id`);
     const beforeNotices = await readNotices();
@@ -220,8 +232,32 @@ test('cookie audiovisual concurrency preserves exact artifacts, CAS and independ
       assert.equal(notice.detalles.destinatario_usuario_id,luciano.id);
       assert.ok(notice.mensaje.split('\n').includes(correction.notes));
     } else assert.deepEqual(afterNotices,beforeNotices,'Losing correction cannot enqueue');
+    const afterProgress = await readProgress();
+    assert.equal(afterProgress.length, beforeProgress.length, 'Neither race branch inserts a second operational credit');
+    assert.deepEqual(afterProgress.filter(item => String(item.row.tarea_id) !== String(taskId)),
+      beforeProgress.filter(item => String(item.row.tarea_id) !== String(taskId)), 'Other task credits remain physically unchanged');
+    const credits = afterProgress.filter(item => String(item.row.tarea_id) === String(taskId));
+    assert.equal(credits.length, 1);
+    const credit = credits[0].row, prior = priorCredit[0].row;
+    assert.equal(credit.estado_actual, correctionWon ? 'en_progreso' : 'en_revision');
+    assert.equal(credit.estado_actual, fresh.estado);
+    assert.equal(credit.task_revision, fresh.revision);
+    assert.equal(credit.delivery_id, currentDelivery.id);
+    assert.equal(credit.delivery_id, correctionWon ? first.id : artifacts.find(item => item.request_id === replacement.request_id).id);
+    assert.equal(String(credit.tarea_id), String(taskId));
+    assert.equal(credit.editor_user_id, luciano.id);
+    assert.equal(credit.editor_clave, `user:${luciano.id}`);
+    assert.equal(credit.origen_registro, 'canonical_delivery');
+    assert.equal(credit.entregada_at, firstCreditDate.exact_date, 'Replacement/correction cannot move the original monthly credit');
+    assert.equal(credit.activa, !correctionWon);
+    if (correctionWon) assert.ok(typeof credit.baja_at === 'string' && Number.isFinite(Date.parse(credit.baja_at)));
+    else assert.equal(credit.baja_at, null);
+    assert.ok(Number.isFinite(Date.parse(credit.updated_at)) && Date.parse(credit.updated_at) >= Date.parse(prior.updated_at));
+    assert.deepEqual(credit, { ...prior, estado_actual: fresh.estado, task_revision: fresh.revision,
+      delivery_id: currentDelivery.id, activa: !correctionWon, baja_at: credit.baja_at, updated_at: credit.updated_at },
+    'Only exact winning projection fields change; ID, task, editor, title/client, credit date and creation date stay fixed');
     const afterRace = await snapshot();
-    unchangedExcept(beforeRace, afterRace, ['tareas', 'task_editing_deliveries', 'task_editing_reviews',
+    unchangedExcept(beforeRace, afterRace, ['tareas', 'task_editing_deliveries', 'task_editing_reviews', 'progreso_edicion_entregas',
       ...(correctionWon ? ['mia_private_task_notifications'] : [])]);
     checked(await api(raceLoser.route, raceLoser.actor, 'POST', raceLoser.body), 409);
     assert.deepEqual(await snapshot(), afterRace);

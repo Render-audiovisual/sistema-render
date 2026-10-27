@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true,block_receipt_ready:true}] : sql.includes('pg_constraint') ? [{comment_actor_ready:true}] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('editing_progress_ready') ? [{editing_progress_ready:true}] : sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true,block_receipt_ready:true}] : sql.includes('pg_constraint') ? [{comment_actor_ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
   await assertCoreSchemaReady({ async query(sql, values) { calls.push({ sql, values }); return response(sql, complete()); } });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   assert.match(calls[0].sql, /current_schemas\(false\)::text\[\]/);
   for (const call of calls) {
     assert.match(call.sql.trim(), /^SELECT /);
@@ -16,6 +16,19 @@ test('principal compatibility inspection uses a parameterized SELECT only', asyn
   }
   assert.deepEqual(calls[1].values, [Object.keys(CORE_SCHEMA_COLUMNS)]);
   assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision','personal_list_create_receipt_immutable','project_child_create_receipt_immutable','task_comment_create_receipt_immutable','personal_list_block_create_receipt_immutable']);
+});
+
+test('editing progress requires enabled exact prospective binding and no legacy name writer, without repair',async()=>{
+  for(const ready of [false,null,undefined,1,'true']){
+    const calls=[];
+    await assert.rejects(assertCoreSchemaReady({query:async sql=>{
+      calls.push(sql);return sql.includes('editing_progress_ready')?{rows:[{editing_progress_ready:ready}]}:response(sql,complete());
+    }}),/editing progress projection is not compatible.*No repair/);
+    assert.ok(calls.every(sql=>sql.trim().startsWith('SELECT ')));
+    assert.match(calls.at(-1),/md5\(p\.prosrc\)='923763e6510401c7cefe345cbbe74714'/);
+    assert.match(calls.at(-1),/t\.tgenabled IN \('O','A'\)/);
+    assert.match(calls.at(-1),/progreso_edicion_tarea_cambio/);
+  }
 });
 
 test('block creation receipt shape and immutable binding are required without repair',async()=>{

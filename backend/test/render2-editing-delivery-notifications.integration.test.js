@@ -36,8 +36,8 @@ test('canonical editing delivery queues one post-commit review notice; replay/re
   const employee=await login('qa_luciano'),admin=await login('qa_franco');
   const api=(token,method='GET',body)=>request(f.base,`/api/tareas-edicion/${seed.id}/entregas`,{token,method,body});
   const tables=(await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(r=>r.tablename);
-  assert.equal(tables.length,109);
-  const allowed=new Set(['tareas','task_editing_deliveries','mia_private_task_notifications']);
+  assert.equal(tables.length,110);
+  const allowed=new Set(['tareas','task_editing_deliveries','mia_private_task_notifications','progreso_edicion_entregas']);
   const snapshot=async()=>{
     const hashes={};for(const table of tables){
       assert.match(table,/^[a-z_][a-z0-9_]*$/);
@@ -47,8 +47,9 @@ test('canonical editing delivery queues one post-commit review notice; replay/re
   };
   const notices=()=>f.query('SELECT * FROM mia_private_task_notifications ORDER BY id');
   const deliveries=()=>f.query('SELECT * FROM task_editing_deliveries ORDER BY id');
+  const progress=()=>f.query('SELECT * FROM progreso_edicion_entregas ORDER BY id');
   const task=async()=>(await f.query('SELECT * FROM tareas WHERE id=$1',[seed.id]))[0];
-  assert.deepEqual(await notices(),[]);assert.deepEqual(await deliveries(),[]);
+  assert.deepEqual(await notices(),[]);assert.deepEqual(await deliveries(),[]);assert.deepEqual(await progress(),[]);
   assert.equal((await f.query('SELECT count(*)::int n FROM editorial_publicacion_eventos'))[0].n,0);
   const before=await snapshot(),original=await task();
   const intent={request_id:randomUUID(),expected_revision:seed.revision,
@@ -67,6 +68,15 @@ test('canonical editing delivery queues one post-commit review notice; replay/re
     assert.equal(receipt.id,created.delivery_id);assert.equal(receipt.task_id,seed.id);assert.equal(receipt.actor_id,91003);
     assert.equal(receipt.request_id,intent.request_id);assert.equal(receipt.task_revision,saved.revision);
     assert.equal(receipt.url,intent.url);assert.equal(receipt.notes,intent.notes);
+    const ledger=await progress();assert.equal(ledger.length,1,'Only delivered task obtains operational credit');
+    const credit=ledger[0];assert.match(String(credit.id),/^[1-9]\d*$/);
+    assert.ok(Number.isFinite(Date.parse(credit.created_at)));assert.ok(Number.isFinite(Date.parse(credit.updated_at)));
+    assert.deepEqual(credit,{
+      id:credit.id,tarea_id:String(seed.id),editor_clave:'user:91003',titulo_snapshot:original.titulo,
+      cliente_id:original.cliente_id,estado_actual:'en_revision',entregada_at:receipt.recorded_at,
+      activa:true,baja_at:null,created_at:credit.created_at,updated_at:credit.updated_at,
+      editor_user_id:91003,origen_registro:'canonical_delivery',delivery_id:receipt.id,task_revision:saved.revision,
+    },'Exact task/editor/artifact/date/state ledger row; no unbounded ledger exception');
     // Fire-and-forget is observed by durable evidence, not by a fixed delay.
     const deadline=Date.now()+5000;let queued;
     do{queued=await notices();if(queued.length)break;await new Promise(resolve=>setTimeout(resolve,25));}while(Date.now()<deadline);
@@ -82,10 +92,10 @@ test('canonical editing delivery queues one post-commit review notice; replay/re
     assert.equal(notice.fingerprint,expectedFingerprint,'Current legacy-label event fingerprint remains bound to this task/event/recipient key');
     stable=await snapshot();
     assert.deepEqual(tables.filter(name=>stable[name]!==before[name]).sort(),[...allowed].sort(),
-      'Only task state, delivery receipt and private notification queue may change');
+      'Only task state, delivery receipt, asserted operational credit and private notification queue may change');
     for(const table of tables)if(!allowed.has(table))assert.equal(stable[table],before[table],table);
   });
-  await t.test('replay200, both actual GETs and stale409 preserve all109 hashes and do not enqueue again',async()=>{
+  await t.test('replay200, both actual GETs and stale409 preserve all110 hashes and do not enqueue again',async()=>{
     assert.ok(created&&stable,'Fresh commit and durable queue must pass first');
     const replay=ok(await api(employee,'POST',intent));assert.equal(replay.replayed,true);
     assert.equal(replay.delivery_id,created.delivery_id);assert.deepEqual(replay.deliveries,created.deliveries);
@@ -95,8 +105,8 @@ test('canonical editing delivery queues one post-commit review notice; replay/re
     }
     ok(await api(employee,'POST',{...intent,request_id:randomUUID()}),409);
     assert.equal((await notices()).length,1);assert.equal((await deliveries()).length,1);
-    assert.deepEqual(await snapshot(),stable,'Replay/read/CAS rejection preserve physical rows across all109 tables');
+    assert.deepEqual(await snapshot(),stable,'Replay/read/CAS rejection preserve physical rows across all110 tables, including ledger');
     assert.equal((await f.query('SELECT count(*)::int n FROM editorial_publicacion_eventos'))[0].n,0);
-    t.diagnostic('109-table post-setup/login baseline; only3 explicit tables changed, remaining106 invariant; no provider delivery claimed');
+    t.diagnostic('110-table post-setup/login baseline; only4 explicitly asserted tables changed, remaining106 invariant; no provider delivery claimed');
   });
 });

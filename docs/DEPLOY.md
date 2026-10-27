@@ -2,6 +2,8 @@
 
 Este procedimiento describe el contrato local de seguridad, no una aprobación de despliegue. Render2 no se declara listo para producción. Ver [contrato de arranque](render-2/STARTUP_SAFETY_CONTRACT.md) y [estado de integración](render-2/STATUS.md).
 
+Último candidato verificado (27/10/2026): [auditoría integrada y preparación de publicación](render-2/EDITING_AUDIT_INTEGRATION_AND_RELEASE_CANDIDATE.md). Incluye la migración oficial `20261027144706_editing_progress_unified_ledger.sql`, ensayo de41 migraciones sobre otra restauración del respaldo reciente y preservación de tareas/datos. Arranque rechaza el binding de auditoría faltante, deshabilitado o alterado. No hay actualización productiva ni ejecutor productivo habilitado; el procedimiento local descrito abajo no es una vía para sortear ese bloqueo. No reejecutar051/052 ni reemplazar la base viva por la copia.
+
 ## Separar build, migración y arranque
 
 El comando heredado `npm run seed:usuarios` está deshabilitado y no conecta a PostgreSQL: su roster compartido “Líder” y contraseña predeterminada no son un mecanismo de identidad válido para Render2. Con un administrador existente y accesible, crear los accesos independientes desde **Usuarios y equipo**, verificando el login propio de cada integrante antes de cambiar accesos antiguos. No se renombra, promueve, convierte ni elimina una cuenta existente automáticamente. No compartir credenciales ni usar el selector visual como autenticación. Esta vía no resuelve una instalación con cero administradores: el bootstrap inicial requiere un procedimiento separado y autorizado; no usar un seed histórico ni modificar roles a mano como solución implícita.

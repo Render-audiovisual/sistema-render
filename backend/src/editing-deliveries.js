@@ -3,6 +3,7 @@ import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { lockTaskOperationResources } from './task-operation-receipts.js';
 import { isTaskApproved, taskTransitionError } from './workflow-contract.js';
 import { getStateNotification } from './task-workflow.js';
+import { recordEditingProgressDelivery } from './editing-progress-ledger.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const ALLOWED_STATES = ['pendiente', 'en_progreso', 'en_revision', 'aprobada'];
@@ -119,6 +120,9 @@ export function createEditingDeliveriesRouter({ express, pool, notifyAssignment 
           deliveryId = randomUUID();
           await db.query(`INSERT INTO task_editing_deliveries(id,task_id,actor_id,request_id,payload_hash,task_revision,url,notes)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [deliveryId, id, user.id, input.request_id, hash, updated.revision, input.url, input.notes]);
+          await recordEditingProgressDelivery(db, {
+            taskId: id, deliveryId, expectedTaskRevision: Number(updated.revision),
+          });
           task = { ...task, ...updated };
           const event = getStateNotification(task, previousState);
           if (event) notification = { pool, tarea: task, motivo: event.motivo,

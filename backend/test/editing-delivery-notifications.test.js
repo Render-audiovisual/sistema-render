@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createEditingDeliveriesRouter} from '../src/editing-deliveries.js';
 import {getStateNotification} from '../src/task-workflow.js';
+import {EDITING_PROGRESS_SCHEMA} from '../src/editing-progress-ledger.js';
 
 const KEY = '10000000-0000-4000-8000-000000000395';
 const BEFORE = '2026-10-25T10:00:00.000Z', AFTER = '2026-10-25T11:00:00.000Z';
@@ -20,7 +21,7 @@ function fixture({estado = 'en_progreso', approval = false, user = {}, assigned 
   let state = {task: {id: 8, revision: 2, estado, tipo_tarea: 'edicion', workspace: 'render_os',
     archived: 'false', trashed: 'false', assigned, titulo: 'QA395 editing video', cliente_id: 7,
     prioridad: 'alta', fecha_vencimiento: '2026-10-29', updated_at: BEFORE,
-    propiedades_extra: {workspace: 'render_os', keep: 'private draft unchanged', revision_aprobada: approval}}, deliveries: []};
+    propiedades_extra: {workspace: 'render_os', keep: 'private draft unchanged', revision_aprobada: approval}}, deliveries: [], progress: []};
   const db = {
     release() {released = true; order.push('release');},
     async query(sql, params = []) {
@@ -29,6 +30,28 @@ function fixture({estado = 'en_progreso', approval = false, user = {}, assigned 
       if (sql.startsWith('BEGIN')) {saved = structuredClone(state); committed = false; return {rows: []};}
       if (sql === 'ROLLBACK') {state = saved; return {rows: []};}
       if (sql === 'COMMIT') {committed = true; return {rows: []};}
+      if (sql.includes('AS columns') && sql.includes('FROM pg_constraint')) return {rows: [{
+        columns: Object.entries(EDITING_PROGRESS_SCHEMA.columns).map(([name, [type, notNull]]) => ({name, type, notNull})),
+        constraints: Object.entries(EDITING_PROGRESS_SCHEMA.constraints).map(([name, definition]) => ({name, definition, validated: true, deferred: false})),
+      }]};
+      if (sql.includes('FROM public.progreso_edicion_entregas LIMIT 0')) return {rows: []};
+      if (sql.startsWith('SELECT id,revision,estado,tipo_tarea,titulo,cliente_id,propiedades_extra')) return {rows: [structuredClone(state.task)]};
+      if (sql.startsWith('SELECT id,task_id,task_revision,recorded_at')) return {rows: state.deliveries.slice(-1)};
+      if (sql.startsWith('SELECT tarea_id,editor_user_id,origen_registro,delivery_id,task_revision')) return {rows: structuredClone(state.progress)};
+      if (sql.startsWith('SELECT a.usuario_id,a.tipo,u.activo')) return {rows: assigned ? [{usuario_id: actor.id, tipo: 'responsable', activo: true}] : []};
+      if (sql.startsWith('INSERT INTO public.progreso_edicion_entregas')) {
+        assert.equal(state.progress.length, 0, 'Unique task credit');
+        const [tarea_id, editor_clave, titulo_snapshot, cliente_id, estado_actual, entregada_at, editor_user_id, delivery_id, task_revision] = params;
+        assert.ok(state.deliveries.some(d => d.task_id === tarea_id && d.id === delivery_id));
+        state.progress.push({tarea_id, editor_clave, titulo_snapshot, cliente_id, estado_actual, entregada_at, editor_user_id,
+          origen_registro: 'canonical_delivery', delivery_id, task_revision, activa: true, baja_at: null});
+        return {rows: []};
+      }
+      if (sql.startsWith('UPDATE public.progreso_edicion_entregas')) {
+        const row = state.progress.find(p => p.tarea_id === params[0]); assert.ok(row);
+        Object.assign(row, {delivery_id: params[1], task_revision: params[2], estado_actual: params[3], activa: true, baja_at: null});
+        return {rows: []};
+      }
       if (/^SELECT id,rol,activo,session_version(?:,usuario,nombre)? FROM usuarios/.test(sql)) {
         // Do not supply labels the production SELECT did not actually request.
         const row = {id: actor.id, rol: actor.rol, activo: actor.activo, session_version: actor.session_version};
@@ -100,6 +123,9 @@ test('fresh canonical delivery notifies once after commit/201 with current task 
     assert.deepEqual(notice.tarea[key], f.state().task[key], `Actual observed task field ${key}`);
   assert.equal(notice.tarea.propiedades_extra.revision_aprobada, false);
   assert.ok(f.order.indexOf('COMMIT') < f.order.indexOf('notify')); assert.equal(f.released(), true);
+  assert.equal(f.state().progress.length, 1);
+  assert.equal(f.state().progress[0].delivery_id, result.payload.delivery_id);
+  assert.equal(f.state().progress[0].editor_user_id, 4);
 });
 
 test('exact replay and GET never notify again or create another delivery', async () => {
@@ -108,6 +134,7 @@ test('exact replay and GET never notify again or create another delivery', async
   const replay = await f.run(); assert.equal(replay.status, 200); assert.equal(replay.payload.replayed, true);
   assert.equal((await f.run({method: 'GET'})).status, 200);
   assert.equal(f.notifications.length, 1); assert.equal(f.state().deliveries.length, 1);
+  assert.equal(f.state().progress.length, 1);
 });
 
 test('fresh replacement while already unapproved en_revision preserves first-effective-transition-only policy', async () => {
@@ -154,10 +181,21 @@ test('stale CAS and assignment denial cannot enqueue, mutate or bypass rollback'
   }
 });
 
-for (const stage of ['INSERT INTO task_editing_deliveries', 'COMMIT']) test(`failure at ${stage} never notifies`, async () => {
+for (const stage of ['INSERT INTO task_editing_deliveries', 'INSERT INTO public.progreso_edicion_entregas', 'COMMIT']) test(`failure at ${stage} never notifies`, async () => {
   const f = fixture({fault: sql => sql.startsWith(stage)}), before = structuredClone(f.state()), result = await f.run();
   assert.equal(result.next.length, 1); assert.equal(result.status, undefined);
   assert.deepEqual(f.notifications, []); assert.deepEqual(f.state(), before); assert.equal(f.released(), true);
+});
+
+test('new version updates evidence once without moving first date, credit or emitting a second review transition', async () => {
+  const f = fixture(); assert.equal((await f.run()).status, 201);
+  const first = structuredClone(f.state().progress[0]);
+  const next = await f.run({body: input({request_id: '20000000-0000-4000-8000-000000000395', expected_revision: 3})});
+  assert.equal(next.status, 201); assert.equal(f.state().deliveries.length, 2); assert.equal(f.state().progress.length, 1);
+  const current = f.state().progress[0];
+  assert.equal(current.entregada_at, first.entregada_at); assert.equal(current.editor_user_id, first.editor_user_id);
+  assert.equal(current.delivery_id, next.payload.delivery_id); assert.notEqual(current.delivery_id, first.delivery_id);
+  assert.equal(f.notifications.length, 1);
 });
 
 test('optional notifier omission retains the existing successful route contract', async () => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createEditingDeliveriesRouter, editingDeliveryTaskId, normalizeEditingDeliveryInput,
   editingDeliveryPayloadHash, editingDeliveryDto } from '../src/editing-deliveries.js';
+import { EDITING_PROGRESS_SCHEMA } from '../src/editing-progress-ledger.js';
 
 const KEY = '10000000-0000-4000-8000-000000000001';
 const SECOND = '20000000-0000-4000-8000-000000000002';
@@ -66,13 +67,28 @@ function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = fal
   let released = false, snapshot;
   let state = { task: { id: 8, revision: 2, estado: 'en_progreso', tipo_tarea: 'edicion', workspace: 'render_os', archived: 'false', trashed: 'false', assigned,
     material_referencia: 'https://example.com/raw', fecha_vencimiento: '2026-02-01', aclaraciones: 'No cambiar',
-    propiedades_extra: { workspace: 'render_os', guiones: 'Guion', revision_aprobada: true, revision_aprobada_por: 'Líder', revision_aprobada_por_id: 1, revision_aprobada_at: TIME, finalizada_at: TIME, edicion_responsable_id: 4 }, ...task }, events: [] };
+    propiedades_extra: { workspace: 'render_os', guiones: 'Guion', revision_aprobada: true, revision_aprobada_por: 'Líder', revision_aprobada_por_id: 1, revision_aprobada_at: TIME, finalizada_at: TIME, edicion_responsable_id: 4 }, ...task }, events: [], progress: [] };
   const db = { release() { released = true; }, async query(sql, params = []) {
     calls.push({ sql, params });
     const error = fault?.(sql);
     if (error) throw error instanceof Error ? error : Object.assign(new Error('Unexpected SQL failure'), { code: 'P0001' });
     if (sql.startsWith('BEGIN')) { snapshot = structuredClone(state); return { rows: [] }; }
     if (sql === 'ROLLBACK') { state = snapshot; return { rows: [] }; }
+    if (sql.includes('AS columns') && sql.includes('FROM pg_constraint')) return { rows: [{
+      columns: Object.entries(EDITING_PROGRESS_SCHEMA.columns).map(([name,[type,notNull]]) => ({name,type,notNull})),
+      constraints: Object.entries(EDITING_PROGRESS_SCHEMA.constraints).map(([name,definition]) => ({name,definition,validated:true,deferred:false})),
+    }] };
+    if (sql.startsWith('SELECT id,revision,estado,tipo_tarea,titulo,cliente_id,propiedades_extra')) return {rows:[structuredClone(state.task)]};
+    if (sql.startsWith('SELECT id,task_id,task_revision,recorded_at')) return {rows:state.events.slice(-1)};
+    if (sql.startsWith('SELECT tarea_id,editor_user_id,origen_registro,delivery_id,task_revision')) return {rows:state.progress};
+    if (sql.startsWith('SELECT a.usuario_id,a.tipo,u.activo')) return {rows:[{usuario_id:4,tipo:'responsable',activo:true}]};
+    if (sql.startsWith('INSERT INTO public.progreso_edicion_entregas')) {
+      state.progress.push({tarea_id:params[0],editor_user_id:params[6],origen_registro:'canonical_delivery',delivery_id:params[7],task_revision:params[8]});
+      return {rows:[]};
+    }
+    if (sql.startsWith('UPDATE public.progreso_edicion_entregas')) {
+      Object.assign(state.progress[0],{delivery_id:params[1],task_revision:params[2]});return {rows:[]};
+    }
     if (sql.startsWith('SELECT id,rol,activo,session_version,usuario,nombre FROM usuarios')) return { rows: [user] };
     if (sql.startsWith('SELECT id,publicacion_id FROM tareas')) return { rows: [{ id: 8, publicacion_id: linked ? 31 : null }] };
     if (sql.startsWith('SELECT s.id,s.tarea_id')) return { rows: linked ? [{ id: 51, tarea_id: 8, publicacion_id: 31, clave: 'cliente:7', periodo: '2026-01' }] : [] };

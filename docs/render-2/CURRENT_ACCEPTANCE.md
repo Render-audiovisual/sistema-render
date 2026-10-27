@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Auditoría integrada y nuevo candidato — 2026-10-27
+
+Ver EDITING_AUDIT_INTEGRATION_AND_RELEASE_CANDIDATE.md. Auditoría montada tras firma/identidad y writer de entrega atómico; estados nuevos y crédito por ID separados de históricos. Migración oficial `20261027144706_editing_progress_unified_ledger.sql`, sin051/052replay. Otra copia del respaldo reciente aplica41 migraciones y preserva64tablas/7.732filas/338tareas; asignacionesv2 nuevas338responsables+12colaboradores,62Líder sin repartir y110tablas restantes físicamente invariantes. Artefacto definitivo333archivos/manifest4eacd18bdc8b7597658c08cebc99c910caec853883880b85bfd20cf15ba7e920 preparado en ruta privada; aceptación final de suites se registra en el informe. No producción ni push. Correos diferidos por usuario; siguen pendientes procedimiento productivo, ventana, configuración y controles vivos, no solo correos. Los apartados siguientes son evidencia histórica.
+
 ### Controles renovados y corrección audiovisual — 2026-10-26
 
 Ver RELEASE_REFRESH_AND_CORRECTION_QA.md. Respaldo nuevo de Supabase restaurado y verificado:64 tablas/7.732filas/338tareas; respaldo manual Hostinger completado. El contenido de tareas cambió desde el respaldo anterior aunque su conteo coincide: no reutilizar planes viejos ni sustituir la base viva. Corrección web/WhatsApp comparte regla de negocio; CLI+módulo74PASS y HTTP/PG aislado5PASS. Auditoría de edición expresamente requerida antes de salir sigue pendiente, igual que identidades independientes, configuración y ejecución productiva segura. No push/despliegue/migración productiva. Los apartados siguientes son evidencia histórica de sus respectivas etapas, no anulan esta actualización.

@@ -14,7 +14,7 @@ test('pre093 populated personal blocks upgrade additively with durable immutable
   let db;
   t.after(async()=>{try{await db?.query('ROLLBACK').catch(()=>{});await db?.end();}finally{
     await f.cleanup();await assert.rejects(access(f.root),e=>e.code==='ENOENT');
-    t.diagnostic(`QA384 pre093 own fixture stopped port55971; cleanup ENOENT: ${f.root}`);
+    t.diagnostic(`QA384 receipt093-deferred fixture with editing-progress ledger stopped port55971; cleanup ENOENT: ${f.root}`);
   }});
   db=new pg.Client({host:'127.0.0.1',port,user:'render2_fixture',password:'',database:'render2_local_test',
     ssl:false,statement_timeout:20000,connectionTimeoutMillis:5000});await db.connect();
@@ -27,7 +27,7 @@ test('pre093 populated personal blocks upgrade additively with durable immutable
     VALUES($1,'texto','{"texto":"Historical private content"}',0,3),
       ($1,'checklist','{"titulo":"Historical checks","items":[]}',1,2)`,[list.id]);
   const tables=(await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(r=>r.tablename);
-  assert.equal(tables.length,108);assert.equal(tables.includes('personal_list_block_create_receipts'),false);
+  assert.equal(tables.length,109,'Receipt093 deferred; editing-progress ledger included in historical table hashes');assert.equal(tables.includes('personal_list_block_create_receipts'),false);
   const snapshot=async()=>{const hashes={};for(const table of tables.filter(name=>name!=='_migrations')){
     assert.match(table,/^[a-z_][a-z0-9_]*$/);
     hashes[table]=(await f.query(`SELECT md5(coalesce(jsonb_agg(jsonb_build_array(to_jsonb(r),r.xmin::text,r.ctid::text)
@@ -57,11 +57,12 @@ test('pre093 populated personal blocks upgrade additively with durable immutable
     const currentLedger=await ledger();assert.equal(currentLedger.length,oldLedger.length+1);
     assert.deepEqual(currentLedger.slice(0,-1),oldLedger,'Every old ledger tuple also stays untouched');
     assert.deepEqual(await f.query('SELECT * FROM personal_list_block_create_receipts'),[]);
-    assert.equal((await f.query("SELECT count(*)::int n FROM pg_tables WHERE schemaname='public'"))[0].n,109);
+    assert.equal((await f.query("SELECT count(*)::int n FROM pg_tables WHERE schemaname='public'"))[0].n,110,'Receipt093 adds exactly one table; editing-progress ledger remains covered');
     await assertCoreSchemaReady(db);
     const status=await cli(['status']);assert.equal(status.code,0);const after=JSON.parse(status.stdout);
     assert.deepEqual(after.status.pending,[]);
-    assert.deepEqual(after.status.applied,[...approved.status.applied,'093_personal_list_block_create_receipts.sql']);
+    assert.deepEqual(after.status.applied,[...approved.status.applied,'093_personal_list_block_create_receipts.sql'].sort(),
+      'Status lists every applied migration lexically, including the already installed timestamped ledger migration');
   });
   await t.test('actual PK, actor RESTRICT, no domain FK and immutable rows reject invalid operations',async()=>{
     const constraints=(await db.query(`SELECT contype,confdeltype,condeferrable,confrelid::regclass::text target,

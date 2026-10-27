@@ -31,6 +31,14 @@ test('canonical correction notifies current assigned IDs, never historical deliv
   await f.query(`INSERT INTO task_editing_deliveries(id,task_id,actor_id,request_id,payload_hash,task_revision,url,notes)
     VALUES($1,$2,91002,$3,$4,$5,'https://example.invalid/qa396/historical-delivery','QA396 seeded historical author')`,
   [deliveryId,seed.id,randomUUID(),'a'.repeat(64),seed.revision]);
+  // Explicit fixture credit belongs to the assigned editor, not historical
+  // artifact author91002. The correction must only project this existing row.
+  await f.query(`INSERT INTO progreso_edicion_entregas
+    (tarea_id,editor_clave,titulo_snapshot,cliente_id,estado_actual,entregada_at,activa,
+     editor_user_id,origen_registro,delivery_id,task_revision)
+    SELECT t.id,'user:91003',t.titulo,t.cliente_id,t.estado,d.recorded_at,true,
+      91003,'canonical_delivery',d.id,t.revision FROM tareas t
+    JOIN task_editing_deliveries d ON d.task_id=t.id WHERE t.id=$1 AND d.id=$2`,[seed.id,deliveryId]);
   assert.deepEqual(await f.query('SELECT usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=$1 ORDER BY usuario_id',[seed.id]),[
     {usuario_id:91003,tipo:'responsable'},{usuario_id:91004,tipo:'colaborador'},
   ]);
@@ -38,8 +46,8 @@ test('canonical correction notifies current assigned IDs, never historical deliv
   const admin=await login('qa_franco'),employee=await login('qa_luciano');
   const api=(suffix,token=admin,method='GET',body)=>request(f.base,`/api/tareas-edicion/${seed.id}/${suffix}`,{token,method,body});
   const tables=(await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(r=>r.tablename);
-  assert.equal(tables.length,109);
-  const allowed=new Set(['tareas','task_editing_reviews','mia_private_task_notifications']);
+  assert.equal(tables.length,110);
+  const allowed=new Set(['tareas','task_editing_reviews','mia_private_task_notifications','progreso_edicion_entregas']);
   const snapshot=async()=>{
     const hashes={};for(const table of tables){
       assert.match(table,/^[a-z_][a-z0-9_]*$/);
@@ -53,6 +61,11 @@ test('canonical correction notifies current assigned IDs, never historical deliv
   const eligibilityDb={query:async(sql,values)=>({rows:await f.query(sql,values)})};
   const decisions=()=>f.query('SELECT * FROM task_editing_reviews ORDER BY id');
   const task=async()=>(await f.query('SELECT * FROM tareas WHERE id=$1',[seed.id]))[0];
+  const progress=()=>f.query('SELECT * FROM progreso_edicion_entregas ORDER BY id');
+  const originalProgress=await progress();assert.equal(originalProgress.length,1);
+  assert.equal(originalProgress[0].tarea_id,String(seed.id));assert.equal(originalProgress[0].editor_user_id,91003);
+  assert.equal(originalProgress[0].delivery_id,deliveryId);assert.equal(originalProgress[0].estado_actual,'en_revision');
+  assert.equal(originalProgress[0].entregada_at,(await f.query('SELECT recorded_at FROM task_editing_deliveries WHERE id=$1',[deliveryId]))[0].recorded_at);
   assert.deepEqual(await notices(),[]);assert.deepEqual(await decisions(),[]);
   assert.equal((await f.query('SELECT count(*)::int n FROM editorial_publicacion_eventos'))[0].n,0);
   const before=await snapshot(),original=await task();
@@ -71,6 +84,12 @@ test('canonical correction notifies current assigned IDs, never historical deliv
     assert.equal(receipt.id,created.decision_id);assert.equal(receipt.task_id,seed.id);assert.equal(receipt.actor_id,91001);
     assert.equal(receipt.delivery_id,deliveryId);assert.equal(receipt.action,'correcciones');assert.equal(receipt.notes,notes);
     assert.equal(receipt.request_id,intent.request_id);assert.equal(receipt.task_revision,saved.revision);
+    const ledger=await progress();assert.equal(ledger.length,1);
+    const credit=ledger[0];assert.ok(Number.isFinite(Date.parse(credit.baja_at)));
+    assert.ok(Date.parse(credit.updated_at)>=Date.parse(originalProgress[0].updated_at));
+    assert.deepEqual(credit,{...originalProgress[0],estado_actual:'en_progreso',task_revision:saved.revision,
+      activa:false,baja_at:credit.baja_at,updated_at:credit.updated_at},
+    'Correction changes only ledger state/revision/activity timestamps, preserving task/editor/date credit and artifact');
     const deadline=Date.now()+5000;let queued;
     do{queued=await notices();if(queued.length>=2)break;await new Promise(resolve=>setTimeout(resolve,25));}while(Date.now()<deadline);
     assert.equal(queued.length,2,'Actual server must queue exactly both current assignees');
@@ -95,9 +114,9 @@ test('canonical correction notifies current assigned IDs, never historical deliv
     for(const table of tables)if(!allowed.has(table))assert.equal(stable[table],before[table],table);
     for(const notice of queued)assert.equal(await taskNotificationEligible(eligibilityDb,notice),true,
       'Both current active WhatsApp-enabled assignments are initially eligible');
-    assert.deepEqual(await snapshot(),stable,'Initial eligibility checks are read-only across all109 tables');
+    assert.deepEqual(await snapshot(),stable,'Initial eligibility checks are read-only across all110 tables');
   });
-  await t.test('replay200, current history GETs and stale409 add no decision/notice and preserve all109 physical-table hashes',async()=>{
+  await t.test('replay200, current history GETs and stale409 add no decision/notice and preserve all110 physical-table hashes',async()=>{
     assert.ok(created&&stable,'Fresh decision and both notices must succeed first');
     const replay=ok(await api('correcciones',admin,'POST',intent));assert.equal(replay.replayed,true);
     assert.equal(replay.decision_id,created.decision_id);assert.deepEqual(replay.decisions,created.decisions);
@@ -109,7 +128,7 @@ test('canonical correction notifies current assigned IDs, never historical deliv
     assert.equal((await notices()).length,2);assert.equal((await decisions()).length,1);
     assert.deepEqual(await snapshot(),stable);
     assert.equal((await f.query('SELECT count(*)::int n FROM editorial_publicacion_eventos'))[0].n,0);
-    t.diagnostic('109-table post-setup/login baseline; only3 explicit tables changed,106 invariant; no provider delivery claimed');
+    t.diagnostic('110-table post-setup/login baseline; only4 explicitly asserted tables changed,106 invariant; no provider delivery claimed');
   });
   await t.test('explicit fixture membership removal revokes only collaborator delivery eligibility; SQL checks remain mutation-free',async()=>{
     assert.ok(stable,'Prior correction/replay stages must succeed first');
@@ -128,6 +147,6 @@ test('canonical correction notifies current assigned IDs, never historical deliv
     }
     assert.deepEqual(await snapshot(),afterRemoval,'Eligibility reads never rewrite queue, assignments or any public-table tuple');
     assert.equal((await f.query('SELECT count(*)::int n FROM editorial_publicacion_eventos'))[0].n,0);
-    t.diagnostic('Separate explicit membership-removal stage: only tarea_asignaciones changed; subsequent109-table SQL eligibility reads invariant');
+    t.diagnostic('Separate explicit membership-removal stage: only tarea_asignaciones changed; subsequent110-table SQL eligibility reads invariant');
   });
 });
