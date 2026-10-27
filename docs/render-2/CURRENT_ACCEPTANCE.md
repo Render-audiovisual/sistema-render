@@ -4,7 +4,21 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Ejecutor dedicado y revisión Hostinger renovada — 2026-10-27
+
+Implementado el motor atómico y su CLI separado:41SQL canónicos más asignaciones explícitas, validación de artefacto instalado/backup/alcance, huella previa completa y preservación de filas/tuplas/ACL antes del COMMIT. Rechaza estado nuevo no revisado y no reintenta un COMMIT incierto. Aprobaciones externas privadas; no se emitió ninguna productiva. Preparador y migrador local anteriores mantienen sus restricciones. Ver PRODUCTION_EXECUTOR_CONTRACT.md.
+
+70 focalesPASS; backend final3.070PASS/190opt-inSKIP/0FAIL de3.260; cohorte existente426PASS/0FAIL/0SKIP. Candidato final339archivos en `/private/tmp/render-executor-final-sYriWq/app`, manifestSHA25685169c1ea45a867870e435bf3028000a1e6a97f6cf15ad9940e54f3c1d9de8d9, dependencias instaladas/0vulnerabilidades conocidas y12controles smokePASS.
+
+Ensayo físico separado6PASS/0FAIL/0SKIP desde el CLI instalado de ese candidato, sobre otra base clonada de la restauración reciente:64tablas originales,338tareas originales más una sintética posterior al backup. Se creó otro dump real con esa tarea y se restauró/verificó aparte. Snapshot antiguo rechazado antes de consumir autoridad de QA; fallo tardío por usuario inválido revierte los41SQL; éxito confirma41SQL+351bindings (339responsables/12colaboradores), ledger58→99 y cero huérfanos. Todas las proyecciones/tuplas originales conservadas y persistencia tras reiniciar. Base restaurada de origen intacta y clúster detenido; finally reforzado para que un error al restaurar HBA tampoco omita detener el listener propio. Log final `/private/tmp/render-executor-full-restored-copy-final.log`, evidencia privada `/private/tmp/render2-upgrade-PhlcZ6/final-executor-qa-361ffb170c30.json`. No prueba de ACL/ownership de producción: la restauración usa no-owner/no-privileges y los checks de seguridad son relativos a la copia.
+
+Corrección de conteo histórico: el intent338 del respaldo reciente contiene56responsablesLíder, no62. Se mantienen exactamente esos IDs sin repartir ni fabricar seis asignaciones. Las menciones anteriores a62 no certifican el conteo vigente. La ejecución productiva futura debe regenerar el alcance con **todas** las tareas actuales; no reutilizar el hash/snapshot/autoridad de estas copias. El test utiliza exclusivamente los IDs del intent revisado como datos de prueba y construye un alcance nuevo.
+
+Hostinger inspeccionado visualmente en sesión renovada por el usuario: mismo43f02707 publicado, Node24, raíz./, Other y autodeploy habilitado;17nombres de variables revisados, APP_URL correcto y SETUP_DEMO_DATA=false. Faltan flags explícitos del runtime nuevo; no se guardó nada ni se revelaron secretos. Ver HOSTINGER_READONLY_REVIEW_20261027.md. No push, migración productiva, restart, redeploy ni sustitución de la base. Siguen pendientes ventana/backup final/estado vivo/configuración autorizada y correos de dueños diferidos.
+
 ### Procedimiento seguro y propuesta Hostinger — 2026-10-27
+
+Evidencia histórica de la preparación anterior al ejecutor descrito arriba.
 
 Actualización de QA del candidato:12 controles smokePASS desde su propio servidor/dependencias, CLI help offline correcto, inventario invariante y0 vulnerabilidades runtime conocidas. No nuevas pruebas de proveedores o UI móvil. Ver los límites y las rutas privadas en el protocolo.
 
