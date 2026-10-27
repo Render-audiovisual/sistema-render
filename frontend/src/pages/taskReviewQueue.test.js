@@ -207,11 +207,12 @@ test('repeated confirmation after refreshed inventory cannot hide or overwrite i
  assert.equal(result.task,refreshed);assert.equal(f.state.effects.length,effects);
 });
 
-test('legacy approval has no manual controls/drop anchor and ordinary arrows skip it, without state writes',()=>{
+test('mixed review and historical approvals have no manual controls/drop anchor or state writes',()=>{
  const legacy=task(2,{propiedades_extra:{revision_aprobada:true}}),ordinary=task(1,{estado:'aprobada'}),last=task(3,{estado:'aprobada'}),end=task(4,{estado:'aprobada'}),events=[];
  const deps={sort:'manual',archiveMode:'active',manualReady:true,canUserEditTask,canonicalTaskState,effectiveTaskFilterState,taskOrderArrowAnchor,sesion:{usuario:{id:7,rol:'admin'}},onReorder:(...args)=>events.push(args)};
  assert.equal(callback('TasksView','orderControls',deps)(legacy,[ordinary,legacy,last,end],1),undefined);
- callback('TasksView','orderControls',deps)(ordinary,[ordinary,legacy,last,end],0).down();assert.deepEqual(events,[[ordinary,end]]);
+ for(const item of [ordinary,legacy,last,end])assert.equal(callback('TasksView','orderControls',deps)(item,[ordinary,legacy,last,end],0),undefined);
+ assert.deepEqual(events,[]);
  events.length=0;const event={dataTransfer:{types:['text/task-id'],getData:()=>String(ordinary.id)},preventDefault(){},stopPropagation(){this.stopped=true}};
  callback('TasksView','dropBeforeTask',{...deps,tasksLatestRef:{current:[ordinary]},setDragOver:()=>{}})(event,legacy);assert.equal(event.stopped,true);assert.deepEqual(events,[]);
  callback('TasksView','dropOnProcessButton',{...deps,tasksLatestRef:{current:[legacy]},setDragOver:()=>{},move:()=>assert.fail('Historical label is not an approval intent')})({...event,dataTransfer:{...event.dataTransfer,getData:()=>String(legacy.id)}},{id:'aprobada'});assert.deepEqual(events,[]);assert.equal(legacy.estado,'en_revision');

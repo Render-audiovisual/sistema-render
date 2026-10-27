@@ -11,7 +11,7 @@ import {createCapturedRequest,isSessionFailure} from '../shared/session/captured
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {canUserEditTask,canUserMoveTask} from '../workspace-task-state.js';
 import {canonicalTaskState} from '../features/render-os/constants.js';
-const uuid='11111111-1111-4111-8111-111111111111',snapshot='a'.repeat(64),task={id:5,revision:7,estado:'en_revision',asignado_a_id:7},before={id:6,revision:3,estado:'en_revision'};
+const uuid='11111111-1111-4111-8111-111111111111',snapshot='a'.repeat(64),task={id:5,revision:7,estado:'en_progreso',asignado_a_id:7},before={id:6,revision:3,estado:'en_progreso'};
 const selection=()=>({task:{...task},before:{...before},orderRevision:'9007199254740993'});
 const ack=(input,extra={})=>({task_id:input.task_id,before_id:input.before_id,order_revision:(BigInt(input.expected_order_revision)+1n).toString(),replayed:false,changed:true,...extra});
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return{promise,resolve,reject}};
@@ -110,7 +110,7 @@ test('actual own-card arrows use observed loaded anchors and explicit column end
  assert.equal(controls({...task,asignado_a_id:99},rows,0),undefined);assert.equal(controls(task,rows.slice(0,2),0).down,null);
  const dropDeps={sort:'manual',archiveMode:'active',manualReady:true,tasksLatestRef:{current:[task]},sesion:deps.sesion,canUserMoveTask,canonicalTaskState,setDragOver(){},onReorder:deps.onReorder,move:()=>assert.fail('same-column ordering must not write state'),compactBoard:false};
  dropDeps.canUserEditTask=canUserEditTask;
- const drop=callback('TasksView','dropOnProcessButton',dropDeps);drop({dataTransfer:{types:['text/task-id'],getData:()=> '5'},preventDefault(){}},{id:'en_revision'});
+ const drop=callback('TasksView','dropOnProcessButton',dropDeps);drop({dataTransfer:{types:['text/task-id'],getData:()=> '5'},preventDefault(){}},{id:'en_progreso'});
  assert.deepEqual(events.at(-1),[task,null]);
  const done={...task,estado:'finalizada'};dropDeps.tasksLatestRef.current=[done];assert.equal(canUserMoveTask(done,deps.sesion.usuario),false);
  callback('TasksView','dropOnProcessButton',dropDeps)({dataTransfer:{types:['text/task-id'],getData:()=> '5'},preventDefault(){}},{id:'finalizadas',dropState:'finalizada'});

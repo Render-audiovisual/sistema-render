@@ -36,7 +36,7 @@ test('actual mobile shared select is controlled by the existing view setter and 
   assert.match(expr(opening,'onChange'),/^\(?event\)?\s*=>\s*setView\(event\.target\.value\)$/);
 });
 
-test('desktop tabs keep the same five choices and Feedback remains an independent navigation action',()=>{
+test('desktop tabs keep the same five choices without a task-header Feedback shortcut or polling',()=>{
   const navigation=requiredOpening(node=>attr(node,'className')?.initializer?.text==='ros-primary-navigation');
   const tabs=requiredOpening(node=>attr(node,'className')?.initializer?.text==='ros-view-tabs');
   assert.ok(nodes(navigation.parent,node=>node===tabs).length);
@@ -46,11 +46,8 @@ test('desktop tabs keep the same five choices and Feedback remains an independen
   assert.deepEqual(buttons.map(button=>text(button.props.children)),views.map(([,label])=>label));
   buttons.forEach(button=>button.props.onClick());assert.deepEqual(calls,views.map(([value])=>value));
   assert.deepEqual(buttons.map(button=>button.props['aria-pressed']),[false,false,false,false,true]);
-  const feedback=requiredOpening(node=>node.tagName.getText(tree)==='button'&&expr(node,'onClick')==='openFeedback');
-  assert.ok(nodes(navigation.parent,node=>node===feedback).length);assert.equal(attr(feedback,'type').initializer.text,'button');
-  const events=[];const link=renderNode(feedback.parent,{TaskViewIcon,newFeedbackCount:2,openFeedback:()=>events.push('feedback')});
-  assert.match(text(link),/^Feedback2$/);link.props.onClick();assert.deepEqual(events,['feedback']);
-  assert.deepEqual(calls,views.map(([value])=>value),'Feedback does not call the view setter');
+  assert.equal(openings.some(node=>node.tagName.getText(tree)==='button'&&expr(node,'onClick')==='openFeedback'),false);
+  assert.doesNotMatch(owner.getText(tree), /refreshFeedbackCount|newFeedbackCount|\/api\/notas\/nuevas/);
 });
 
 const sheets=['WorkspaceReadOnly','TaskHeader'];

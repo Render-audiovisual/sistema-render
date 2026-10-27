@@ -9,6 +9,7 @@ import {loginHrefForDestination} from './login-destination.js';
 import {createRememberedViewOwner} from './rememberedViewOwner.js';
 import {saveRememberedView} from './rememberedViews.js';
 import {personalHomeNavigate} from '../../pages/personalHome.js';
+import {ownerAccessLabel,rememberOwnerAccessChoice} from '../session/owner-access-choice.js';
 const source=readFileSync(new URL('../../App.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('App.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function declaration(name){let found;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(tree)===name)found=node;ts.forEachChild(node,visit);}visit(tree);assert.ok(found);return found;}
@@ -37,6 +38,34 @@ test('actual logout saves current preferences before withdrawing identity but st
   const logout=evaluate(declaration('logout').initializer.arguments[0],f.deps);
   logout();assert.deepEqual(calls,['preferences','logout']);
   f.setSnapshot({...f.snapshot});logout();assert.deepEqual(calls,['preferences','logout']);
+});
+
+test('actual owner access rejects non-admin, stale observations and invalid hints without logout or storage writes',async()=>{
+  for(const condition of ['employee','stale','invalid','unavailable']){
+    const f=fixture(),writes=[],calls=[];
+    const admin={status:'authenticated',session:{usuario:{id:1,rol:'admin'}}};
+    f.deps.sessionSnapshot=condition==='employee'?f.snapshot:admin;f.setSnapshot(f.deps.sessionSnapshot);
+    if(condition==='stale')f.setSnapshot({...admin});
+    if(condition==='unavailable')f.fail();
+    Object.assign(f.deps,{ownerAccessPending:{current:false},ownerAccessLabel,rememberOwnerAccessChoice,logout:()=>calls.push('logout')});
+    f.win.sessionStorage={setItem:(...args)=>writes.push(args)};
+    const change=evaluate(declaration('changeOwnerAccess').initializer.arguments[0],f.deps);
+    assert.equal(await change(condition==='invalid'?'admin':'agustin'),false);
+    assert.deepEqual(calls,[]);assert.deepEqual(writes,[]);
+  }
+});
+
+test('actual owner access uses real logout once on double click and can retry after failed withdrawal',async()=>{
+  const f=fixture(),admin={status:'authenticated',session:{usuario:{id:1,rol:'admin'}}},writes=[];
+  f.deps.sessionSnapshot=admin;f.setSnapshot(admin);f.win.sessionStorage={setItem:(...args)=>writes.push(args)};
+  let finish,count=0;
+  Object.assign(f.deps,{ownerAccessPending:{current:false},ownerAccessLabel,rememberOwnerAccessChoice,
+    logout:()=>{count++;return new Promise(resolve=>{finish=resolve;});}});
+  const change=evaluate(declaration('changeOwnerAccess').initializer.arguments[0],f.deps);
+  const pending=change('agustin');assert.equal(await change('franco'),false);assert.equal(count,1);
+  assert.deepEqual(writes,[['render.owner-access-choice','agustin']]);
+  finish(false);assert.equal(await pending,false);assert.equal(f.deps.ownerAccessPending.current,false);
+  const retry=change('franco');assert.equal(count,2);finish(true);assert.equal(await retry,true);
 });
 
 test('actual Sidebar callback captures route/runtime identity and supplies one guarded controlled request',async()=>{
@@ -138,8 +167,8 @@ function homeFixture() {
   visit(tree);assert.ok(quickHome);
   assert.equal(quickHome.attributes.properties.find(attr=>attr.name?.getText(tree)==='onNavigate').initializer.expression.getText(tree),'navigateSidebar');
   const js=ts.transpileModule(`const element=(${quickHome.getText(tree)});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
-  const element=Function('React','QuickHomePage','sesion','navigateSidebar',`${js};return element;`)(
-    {createElement:(type,props)=>({type,props})},()=>null,store.getSession(),callback);
+  const element=Function('React','QuickHomePage','sesion','navigateSidebar','changeOwnerAccess',`${js};return element;`)(
+    {createElement:(type,props)=>({type,props})},()=>null,store.getSession(),callback,()=>false);
   return{...f,store,login,values,viewOwner:owner,home:element.props.onNavigate,element};
 }
 

@@ -44,7 +44,7 @@ test('column restore is URL-scoped with no implicit preference when a fresh URL 
   const b=getTaskViewState('?responsible=id:91004');
   assert.equal(a.boardColumn,'en_progreso');assert.equal(b.boardColumn,'pendiente');
   assert.equal(getTaskViewState('?board_column=aprobada&review_scope=personal').status,'en_revision');
-  assert.equal(getTaskViewState('?board_column=aprobada&review_scope=personal').boardColumn,'aprobada');
+  assert.equal(getTaskViewState('?board_column=aprobada&review_scope=personal').boardColumn,'pendiente','Removed display column is not a valid stored column; business approval state remains separate');
 });
 test('actual task API serializer ignores presentation column and preserves explicit server state filter',()=>{
   const settings={sort:'manual',status:'en_revision',reviewScope:'',responsible:'id:91003',client:'27'};

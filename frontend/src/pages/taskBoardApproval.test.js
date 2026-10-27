@@ -77,34 +77,34 @@ test('actual permission/busy/same-state checks precede review navigation', () =>
     assert.equal(f.requests.length, 0); assert.deepEqual(f.state, { selected: null, review: null }); noWrites(f);
   }
 });
-test('actual cross-column card drop bubbles into background review, while compact navigation stays on the source column', async () => {
+test('review-to-approved card drop stays in the mixed display without ordering, approval or navigation', async () => {
   const f = fixture(), e = event(), target = { ...task, id: 6, estado: 'aprobada' };
   const cardFn = nodes(ast, n => ts.isVariableDeclaration(n) && n.name.getText(ast) === 'TaskCard')[0].initializer.arguments[0];
   const article = nodes(cardFn, n => ts.isJsxOpeningElement(n) && n.tagName.getText(ast) === 'article')[0];
   const drop = article.attributes.properties.find(p => p.name?.text === 'onDrop').initializer.expression;
   evaluate(drop, { onOrderDrop: f.before, task: target })(e);
-  assert.equal(e.stopped, false, 'cross-column drop must reach column handler');
-  f.drop(e, { id: 'aprobada' }); await Promise.all(f.pending);
-  assert.equal(e.prevented, true); assert.equal(f.state.review, 5); assert.equal(f.requests.length, 1);
+  assert.equal(e.stopped, true, 'Mixed-column card drop is consumed without a business transition');
+  f.drop(e, { id: 'en_revision', states: ['en_revision','aprobada'], dropState:'en_revision' }); await Promise.all(f.pending);
+  assert.equal(e.prevented, true); assert.equal(f.state.review, null); assert.equal(f.requests.length, 0);
   assert.ok(!f.effects.some(([name]) => name === 'column')); noWrites(f);
 });
-test('actual background drop and mobile state selector both route to review without writes', async () => {
+test('mixed background drop is inert; explicit mobile approval selector still opens required review without writes', async () => {
   for (const via of ['background', 'selector']) {
     const f = fixture();
-    if (via === 'background') f.drop(event(), { id: 'approved', dropState: 'aprobada' });
+    if (via === 'background') f.drop(event(), { id: 'en_revision', states:['en_revision','aprobada'], dropState: 'en_revision' });
     else {
       const cardFn = nodes(ast, n => ts.isVariableDeclaration(n) && n.name.getText(ast) === 'TaskCard')[0].initializer.arguments[0];
       const select = nodes(cardFn, n => ts.isJsxElement(n) && n.openingElement.tagName.getText(ast) === 'select')[0];
       const element = evaluate(select, { canMove: true, moveBlocked: false, task, canonicalTaskState, availableStatuses: STATUSES, onMove: f.move });
       let stopped = false; element.props.onChange({ target: { value: 'aprobada' }, stopPropagation() { stopped = true; } }); assert.equal(stopped, true);
     }
-    await Promise.all(f.pending); assert.equal(f.state.review, 5); assert.equal(f.requests.length, 1); noWrites(f);
+    await Promise.all(f.pending); assert.equal(f.state.review, via==='background'?null:5); assert.equal(f.requests.length, via==='background'?0:1); noWrites(f);
   }
 });
-test('actual same-column ordering remains before-anchor or explicit end; ordinary/noncanonical moves retain existing routes', () => {
+test('mixed-column ordering is unavailable; explicit ordinary/noncanonical moves retain existing approval routes', () => {
   const f = fixture(), before = { ...task, id: 6 }; const e = event();
-  f.before(e, before); assert.equal(e.stopped, true); assert.deepEqual(f.effects.at(-1), ['reorder', task, before]);
-  f.drop(event(), { id: 'en_revision' }); assert.deepEqual(f.effects.at(-1), ['reorder', task, null]);
+  f.before(e, before); assert.equal(e.stopped, true); assert.deepEqual(f.effects, []);
+  f.drop(event(), { id: 'en_revision',states:['en_revision','aprobada'] }); assert.deepEqual(f.effects, []);
   assert.equal(f.requests.length, 0); assert.equal(f.state.review, null);
   for (const row of [{ ...task, tipo_tarea: 'diseno' }, { ...task, propiedades_extra: {} }]) {
     assert.equal(f.move(row, 'aprobada'), 'approval'); assert.deepEqual(f.effects.at(-1), ['approve', row]);

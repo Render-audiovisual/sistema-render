@@ -16,7 +16,7 @@ function extract(node, deps) {
   const js = ts.transpileModule(`const extracted = (${node.getText(file)});`, { compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.None } }).outputText;
   return new Function(...Object.keys(deps), `${js};return extracted;`)(...Object.values(deps));
 }
-const moved = { id: 5, revision: 7, titulo: 'Source', estado: 'en_revision', asignado_a_id: 7 };
+const moved = { id: 5, revision: 7, titulo: 'Source', estado: 'en_progreso', asignado_a_id: 7 };
 const anchor = { ...moved, id: 6, revision: 3, titulo: 'Anchor' };
 const uuid = '11111111-1111-4111-8111-111111111111';
 function transfer() {
@@ -86,7 +86,7 @@ test('actual pointer/start/card-drop/reorder/model/cookie capture sends exactly 
 test('actual source drag to same-column background sends exactly one explicit-end POST', async () => {
   const f = fixture(), data = transfer(), card = f.render(moved);
   card.props.onPointerDown(event(data)); card.props.onDragStart(event(data));
-  f.dropEnd(event(data), { id: 'en_revision' }); await Promise.all(f.pending);
+  f.dropEnd(event(data), { id: 'en_progreso' }); await Promise.all(f.pending);
   assert.equal(f.calls.length, 1);
   assert.deepEqual(JSON.parse(f.calls[0].options.body), { request_id: uuid, task_id: 5, expected_revision: 7,
     before_id: null, expected_before_revision: null, expected_order_revision: '3' });
@@ -105,7 +105,7 @@ test('actual moveBlocked start has no transported ID and no order request', asyn
   const f = fixture({ blocked: true }), data = transfer(), card = f.render(moved), start = event(data);
   card.props.onPointerDown(event(data)); card.props.onDragStart(start);
   assert.equal(start.prevented, true); assert.deepEqual(data.types, []);
-  f.render(anchor).props.onDrop(event(data)); f.dropEnd(event(data), { id: 'en_revision' });
+  f.render(anchor).props.onDrop(event(data)); f.dropEnd(event(data), { id: 'en_progreso' });
   await Promise.all(f.pending); assert.equal(f.calls.length, 0);
 });
 
@@ -116,7 +116,7 @@ test('actual self-drop and foreign transfer are consumed or ignored without POST
     if (kind === 'foreign-type') data.setData('text/plain', '5');
     if (kind === 'foreign-id') data.setData('text/task-id', '999');
     const drop = event(data); card.props.onDrop(drop);
-    if (kind !== 'self') f.dropEnd(event(data), { id: 'en_revision' });
+    if (kind !== 'self') f.dropEnd(event(data), { id: 'en_progreso' });
     await Promise.all(f.pending); assert.equal(f.calls.length, 0, kind);
     if (kind === 'self') assert.equal(drop.stopped, true);
   }

@@ -44,7 +44,7 @@ function TaskRows({ items, today, onNavigate }) {
   })}</ol>;
 }
 
-export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
+export function QuickHomePage({ sesion, onNavigate, onChangeOwner, request = apiRequest }) {
   const [editorialRecordOpen, setEditorialRecordOpen] = useState(false);
   const editorialRecordOpenRef = useRef(false);
   const recordOpenChanged = useCallback(open => {
@@ -94,9 +94,16 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
       <header className="quick-home-header">
         <div><span className="qh-eyebrow">Mi trabajo</span><h1>{firstName ? `Hola, ${firstName}.` : "Tu inicio"}</h1>
           <p>{data ? homeDate(data.today, true) : "Tu trabajo asignado y los próximos pasos."}</p></div>
+        <div className="qh-header-actions">
+        {role === 'admin' && typeof onChangeOwner === 'function' && <div className="qh-owner-access" role="group" aria-label="Cambiar cuenta de dueño">
+          <span>Cambiar cuenta</span>
+          <button type="button" disabled={editorialRecordOpen} onClick={() => onChangeOwner('franco')}>Franco · dueño</button>
+          <button type="button" disabled={editorialRecordOpen} onClick={() => onChangeOwner('agustin')}>Agustín · dueño</button>
+        </div>}
         <button type="button" className="qh-refresh" onClick={refresh} disabled={loading || !validIdentity || editorialRecordOpen}>
           <span aria-hidden="true">↻</span> Actualizar
         </button>
+        </div>
       </header>
 
       {loading && <div className="qh-status" role="status">{data ? "Actualizando tu trabajo…" : "Cargando tu trabajo…"}</div>}

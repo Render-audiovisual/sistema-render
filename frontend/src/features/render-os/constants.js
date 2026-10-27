@@ -11,8 +11,7 @@ export const STATUSES = [
 export const BOARD_COLUMNS = [
   { id: "pendiente", label: "Pendientes", color: "#8d9095", states: ["pendiente"] },
   { id: "en_progreso", label: "En proceso", color: "#3378d4", states: ["en_progreso"] },
-  { id: "en_revision", label: "Para revisar", color: "#df9830", states: ["en_revision"] },
-  { id: "aprobada", label: "Aprobadas", color: "#7459e8", states: ["aprobada"] },
+  { id: "en_revision", label: "Para revisar", color: "#df9830", states: ["en_revision", "aprobada"], dropState: "en_revision" },
   { id: "finalizadas", label: "Finalizadas", color: "#34a16f", states: ["finalizada"], dropState: "finalizada" },
 ];
 

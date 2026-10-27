@@ -9,6 +9,11 @@
 .quick-home h2{font-size:16px;font-weight:600;letter-spacing:-.015em;line-height:1.4}
 .quick-home-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
 .quick-home-header p{color:var(--qh-muted);font-size:13px}
+.qh-header-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.qh-owner-access{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.qh-owner-access>span{color:var(--qh-muted);font-size:12px}
+.quick-home .qh-owner-access button{font-size:12px;padding:8px 12px}
+@media(max-width:760px){.quick-home-header{flex-wrap:wrap}.qh-header-actions{justify-content:flex-start;width:100%}.qh-owner-access>span{flex-basis:100%}}
 .qh-eyebrow{color:var(--qh-muted);font-size:12px;font-weight:500}
 .quick-home button{align-items:center;background:var(--qh-bg);border:1px solid var(--qh-line);border-radius:var(--render-radius-control);color:var(--qh-text);cursor:pointer;display:inline-flex;gap:8px;justify-content:center;min-height:44px;padding:8px 16px;font:inherit;white-space:nowrap}
 .quick-home button:hover:not(:disabled){background:var(--qh-soft)}

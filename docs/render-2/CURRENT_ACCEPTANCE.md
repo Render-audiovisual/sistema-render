@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Ajuste de Tareas y acceso de dueños — 2026-10-27
+
+Tareas queda con cuatro columnas, sin Aprobadas independiente. Las tareas aprobadas conservan su estado y etiqueta y aparecen en Para revisar; no se borran ni se finalizan/publican automáticamente. El grupo mixto no permite orden manual ambiguo, conservando movimientos válidos y el orden de las otras columnas. Feedback deja de aparecer como acceso del encabezado de Tareas y se elimina su polling allí; su página y navegación propia permanecen.
+
+Inicio incorpora accesos Franco/Agustín para administradores. Seleccionar uno utiliza el cierre real existente y requiere autenticación personal en Login. El nombre guardado en sessionStorage es solo un hint visual permitido; no reemplaza usuario/ID/rol, no rellena credenciales y no crea cuentas productivas. Correos reales siguen pendientes. Se cubren empleado, snapshot obsoleto, doble clic y cierre fallido.
+
+Frontend3.333PASS/0FAIL/0SKIP y build correcto (`index-D5-Llfll`). Log `/private/tmp/render-task-home-tests-final.log` y `/private/tmp/render-task-home-build-final.log`. Navegador real: FrancoQA→botónAgustín→Login→AgustínQA por contraseña; Inicio personal diferente, cuatro estados móviles, sin botónFeedback en Tareas; aprobación de una tarea sintética conserva la tarjeta en Para revisar. Capturas `/private/tmp/render-home-owner-access.png` y `/private/tmp/render-tasks-simplified.png`.
+
+Revisión local52920 reiniciada para renovar el HTML que el servidor mantiene en memoria. Se conservó un dump privado de sus datos de prueba y se restauraron las cuatro tareas. La herramienta18 generó un ajuste de sesión transaction_timeout no soportado por el servidor local16: se retiró exclusivamente ese SET del SQL de restauración local, sin cambiar filas ni el archivo original. Respaldo `/private/tmp/render-review-preserved-6JdCbc/review.dump`, servidor de revisión nuevamente activo. No se usó una base productiva ni se modificaron cuentas reales.
+
+**El candidato empaquetado de la etapa anterior no contiene estos cambios visuales.** Antes de publicar hay que generar y verificar otro paquete/manifest/alcance desde el nuevo commit; no reutilizar autorizaciones o hashes anteriores. Sin push ni cambios de Hostinger.
+
 ### Ejecutor dedicado y revisión Hostinger renovada — 2026-10-27
 
 Implementado el motor atómico y su CLI separado:41SQL canónicos más asignaciones explícitas, validación de artefacto instalado/backup/alcance, huella previa completa y preservación de filas/tuplas/ACL antes del COMMIT. Rechaza estado nuevo no revisado y no reintenta un COMMIT incierto. Aprobaciones externas privadas; no se emitió ninguna productiva. Preparador y migrador local anteriores mantienen sus restricciones. Ver PRODUCTION_EXECUTOR_CONTRACT.md.

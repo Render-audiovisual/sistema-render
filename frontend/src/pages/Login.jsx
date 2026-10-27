@@ -3,6 +3,8 @@ import { getSesion, guardarSesion } from "../utils.jsx";
 import { getApplicationSession } from "../shared/session/application-session-access.js";
 import { createLoginAttempts } from "../shared/session/login-attempt.js";
 import { readLoginDestination, resolveLoginDestination } from "../shared/navigation/login-destination.js";
+import { OWNER_ACCESS_CHOICES, ownerAccessLabel, readOwnerAccessChoice, rememberOwnerAccessChoice } from '../shared/session/owner-access-choice.js';
+import './OwnerAccess.css';
 
 // Fallback hardcodeado: el hosting de Hostinger no inyecta las
 // "Variables de entorno" del panel durante `npm run build` (solo en
@@ -14,6 +16,7 @@ const GOOGLE_CLIENT_ID =
   "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
 
 export function LoginPage({ sessionPending = false }) {
+  const [ownerChoice, setOwnerChoice] = useState(() => { try { return readOwnerAccessChoice(window.sessionStorage); } catch { return null; } });
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
@@ -105,6 +108,15 @@ export function LoginPage({ sessionPending = false }) {
           <p>Ingresá con tu usuario asignado para ver tu tablero de trabajo.</p>
         </div>
 
+        <div className="login-owner-access" role="group" aria-label="Acceso de dueños">
+          {OWNER_ACCESS_CHOICES.map(owner => <button type="button" className="btn" key={owner.id}
+            aria-pressed={ownerChoice === owner.id} disabled={cargando || sessionPending}
+            onClick={() => { setOwnerChoice(owner.id); setUsuario(''); setPassword(''); setError(null);
+              try { rememberOwnerAccessChoice(owner.id, window.sessionStorage); } catch { /* Label only. */ } }}>
+            {owner.label}
+          </button>)}
+        </div>
+        {ownerAccessLabel(ownerChoice) && <p className="login-owner-hint">Acceso de {ownerAccessLabel(ownerChoice)}. Ingresá con tu cuenta personal.</p>}
         <div ref={googleBtnRef} className="login-google-btn" />
 
         {GOOGLE_CLIENT_ID && (

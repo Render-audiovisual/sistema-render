@@ -22,7 +22,6 @@ import { insertTaskContentBlock } from "../features/render-os/utils/task-content
 import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import { buildTaskAssignmentInput } from "../shared/task-assignment-input.js";
-import { markFeedbackSeen, readFeedbackSeenAt } from "../features/render-os/utils/feedback-notifications.js";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { useTaskBoardMotion } from "../features/render-os/useTaskBoardMotion.js";
 import { useTaskWindowMotion } from "../features/render-os/useTaskWindowMotion.js";
@@ -1030,6 +1029,7 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
     onClick={(event) => { if (dragRef.current.suppressClick || event.target.closest('button,select,input,textarea,a,[contenteditable="true"]')) return; onOpen(task.id); }}>
     <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canDrag && <span className="ros-card-drag-handle" aria-hidden="true" title="Arrastrá desde la tarjeta, fuera de sus controles">⠿</span>}</div><h3><button type="button" className="ros-card-open" onClick={()=>onOpen(task.id)}>{task.titulo}</button></h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
+    {canonicalTaskState(task.estado) === 'aprobada' && <small className="ros-card-summary">Aprobada</small>}
     {task.estado === 'en_revision' && effectiveTaskFilterState(task) === 'aprobada' && <small className="ros-card-summary">Aprobada (registro histórico; sin evidencia de entrega)</small>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
@@ -1116,7 +1116,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const [dragOver, setDragOver] = useState("");
   const [columnLimits, setColumnLimits] = useState({});
   const [listLimit, setListLimit] = useState(500);
-  const [newFeedbackCount, setNewFeedbackCount] = useState(0);
   const [mobileBoardColumn, setMobileBoardColumn] = useState(initialViewState.boardColumn);
   const compactBoard = useMediaQuery("(max-width: 1024px)");
   const boardRef = useRef(null);
@@ -1157,38 +1156,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all" || taskStatus !== "all";
   const activeFilterCount = [responsible, client, sector, priority, area, taskStatus].filter((value) => value !== "all").length + Number(Boolean(reviewScope));
   const emptyMessage = getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode });
-  const refreshFeedbackCount = useCallback(async () => {
-    const guard = captureRequest();
-    if (!guard.current()) return;
-    const seenAt = readFeedbackSeenAt(sesion?.usuario);
-    if (!seenAt) {
-      markFeedbackSeen(sesion?.usuario);
-      setNewFeedbackCount((current) => current === 0 ? current : 0);
-      return;
-    }
-    try {
-      const result = await guard.request(`/api/notas/nuevas?desde=${encodeURIComponent(seenAt)}`);
-      guard.assertCurrent();
-      const nextCount = Math.max(0, Number(result?.cantidad) || 0);
-      setNewFeedbackCount((current) => current === nextCount ? current : nextCount);
-    } catch {
-      // El aviso es complementario: una falla nunca debe bloquear el tablero.
-    }
-  }, [captureRequest]);
-
-  useEffect(() => {
-    void refreshFeedbackCount();
-    const interval = window.setInterval(refreshFeedbackCount, 45_000);
-    const refreshWhenVisible = () => { if (!document.hidden) void refreshFeedbackCount(); };
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshWhenVisible);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [refreshFeedbackCount]);
-
   const incorporateRelatedTasks = useCallback((items) => {
     const guard = captureRequest();
     if (!guard.current()) return;
@@ -1282,11 +1249,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
     return 'move';
   }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked]);
-  const openFeedback = useCallback(() => {
-    if (!requestAppNavigation(window, "/feedback")) return;
-    window.history.pushState({ ...window.history.state, fromTasks: window.location.href }, "", "/feedback");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, []);
   const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setTaskStatus("all"); setReviewScope(''); };
   const changeTaskStatus = value => { if (value !== 'en_revision') setReviewScope(''); setTaskStatus(value); };
   const changeArchiveMode = value => { setReviewScope(''); setArchiveMode(value); };
@@ -1303,6 +1265,9 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     const task = tasksLatestRef.current.find(item => String(item.id) === event.dataTransfer.getData('text/task-id'));
     if (!task) return;
     const status = column.dropState || column.id;
+    // Display grouping is not a business transition or a shared-order group.
+    // In particular, dropping approved work here must not revoke approval.
+    if (column.states?.length > 1 && column.states.includes(effectiveTaskFilterState(task))) return;
     if (sort === 'manual' && effectiveTaskFilterState(task) !== canonicalTaskState(task.estado) && status === effectiveTaskFilterState(task)) return;
     if (sort === 'manual' && archiveMode === 'active' && canonicalTaskState(task.estado) === status) { if(manualReady&&canUserEditTask(task,sesion?.usuario))void onReorder(task,null); return; }
     if (!canUserMoveTask(task, sesion?.usuario)) return;
@@ -1312,12 +1277,23 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const dropBeforeTask = (event, before) => {
     if (sort !== 'manual' || archiveMode !== 'active' || !event.dataTransfer.types.includes('text/task-id')) return;
     const task = tasksLatestRef.current.find(item => String(item.id) === event.dataTransfer.getData('text/task-id'));
+    if (['en_revision', 'aprobada'].includes(effectiveTaskFilterState(before))) {
+      // Within the mixed display consume without ordering; another process
+      // bubbles to the column's en_revision transition, never to approval.
+      if (task && ['en_revision', 'aprobada'].includes(effectiveTaskFilterState(task))) {
+        event.preventDefault(); event.stopPropagation(); setDragOver('');
+      }
+      return;
+    }
     if (effectiveTaskFilterState(before) !== canonicalTaskState(before.estado) || task && effectiveTaskFilterState(task) !== canonicalTaskState(task.estado)) { event.preventDefault(); event.stopPropagation(); return; }
     if (!task || canonicalTaskState(task.estado) !== canonicalTaskState(before.estado)) return;
     event.preventDefault(); event.stopPropagation(); setDragOver('');
     if (manualReady && task.id !== before.id && canUserEditTask(task,sesion?.usuario)) void onReorder(task,before);
   };
   const orderControls = (task, items, index, visibleLimit = 250) => {
+    // Backend ordering anchors require one canonical state; the review display
+    // intentionally mixes two. Do not advertise ambiguous arrows/end moves.
+    if (['en_revision', 'aprobada'].includes(effectiveTaskFilterState(task))) return undefined;
     if(sort !== 'manual' || archiveMode !== 'active' || !canUserEditTask(task,sesion?.usuario) || effectiveTaskFilterState(task) !== canonicalTaskState(task.estado))return undefined;
     const candidates=items.slice(0,visibleLimit).filter(item=>effectiveTaskFilterState(item)===canonicalTaskState(item.estado));
     const observedIndex=candidates.findIndex(item=>item.id===task.id);
@@ -1331,7 +1307,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     <div className="ros-title-row"><div className="ros-title-copy"><span className="ros-page-emoji" aria-hidden="true">📋</span><div><h1>Tareas</h1><p>Organizá y priorizá el trabajo del equipo.</p></div></div><div className="ros-title-actions"><input className="ros-top-search" aria-label="Buscar tareas" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarea, cliente o responsable…"/><button className="ros-primary-button" type="button" onClick={() => setCreatingStatus("pendiente")}><TaskViewIcon name="plus"/>Nueva tarea</button></div></div>
     <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas">
       <FilterSelect label="Vista de tareas" className="ros-mobile-view-select" value={view} onChange={event=>setView(event.target.value)}><option value="board">Tablero</option><option value="list">Lista</option><option value="calendar">Calendario</option><option value="clients">Por cliente</option><option value="responsibles">Por responsable</option></FilterSelect>
-      <div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>{pagingBlocked?`Cargadas ${visible.length} · total por actualizar`:`Cargadas ${visible.length} de ${totalTasks}`}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
+      <div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div></div><div className="ros-controls-meta"><span>{pagingBlocked?`Cargadas ${visible.length} · total por actualizar`:`Cargadas ${visible.length} de ${totalTasks}`}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
     {reviewScope && <section className="ros-warning-banner ros-review-queue" aria-label="Cola de revisión"><strong>{reviewScope === 'team' ? 'Revisión del equipo' : reviewScope === 'personal' ? 'Tu trabajo en revisión' : 'Cola de revisión no válida'}</strong><p>Mostrando {visible.length} de {totalTasks}. Tareas que esperan revisión; las aprobadas no se incluyen. Los demás filtros también se aplican. Al recargar se vuelve al principio.</p>{orderMessage && <p role="status">{orderMessage}</p>}<button type="button" disabled={loadingMore || orderState.busy || Boolean(queryNotice)} onClick={onRefreshReview}>Actualizar cola desde el principio</button>{view !== "list" && <button type="button" onClick={() => setView("list")}>Ver toda la cola en lista</button>}<button type="button" disabled={orderState.busy} onClick={exitReviewQueue}>Salir de la cola</button></section>}
     {queryNotice && <p className="ros-warning-banner" role="alert">{queryNotice}</p>}
     <div className="ros-order-toolbar"><FilterSelect label="Orden" aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}><option value="date">Fecha</option><option value="manual" disabled={Boolean(reviewScope)}>Manual</option></FilterSelect>{sort === 'manual' && view === 'board' && archiveMode === 'active' && <details className="ros-order-help"><summary>Orden compartido</summary><p>Soltá sobre una tarjeta para ubicar antes, o sobre la columna para mover al final. Las flechas usan tareas cargadas; «Al final» usa la columna completa.</p></details>}</div>
@@ -1343,13 +1319,14 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       onDragOver={(event) => { if (!event.dataTransfer.types.includes('text/task-id')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(''); }}
       onDrop={(event) => dropOnProcessButton(event,column)}><i style={{ background: column.color }}/><span>{column.label}</span><b>{boardColumnCounts[column.id] || 0}</b></button>)}</nav>
-      <div ref={boardRef} className="ros-board ros-board-four" style={{ gridTemplateColumns: compactBoard ? undefined : "repeat(5, minmax(220px, 1fr))" }}>{renderedBoardColumns.map((column) => {
+      <div ref={boardRef} className="ros-board ros-board-four" style={{ gridTemplateColumns: compactBoard ? undefined : `repeat(${BOARD_COLUMNS.length}, minmax(220px, 1fr))` }}>{renderedBoardColumns.map((column) => {
         const items = visible.filter((task) => column.states.includes(effectiveTaskFilterState(task)));
         const windowed = taskVisibleWindow(items,columnLimits[column.id] ?? 250);
         return <section className={`ros-column ${mobileBoardColumn === column.id ? "is-mobile-active" : ""} ${dragOver === column.id ? "drag-over" : ""}`} key={column.id}
           onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => dropOnProcessButton(event,column)}>
           <header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header>
+          {column.states.length > 1 && <p className="ros-card-summary">Incluye aprobadas. El orden manual no está disponible en este grupo.</p>}
           <div>{windowed.items.map((task,index) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move}
             canMove={canUserMoveTask(task, sesion?.usuario)} moveBlocked={orderState.busy||orderState.locked} onOrderDrop={sort==='manual'&&archiveMode==='active'?dropBeforeTask:undefined}
             manualControls={orderControls(task,items,index,windowed.limit)}/>)}

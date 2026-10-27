@@ -25,7 +25,7 @@ test('task detail protects content/comment/delivery and all current writes witho
   assert.match(source, /const taskWriteBusy = saving \|\| commenting \|\| archiving \|\| registeringProduction \|\| savingProductionDrive \|\| approving \|\| confirmingProduction \|\| deliveryBusy/);
   assert.doesNotMatch(source, /addEventListener\("(?:beforeunload|render:before-navigation)"/);
 });
-test('task switches gate before selection/history and feedback gates before history', () => {
+test('task switches gate before selection/history; removed Feedback shortcut cannot navigate', () => {
   const ast = ts.createSourceFile('WorkspaceReadOnly.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
   const declarations = [];
   const visit = node => { if (ts.isVariableDeclaration(node)) declarations.push(node); ts.forEachChild(node, visit); };
@@ -48,7 +48,7 @@ test('task switches gate before selection/history and feedback gates before hist
     && compact(node.thenStatement).includes('window.history.pushState('));
   assert.ok(validation < review && review < selection && selection < history,
     'Accepted navigation and post-listener validation precede hint, selection and history');
-  assert.match(source, /if \(!requestAppNavigation\(window, "\/feedback"\)\) return;\s+window.history.pushState/);
+  assert.doesNotMatch(source, /const openFeedback|refreshFeedbackCount|newFeedbackCount/);
   assert.doesNotMatch(source, /navigateWithinApp\(window, `\/moodboards\?/);
 });
 test('new task clears guard only after creation success, before post-create navigation', () => {

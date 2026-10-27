@@ -122,7 +122,7 @@ test('actual board JSX Show more reaches cards251/501 with expanded manual-contr
   const render = () => {
     controls.length = 0;
     const dependencies = {
-      React, boardRef: { current: null }, compactBoard: false, renderedBoardColumns: columns, visible,
+      React, BOARD_COLUMNS, boardRef: { current: null }, compactBoard: false, renderedBoardColumns: columns, visible,
       effectiveTaskFilterState, taskVisibleWindow, columnLimits, setColumnLimits, mobileBoardColumn: pendingColumn.id,
       dragOver: '', setDragOver() {}, dropOnProcessButton: request, openTask: request, move: request,
       users: [], sesion: { usuario: { id: 7, rol: 'admin' } }, today: '2026-10-23',

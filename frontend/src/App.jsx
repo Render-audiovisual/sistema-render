@@ -9,6 +9,7 @@ import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
+import { ownerAccessLabel, rememberOwnerAccessChoice } from './shared/session/owner-access-choice.js';
 import { navigateWithinApp, navigateWithConfirmation, readRouteKey } from "./shared/navigation/location.js";
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
 import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
@@ -91,6 +92,19 @@ export function App() {
     });
   }, [sessionSnapshot]);
   React.useEffect(() => () => explicitLogout.current?.clear(), []);
+
+  const ownerAccessPending = React.useRef(false);
+  const changeOwnerAccess = React.useCallback((choice) => {
+    try {
+      if (ownerAccessPending.current || !ownerAccessLabel(choice) || sessionSnapshot.session?.usuario?.rol !== 'admin'
+        || getApplicationSessionSnapshot() !== sessionSnapshot) return Promise.resolve(false);
+    } catch { return Promise.resolve(false); }
+    ownerAccessPending.current = true;
+    try { rememberOwnerAccessChoice(choice, window.sessionStorage); } catch { /* Optional label, not authentication. */ }
+    // Revoke the real session through the existing controller. Selecting a
+    // label must NEVER replace usuario locally or grant the chosen identity.
+    return Promise.resolve(logout()).finally(() => { ownerAccessPending.current = false; });
+  }, [logout, sessionSnapshot]);
 
   React.useEffect(() => {
     const syncPath = () => {
@@ -190,7 +204,7 @@ export function App() {
       return <ProductionsPage sesion={sesion} />;
     }
     if (path === "/inicio") {
-      return <QuickHomePage sesion={sesion} onNavigate={navigateSidebar} />;
+      return <QuickHomePage sesion={sesion} onNavigate={navigateSidebar} onChangeOwner={changeOwnerAccess} />;
     }
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
