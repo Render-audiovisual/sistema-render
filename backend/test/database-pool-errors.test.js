@@ -4,11 +4,11 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { buildDatabasePoolConfig } from '../src/database-transport.js';
 
-// Evaluate the actual module body with only pg.Pool and console replaced.
+// Evaluate the actual module body with only AuthorityBoundPool and console replaced.
 // The real transport validator runs; no real Pool, socket or DB is created.
 const source = readFileSync(new URL('../src/db.js', import.meta.url), 'utf8');
 const imports = [
-  'import pg from "pg";',
+  "import { AuthorityBoundPool as Pool } from './database-authority-context.js';",
   "import { buildDatabasePoolConfig } from './database-transport.js';",
   "export { isLoopbackDatabaseUrl } from './database-transport.js';",
 ];
@@ -19,7 +19,7 @@ for (const statement of imports) {
 }
 body = body.replace('export const pool', 'const pool')
   .replace('export async function checkDatabaseConnection', 'async function checkDatabaseConnection');
-const instantiate = new Function('pg', 'buildDatabasePoolConfig', 'process', 'console',
+const instantiate = new Function('Pool', 'buildDatabasePoolConfig', 'process', 'console',
   `${body}\nreturn {pool,checkDatabaseConnection};`);
 
 function fixture(env = { DATABASE_URL: 'postgresql://qa:synthetic@db.example.invalid/qa' }) {
@@ -30,7 +30,7 @@ function fixture(env = { DATABASE_URL: 'postgresql://qa:synthetic@db.example.inv
     connect() { calls.push(['connect']); throw Error('No connection allowed in this test'); }
     end() { calls.push(['end']); return Promise.resolve(); }
   }
-  const api = instantiate({ Pool }, buildDatabasePoolConfig, { env }, {
+  const api = instantiate(Pool, buildDatabasePoolConfig, { env }, {
     error: (...args) => logs.push(args),
   });
   return { ...api, constructed, logs, calls };

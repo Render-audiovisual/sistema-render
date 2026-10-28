@@ -6,6 +6,7 @@ import { buildTaskAccessClause } from './task-access.js';
 import { lockClientAdministration } from './client-agreement.js';
 import { GOAL_QUOTA_SOURCE, assertQuotaRevision, goalPieceInQuota, goalQuotaObservation, lockGoalQuotaReviewer, reviewGoalQuota } from './goal-quota-review.js';
 import { assertPreparationRevision, goalPreparationRevision, lockGoalPreparer, parseGoalPreparation } from './goal-preparation.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -152,6 +153,14 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
       !selected.length || selected.some(userId => !responsibleIds.includes(userId))))) {
     throw fail('Revisá los responsables de carruseles de cada cuenta.');
   }
+  // Capture trusted delegation before connection waits; ordinary internal
+  // scheduler calls have neither preparation nor quotaReview authority.
+  if (preparation !== undefined) preparation = Object.freeze({ expected: preparation?.expected,
+    auth: bindCapturedOwnerProfileAuthority(preparation?.auth, Object.freeze({
+      id: preparation?.auth?.id, rol: preparation?.auth?.rol, session_version: preparation?.auth?.session_version })) });
+  if (quotaReview !== undefined) quotaReview = Object.freeze({ expected: quotaReview?.expected,
+    auth: bindCapturedOwnerProfileAuthority(quotaReview?.auth, Object.freeze({
+      id: quotaReview?.auth?.id, rol: quotaReview?.auth?.rol, session_version: quotaReview?.auth?.session_version })) });
   const db = await pool.connect();
   let discard;
   try {
@@ -433,7 +442,8 @@ export async function editGoalContent(pool, id, body = {}, actor = {}) {
     !Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1) {
     throw fail('Revisá el título y el copy antes de guardar.');
   }
-  const observed = Object.freeze({ id: actor?.id, rol: actor?.rol, session_version: actor?.session_version });
+  const observed = bindCapturedOwnerProfileAuthority(actor, Object.freeze({ id: actor?.id, rol: actor?.rol, session_version: actor?.session_version }));
+  const authority = captureOwnerProfileWriteAuthority(observed);
   const validIdentityNumber = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
   if (!validIdentityNumber(observed.id) || !validIdentityNumber(observed.session_version)
     || typeof observed.rol !== 'string' || !observed.rol.trim()) throw fail('La sesión cambió. Volvé a iniciar sesión.', 401);
@@ -443,6 +453,7 @@ export async function editGoalContent(pool, id, body = {}, actor = {}) {
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
     // Retain current authority before domain locks until COMMIT. Revocation
     // committed first must win; a token/middleware snapshot is not authority.
     const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
@@ -536,9 +547,25 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     Object.keys(body).some(key => !['tarea_id','expected_tarea_updated_at','expected_pieza_updated_at'].includes(key)) ||
     !Number.isFinite(Date.parse(body.expected_tarea_updated_at)) ||
     !Number.isFinite(Date.parse(body.expected_pieza_updated_at))) throw fail('Recargá los datos antes de vincular.');
+  if (!positiveId(actor?.id) || actor.id > 2147483647 || !positiveId(actor?.session_version)
+    || actor.session_version > 2147483647 || typeof actor?.rol !== 'string')
+    throw fail('Necesitás una sesión verificada para vincular.', 401);
+  if (actor.rol !== 'admin') throw fail('Solo administración puede vincular tareas.', 403);
+  const observed = bindCapturedOwnerProfileAuthority(actor, Object.freeze({
+    id: actor.id, rol: actor.rol, session_version: actor.session_version }));
+  const authority = captureOwnerProfileWriteAuthority(observed);
+  body = Object.freeze({ ...body });
   const db = await pool.connect();
+  let discard;
   try {
-    await db.query('BEGIN');
+    await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await lockClientAdministration(db);
+    await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
+    const current = (await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+    if (!current || current.id !== observed.id || current.activo !== true || current.session_version !== observed.session_version)
+      throw fail('La sesión cambió. Volvé a iniciar sesión.', 401);
+    if (current.rol !== 'admin' || current.rol !== observed.rol) throw fail('Solo administración puede vincular tareas.', 403);
+    const auditActor = current.nombre || current.usuario;
     await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
     const before = (await db.query(`SELECT p.tarea_id,p.publicacion_id,o.clave,to_char(o.periodo,'YYYY-MM') periodo
       FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE p.id=$1`, [pieceId])).rows[0];
@@ -589,7 +616,7 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     const people = [...new Set([task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores)
       ? task.propiedades_extra.colaboradores : [])].filter(value => typeof value === 'string' && value.trim()))];
     await db.query(`INSERT INTO cliente_objetivo_vinculos(pieza_id,tarea_anterior_id,tarea_nueva_id,registro_anterior,actualizado_por)
-      VALUES($1,$2,$3,$4::jsonb,$5)`, [pieceId,piece.tarea_id,task.id,JSON.stringify(piece),actor]);
+      VALUES($1,$2,$3,$4::jsonb,$5)`, [pieceId,piece.tarea_id,task.id,JSON.stringify(piece),auditActor]);
     await db.query(`UPDATE cliente_objetivo_piezas SET tarea_id=$2,publicacion_id=$3,titulo=$4,copy=$5,
       responsables=$6::jsonb,estado=$7,completada_at=CASE WHEN $7 IN ('finalizada','publicada') THEN now() ELSE NULL END,
       updated_at=now() WHERE id=$1`, [pieceId,task.id,task.publicacion_id,task.titulo,
@@ -604,10 +631,10 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
       publicacion_anterior_id:piece.publicacion_id, periodo:piece.periodo,
       tipo:piece.tipo, numero:piece.numero, ...count };
   } catch (error) {
-    await db.query('ROLLBACK');
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; }
     if (error.code === '23505') throw fail('La tarea o publicación ya está vinculada. Recargá los datos.', 409);
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(discard); }
 }
 
 export function createClientGoalsRouter({ pool }) {
@@ -616,8 +643,8 @@ export function createClientGoalsRouter({ pool }) {
     try { res.json(await goalLinkOptions(pool, Number(req.params.id), req.query.periodo)); }
     catch (error) { if (error.status) return res.status(error.status).json({error:error.message}); next(error); }
   });
-  router.post('/piezas/:id/vincular', requireRole('admin', 'community'), async (req, res, next) => {
-    try { res.json(await linkGoalTask(pool, Number(req.params.id), req.body, req.auth.nombre || req.auth.usuario)); }
+  router.post('/piezas/:id/vincular', requireRole('admin'), async (req, res, next) => {
+    try { res.json(await linkGoalTask(pool, Number(req.params.id), req.body, req.auth)); }
     catch (error) { if (error.status) return res.status(error.status).json({error:error.message}); next(error); }
   });
   router.get('/', async (req, res, next) => {
@@ -635,7 +662,7 @@ export function createClientGoalsRouter({ pool }) {
   router.post('/preparar', requireRole('admin', 'community'), async (req, res, next) => {
     try { res.json(await prepareGoal(pool, { ...parseGoalPreparation(req.body),
       persistResponsibles:true, preparation: { expected:req.body.expected_preparation_revision,
-        auth:{id:req.auth.id,rol:req.auth.rol,session_version:req.auth.session_version} } })); }
+        auth:req.auth } })); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
   });
   router.post('/reconciliar', requireRole('admin'), async (req, res, next) => {

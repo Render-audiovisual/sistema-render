@@ -65,6 +65,9 @@ test('transaction structure guards BEFORE assignment writes and uses one client-
   assert.ok(prepare.indexOf('ORDER BY id FOR SHARE')<prepare.indexOf("hashtext('vinculo-objetivo-mensual')"));
   assert.match(prepare,/ORDER BY id FOR UPDATE/);
   const route=src.slice(src.indexOf("router.post('/preparar'"),src.indexOf("router.post('/reconciliar'"));
-  assert.match(route,/parseGoalPreparation\(req.body\)/);assert.match(route,/auth:\{id:req.auth.id,rol:req.auth.rol,session_version:req.auth.session_version\}/);
+  assert.match(route,/parseGoalPreparation\(req.body\)/);assert.match(route,/auth:req.auth/);
+  assert.doesNotMatch(route,/auth:\{id:req.auth.id/,'Do not discard opaque delegation in the route');
+  assert.ok(prepare.indexOf('bindCapturedOwnerProfileAuthority(preparation?.auth')<prepare.indexOf('await pool.connect()'));
+  assert.ok(prepare.indexOf('bindCapturedOwnerProfileAuthority(quotaReview?.auth')<prepare.indexOf('await pool.connect()'));
   assert.doesNotMatch(route,/actor: req.auth.nombre/);
 });

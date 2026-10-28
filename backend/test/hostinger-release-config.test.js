@@ -14,6 +14,13 @@ const base = () => ({ NODE_ENV: 'production', APP_URL: 'https://sistema.renderco
   DATABASE_URL: url, JWT_SECRET: secret, RENDER_DB_CA_PEM: rootCertificates[0] });
 const check = (result, name) => result.checks.find(c => c.name === name);
 
+test('release checklist cannot call a production-blocked owner profile mapping ready',()=>{
+  const env={...base(),RENDER_OWNER_PROFILES:JSON.stringify({accountId:1,francoUserId:31,agustinUserId:32})};
+  const result=validateHostingerReleaseConfig(env,options);
+  assert.equal(result.configurationValid,false);
+  assert.equal(check(result,'OWNER_PROFILE_CONFIGURATION').status,'invalid');
+});
+
 test('pure checklist accepts explicit safe configuration, never approves release or mutates inputs', () => {
   const env = Object.freeze(base()), before = { ...env };
   const result = validateHostingerReleaseConfig(env, Object.freeze(options));

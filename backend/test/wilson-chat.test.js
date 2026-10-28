@@ -65,7 +65,8 @@ test('other-user conversation stays admin-only and denies before SQL', async () 
 test('POST writers still create conversations; actual frontend consumers do not dereference nullable conversation', () => {
   const source = readFileSync(new URL('../src/wilson-chat.js', import.meta.url), 'utf8');
   const seen = source.slice(source.indexOf('router.post("/conversacion/leida"'), source.indexOf('router.post("/conversacion/leida"') + 600);
-  assert.match(seen, /await conversation\(pool, req.auth.id\)/);
+  assert.match(seen, /withWilsonChatWrite\(pool, req.auth/);
+  assert.match(seen, /await conversation\(pool, actor.id\)/);
   assert.match(source, /INSERT INTO wilson_conversaciones/);
   for (const path of ['../../frontend/src/features/render-os/WilsonAssistant.jsx', '../../frontend/src/pages/WilsonConversations.jsx']) {
     const consumer = readFileSync(new URL(path, import.meta.url), 'utf8');

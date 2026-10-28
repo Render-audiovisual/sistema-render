@@ -1,5 +1,6 @@
 import { clientAgreementRevisionSql } from './client-agreement.js';
 import { clientOperationalDto } from './operational-dto.js';
+import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const stale = () => Object.assign(new Error('La sesión cambió. Volvé a iniciar sesión.'), { status: 401 });
@@ -36,10 +37,12 @@ export const CLIENT_CATALOG_SQL = `
 export async function loadClientCatalogSnapshot(pool, auth, periodo) {
   if (!positive(auth?.id) || !positive(auth?.session_version) || typeof auth?.rol !== 'string' || !auth.rol.trim()) throw stale();
   const observed = Object.freeze({ id: auth.id, rol: auth.rol, session_version: auth.session_version });
+  const delegation=captureOwnerProfileWriteAuthority(auth);
   const db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await checkCapturedOwnerProfileAuthority(db,delegation);
     const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [observed.id])).rows[0];
     if (!actor || actor.id !== observed.id || actor.activo !== true || actor.rol !== observed.rol || actor.session_version !== observed.session_version) throw stale();
     const result = await db.query(CLIENT_CATALOG_SQL, [periodo]);

@@ -6,8 +6,8 @@ import { fixturePassword } from '../scripts/render2-local-test.js';
 test('local owner profiles: actual cookie switch rotates session and scopes own work by explicit IDs without changing Leader', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
 }, async t => {
-  const f = await startOwnerProfilesFixture();
-  t.after(async () => { await f.cleanup(); t.diagnostic('Own synthetic PG55991/HTTP processes removed; old52920 and existing restored copies untouched.'); });
+  const f = await startOwnerProfilesFixture({pgPort:55630});
+  t.after(async () => { await f.cleanup(); t.diagnostic('Own synthetic PG55630/HTTP processes removed; old52920 and existing restored copies untouched.'); });
   const http = (route, options) => ownerProfileHttp(f.base, route, options);
   const checked = (response, status = 200) => { assert.equal(response.status, status, 'Owner-profile HTTP status (credentials never printed)'); return response.body; };
   const metadata = (value, active) => assert.deepEqual(value, { principal_id: 91001, active,
@@ -74,6 +74,21 @@ test('local owner profiles: actual cookie switch rotates session and scopes own 
       checked(response, 403); assert.equal(response.cookie, null); assert.deepEqual(await business(), before);
     });
   }
+  await t.test('delegated browser writes persist as their actor, shared finance context denies employee, Leader tasks remain assigned',async()=>{
+    const [client]=await f.query("INSERT INTO clientes(nombre) VALUES('QA owner HTTP client') RETURNING id");
+    const response=await http('/api/producciones',{session:franco,method:'POST',body:{
+      cliente_id:client.id,fecha:'2026-10-28',titulo:'QA owner HTTP visit',participante_ids:[91005,91003]}});
+    const visit=checked(response,201).visita;
+    assert.equal(typeof visit.id,'string');
+    const [stored]=await f.query('SELECT creado_por_id,actualizado_por_id FROM produccion_visitas WHERE id=$1',[visit.id]);
+    assert.deepEqual(stored,{creado_por_id:91005,actualizado_por_id:91005});
+    checked(await http(`/api/producciones/${visit.id}`,{session:agustin}));
+    checked(await http('/api/finanzas/pagos/contexto',{session:agustin}));
+    const employee=await loginOwnerFixture(f.base,'qa_luciano');
+    checked(await http('/api/finanzas/pagos/contexto',{session:employee}),403);
+    assert.deepEqual(await f.query('SELECT tarea_id,usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=$1',[f.tasks.leader]),
+      [{tarea_id:f.tasks.leader,usuario_id:91001,tipo:'responsable'}]);
+  });
   await t.test('missing or semantically invalid mapping403, without using name/role fallback or changing any business row', async () => {
     for (const mapping of [null, { accountId: 91001, francoUserId: 91005, agustinUserId: 91999 }]) {
       const app = await f.startApp({ mapping });

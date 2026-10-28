@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -13,7 +14,7 @@ const capture = auth => {
   if (!positive(auth?.id) || !positive(auth?.session_version) || typeof auth?.rol !== 'string' || !auth.rol.trim()) {
     throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');
   }
-  return Object.freeze({ id: auth.id, session_version: auth.session_version, rol: auth.rol });
+  return bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id: auth.id, session_version: auth.session_version, rol: auth.rol }));
 };
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -50,9 +51,11 @@ async function ownedList(db, listId, userId, lock = false) {
   return { ...list, secciones: sections.map(section => ({ ...section, items: items.filter(item => String(item.seccion_id) === String(section.id)) })), bloques: blocks };
 }
 async function transaction(pool, observed, write, run) {
+  const ownerAuthority = captureOwnerProfileWriteAuthority(observed);
   const db = await pool.connect(); let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, ownerAuthority, { lockMode: write ? 'update' : 'share' });
     await actor(db, observed, write);
     const result = await run(db);
     await db.query('COMMIT'); return result;

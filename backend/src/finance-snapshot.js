@@ -1,3 +1,6 @@
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority,
+  checkCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
 const failure = (status, message) => Object.assign(new Error(message), { status });
 
 export function financePeriod(query) {
@@ -13,17 +16,19 @@ export function captureFinanceActor(auth) {
   if (![auth?.id, auth?.session_version].every(value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647)) {
     throw failure(401, 'La sesión cambió. Volvé a iniciar sesión.');
   }
-  return Object.freeze({ id: auth.id, session_version: auth.session_version });
+  return bindCapturedOwnerProfileAuthority(auth,Object.freeze({ id: auth.id, session_version: auth.session_version }));
 }
 
 // Capture before provider/pool waits. One read-only snapshot owns all financial
 // inputs; labels in cached request auth never authorize financial disclosure.
 export async function withFinanceSnapshot(pool, captured, read) {
   const observed = captureFinanceActor(captured);
+  const delegation = captureOwnerProfileWriteAuthority(observed);
   const db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await checkCapturedOwnerProfileAuthority(db,delegation);
     const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [observed.id])).rows[0];
     if (!actor || actor.id !== observed.id || actor.activo !== true || actor.session_version !== observed.session_version) {
       throw failure(401, 'La sesión cambió. Volvé a iniciar sesión.');

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { buildTaskAccessClause } from './task-access.js';
 import { normalizeTaskState, TASK_STATES } from './workflow-contract.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 export const TASK_BOARD_ORDER_SCOPE = 'render_os';
 export const TASK_BOARD_ORDER_LIMIT = 100000;
@@ -73,10 +74,14 @@ export async function reorderTaskBoard(pool, observed, rawInput) {
   const input = parseTaskBoardOrderInput(rawInput);
   const actorId = observed?.id, epoch = observed?.session_version;
   if (!positive(actorId) || !positive(epoch)) throw fail(401, 'La sesión ya no está vigente.');
+  const captured = bindCapturedOwnerProfileAuthority(observed, Object.freeze({ id: actorId,
+    session_version: epoch, rol: observed?.rol }));
+  const authority = captureOwnerProfileWriteAuthority(captured);
   const hash = intentHash(input), db = await pool.connect();
   let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
     const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [actorId])).rows[0];
     if (!actor || actor.id !== actorId || actor.activo !== true || actor.session_version !== epoch)
       throw fail(401, 'La sesión ya no está vigente.');

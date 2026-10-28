@@ -11,7 +11,7 @@ const base = () => ({ clientId: 2, publicationId: 9, type: 'carrusel', mode: 'dr
   platforms: ['instagram', 'facebook'], requestKey: 'revision-fixture-0001', expectedRevision: REVISION });
 const rows = values => ({ rowCount: values.length, rows: values });
 const dml = calls => calls.filter(call => /^\s*(UPDATE|INSERT|DELETE)\b/i.test(call.sql || ''));
-const control = calls => calls.filter(call => /^(BEGIN|COMMIT|ROLLBACK)$/.test(call.sql || '')).map(call => call.sql);
+const control = calls => calls.filter(call => /^(BEGIN(?: ISOLATION LEVEL READ COMMITTED)?|COMMIT|ROLLBACK)$/.test(call.sql || '')).map(call => call.sql.startsWith('BEGIN') ? 'BEGIN' : call.sql);
 const locks = calls => calls.filter(call => /FOR UPDATE/i.test(call.sql || ''));
 const acknowledgements = calls => calls.filter(call => /FROM publicacion_envios e\s+JOIN clientes/i.test(call.sql || '') && !/FOR UPDATE/i.test(call.sql));
 function fixture({ existing = true, revision = REVISION, state = 'borrador', clientExists = true, publicationExists = true,
@@ -27,7 +27,8 @@ function fixture({ existing = true, revision = REVISION, state = 'borrador', cli
     targets: normalized.platforms.map(platform => ({ platform, status: 'simulada', attempts: 0 })), ...replayDto };
   const client = { async query(sql, params = []) {
     calls.push({ scope: 'tx', sql, params });
-    if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)) return rows([]);
+    if (/^(BEGIN(?: ISOLATION LEVEL READ COMMITTED)?|COMMIT|ROLLBACK)$/.test(sql)) return rows([]);
+    if (sql.includes('FROM usuarios WHERE id=$1')) return rows([{id:params[0],session_version:1,rol:'community',activo:true,nombre:'QA'}]);
     if (/FOR UPDATE/i.test(sql)) {
       if (/idempotency_key=\$1/.test(sql)) return rows(replayExists ? [{ id: dispatchId, unchanged, creado_por_id: createdById }] : []);
       return rows(existing ? [{ id: dispatchId, estado: state, revision }] : []);
@@ -56,7 +57,7 @@ function fixture({ existing = true, revision = REVISION, state = 'borrador', cli
   return { calls, forwarded, roles, dto, get released() { return released; }, get connections() { return connections; },
     async invoke(method = 'patch', body = base(), { id = '11', role = 'community', actorId = 7 } = {}) {
       const handlers = routes.get(`${method} ${method === 'patch' ? '/:id' : '/'}`);
-      const req = { params: { id }, query: {}, body, auth: { id: actorId, rol: role, nombre: 'QA' } };
+      const req = { params: { id }, query: {}, body, auth: { id: actorId, rol: role, session_version:1, nombre: 'QA' } };
       const res = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; } };
       const dispatch = async index => {
         const handler = handlers[index]; if (!handler) return;

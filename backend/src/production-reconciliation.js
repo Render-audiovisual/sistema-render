@@ -4,6 +4,7 @@ import { hasLegacyProductionSource } from './production-editorial.js';
 import { productionHistoryHash } from './production-history.js';
 import { prepareProductionEditingAdoption, persistProductionEditingAdoption } from './production-editing-adoption.js';
 import { readProductionHistoryBatchContext, reconcileProductionHistoryBatch } from './production-history-batches.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const positive=n=>Number.isSafeInteger(n)&&n>0&&n<=2147483647;
@@ -63,10 +64,17 @@ async function result(db,receipt,created) {
   return {reconciliation_id:receipt.id,visita_id:receipt.visita_id,video_ids:videos.map(row=>row.video_id),created};
 }
 export async function reconcileProductionHistory(pool,auth,body) {
-  const input=validateProductionReconciliation(body),hash=payloadHash(input),db=await pool.connect();
+  const input=validateProductionReconciliation(body),hash=payloadHash(input);
+  const observed=bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth?.id,rol:auth?.rol,session_version:auth?.session_version}));
+  const authority=captureOwnerProfileWriteAuthority(observed);
+  const db=await pool.connect();
+  let discard;
   try {
-    await db.query('BEGIN');
-    const actor=await currentAdmin(db,auth);
+    await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    // The existing shared editing mutex must precede principal/actor locks.
+    if(input.existing_editing)await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+    await retainCapturedOwnerProfileAuthority(db,authority,{lockMode:'share'});
+    const actor=await currentAdmin(db,observed);
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`production-reconciliation:${actor.id}:${input.request_id}`]);
     const replay=(await db.query('SELECT id,visita_id,payload_hash FROM produccion_reconciliaciones WHERE actor_user_id=$1 AND request_id=$2 FOR UPDATE',[actor.id,input.request_id])).rows[0];
     if(replay) {
@@ -76,7 +84,6 @@ export async function reconcileProductionHistory(pool,auth,body) {
     if(input.existing_editing) {
       // Match editing deliveries/reviews: global advisory before ordered task
       // locks, before any visit/video lock or creation. No task is rewritten.
-      await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
       await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
         [[input.source_task_id,input.existing_editing.task_id].sort((a,b)=>a-b)]);
     }
@@ -110,7 +117,7 @@ export async function reconcileProductionHistory(pool,auth,body) {
     }
     const response=await result(db,{id:reviewId,visita_id:visitId},true);
     await db.query('COMMIT');return response;
-  }catch(error) {await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
+  }catch(error) {try{await db.query('ROLLBACK');}catch(rollback){discard=rollback;}throw error;}finally{db.release(discard);}
 }
 
 function contextText(value,max=20000) {

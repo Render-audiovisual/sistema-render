@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { convertUnlinkedFlyer } from '../src/story-flyer-conversion.js';
+import { convertUnlinkedFlyer as convertAuthorizedFlyer } from '../src/story-flyer-conversion.js';
+const convertUnlinkedFlyer=(pool,id)=>convertAuthorizedFlyer(pool,id,{id:91001,session_version:1,rol:'admin'});
 
 // Unit transaction protocol tests against the actual helper, not HTTP/PG proof.
 // The fake stages writes until COMMIT so rollback/release ordering is observable.
@@ -14,12 +15,14 @@ const source = () => ({ id: 41, cliente_id: 12, tipo: 'flyer', estado: 'en_revis
   duracion_segundos: 19, num_imagenes: 3, extra_original_column: 'preserve in historical snapshot' });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const settle = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
-function fixture({ piece = source(), missing = false, linkedTable, failAt, rollbackFails = false, commitGate } = {}) {
+function fixture({ piece = source(), missing = false, linkedTable, failAt, rollbackFails = false, commitGate,
+  actor={id:91001,session_version:1,rol:'admin',activo:true} } = {}) {
   const calls = [], failure = new Error(`Synthetic ${failAt} failure`);
   const state = { connected: 0, released: 0, publications: [structuredClone(piece)], stories: [], committed: false };
   let staged;
   const db = {
     async query(sql, values) {
+      if(sql.includes('FROM usuarios WHERE id=$1 FOR SHARE'))return {rows:actor?[actor]:[]};
       const text = sql.replace(/\s+/g, ' ').trim();
       const kind = text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK' ? text
         : text.startsWith('SELECT * FROM publicaciones') ? 'LOCK' : text.startsWith('SELECT EXISTS') ? 'LINKS'
@@ -63,6 +66,20 @@ test('noncanonical and out-of-range IDs reject before pool.connect or any SQL', 
     await assert.rejects(convertUnlinkedFlyer(h.pool, id), error => error.status === 400 && error.code === 'FLYER_INVALID');
   }
   assert.equal(h.state.connected, 0); assert.deepEqual(h.calls, []);
+});
+
+test('conversion requires an actual session and current admin before any publication lock or DML',async()=>{
+  const none=fixture();
+  await assert.rejects(convertAuthorizedFlyer(none.pool,'41'),{status:401});
+  assert.equal(none.state.connected,0);
+  for(const actor of [null,{id:91001,session_version:2,rol:'admin',activo:true},
+    {id:91001,session_version:1,rol:'edicion',activo:true},
+    {id:91001,session_version:1,rol:'admin',activo:false}]){
+    const h=fixture({actor});
+    await assert.rejects(convertUnlinkedFlyer(h.pool,'41'),{status:401});
+    assert.equal(h.calls.some(c=>['LOCK','INSERT','DELETE','COMMIT'].includes(c.kind)),false);
+    assert.equal(h.state.committed,false);
+  }
 });
 
 test('canonical positive PG maximum is accepted without losing parameter identity', async () => {

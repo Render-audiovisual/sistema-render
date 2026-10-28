@@ -1,4 +1,5 @@
 import { readDatabaseTarget, isLoopbackAddress } from './startup-policy.js';
+import { databaseAuthorityPool, bindDatabaseAuthorityClient } from './database-authority-context.js';
 
 // LOCAL ONLY. These are delegated real actor IDs, never identity by a label.
 // Enabling production requires a separate audit/integration of principal locks
@@ -10,6 +11,13 @@ const exact = (v, fields) => v && typeof v === 'object' && !Array.isArray(v)
   && Object.keys(v).length === fields.length && fields.every(k => Object.hasOwn(v, k));
 const fail = (status = 403) => Object.assign(new Error('Perfil de dueño no disponible.'), { status, code: 'owner_profile_unavailable' });
 const policies = new WeakSet(), authorities = new WeakMap(), materials = new WeakSet();
+const writeAuthorities = new WeakMap();
+const capturedAuthorities = new WeakMap();
+const policyPools = new WeakMap();
+function assertAuthorityContext(db, policy) {
+  const expected=policyPools.get(policy);
+  if (!expected || databaseAuthorityPool(db)!==expected) throw fail(401);
+}
 export const hasOwnerProfileClaims = claims => ['root_id', 'root_session_version', 'root_exp', 'owner_profile']
   .some(key => claims && Object.hasOwn(claims, key));
 
@@ -37,12 +45,14 @@ function validateDelegation(claims, policy) {
     || claims.root_id !== policy.accountId || claims.id !== targetId(policy, claims.owner_profile)
     || !positive(claims.root_session_version) || !positive(claims.session_version)
     || !Number.isSafeInteger(claims.root_exp) || !Number.isSafeInteger(claims.exp)
-    || claims.exp > claims.root_exp || claims.root_exp <= Math.floor(Date.now() / 1000)) throw fail(401);
+    || claims.exp > claims.root_exp || claims.exp <= Math.floor(Date.now() / 1000)
+    || claims.root_exp <= Math.floor(Date.now() / 1000)) throw fail(401);
 }
 async function readUsers(db, policy, lock = false) {
+  assertAuthorityContext(db,policy);
   const ids = [policy.accountId, policy.francoUserId, policy.agustinUserId].sort((a,b) => a-b);
   return (await db.query(`SELECT id,usuario,nombre,rol,activo,session_version,foto_perfil
-    FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id${lock ? ' FOR SHARE' : ''}`, [ids])).rows;
+    FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id${lock === 'update' ? ' FOR UPDATE' : lock ? ' FOR SHARE' : ''}`, [ids])).rows;
 }
 function checkCurrent(auth, rows, policy) {
   const delegated = hasOwnerProfileClaims(auth);
@@ -56,8 +66,61 @@ function checkCurrent(auth, rows, policy) {
 
 // Called only after JWT signature/issuer/audience/expiry validation. The WeakMap
 // keeps the original expiration outside public auth/DTOs and survives sanitizing.
-export function rememberOwnerProfileSession(auth, claims) {
-  authorities.set(auth, Object.freeze({ exp: claims.exp, root_exp: claims.root_exp ?? claims.exp }));
+export function rememberOwnerProfileSession(auth, claims, policy = null) {
+  const delegated = hasOwnerProfileClaims(claims);
+  const binding = delegated ? Object.freeze({ id:claims.id,session_version:claims.session_version,
+    root_id:claims.root_id,root_session_version:claims.root_session_version,
+    owner_profile:claims.owner_profile,root_exp:claims.root_exp,exp:claims.exp }) : null;
+  authorities.set(auth, Object.freeze({ exp: claims.exp, root_exp: claims.root_exp ?? claims.exp, policy, binding }));
+}
+
+// Capture before waiting for a connection. Delegation is retained out-of-band:
+// copying a DTO or supplying root_* fields cannot manufacture write authority.
+export function captureOwnerProfileWriteAuthority(auth) {
+  if (capturedAuthorities.has(auth)) return capturedAuthorities.get(auth);
+  const session = authorities.get(auth);
+  if (!session?.binding) {
+    if (hasOwnerProfileClaims(auth)) throw fail(401);
+    return null;
+  }
+  if (!session || !validPolicy(session.policy)) throw fail(401);
+  const claims = session.binding;
+  if (Object.keys(claims).some(key => auth[key] !== claims[key])) throw fail(401);
+  validateDelegation(claims, session.policy);
+  const handle = Object.freeze({});
+  writeAuthorities.set(handle, { claims, policy: session.policy });
+  return handle;
+}
+
+// Preserve trusted delegation through existing immutable scalar projections.
+// The target must represent exactly the same persisted actor, not a new ID.
+export function bindCapturedOwnerProfileAuthority(auth, captured) {
+  const handle = captureOwnerProfileWriteAuthority(auth);
+  if (!captured || !Object.isFrozen(captured) || captured.id !== auth?.id
+    || captured.session_version !== auth?.session_version) throw fail(401);
+  capturedAuthorities.set(captured, handle);
+  return captured;
+}
+
+// Caller owns a READ COMMITTED transaction and must acquire any global mutex
+// first. Ordered principal locks precede actor/domain locks and last to COMMIT.
+export async function retainCapturedOwnerProfileAuthority(db, handle, { lockMode = 'share' } = {}) {
+  if (!['share','update'].includes(lockMode)) throw fail(401);
+  if (handle === null) return;
+  const captured = writeAuthorities.get(handle);
+  if (!captured) throw fail(401);
+  assertAuthorityContext(db,captured.policy);
+  checkCurrent(captured.claims, await readUsers(db, captured.policy, lockMode === 'update' ? 'update' : true), captured.policy);
+}
+
+// Read-only snapshots cannot acquire row locks. Validate the same principal
+// against that snapshot; this does not promise revocation after snapshot start.
+export async function checkCapturedOwnerProfileAuthority(db, handle) {
+  if (handle === null) return;
+  const captured = writeAuthorities.get(handle);
+  if (!captured) throw fail(401);
+  assertAuthorityContext(db,captured.policy);
+  checkCurrent(captured.claims, await readUsers(db, captured.policy), captured.policy);
 }
 export async function authenticateOwnerProfile(pool, claims, policy) {
   validateDelegation(claims, policy);
@@ -82,6 +145,8 @@ export function assertOwnerProfileSessionMaterial(user, delegation, policy) {
 export function configuredOwnerProfiles(env, pool) {
   const policy = parseOwnerProfilePolicy(env);
   if (!policy) return null;
+  policyPools.set(policy,pool);
+  bindDatabaseAuthorityClient(pool,pool);
   return Object.freeze({
     policy,
     async describe(auth) {

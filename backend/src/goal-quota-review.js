@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 export const GOAL_QUOTA_SOURCE = Symbol('goal quota source');
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
@@ -34,10 +35,12 @@ export function goalPieceInQuota(piece, objective) {
 }
 
 export async function lockGoalQuotaReviewer(db, auth) {
+  const authority = captureOwnerProfileWriteAuthority(auth);
   if (!Number.isSafeInteger(auth?.id) || auth.id <= 0 || !Number.isSafeInteger(auth?.session_version) || auth.session_version < 1) {
     throw fail('Sesión requerida.', 401);
   }
   const id = auth.id, epoch = auth.session_version;
+  await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
   const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [id])).rows[0];
   if (!actor || actor.id !== id || actor.activo !== true || actor.session_version !== epoch) throw fail('La sesión ya no está activa.', 401);
   if (actor.rol !== 'admin') throw fail('Solo administración puede reconciliar cuotas.', 403);

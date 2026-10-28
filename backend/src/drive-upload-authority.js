@@ -1,5 +1,6 @@
 import { buildTaskAccessClause } from './task-access.js';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { captureOwnerProfileWriteAuthority } from './owner-profile-authority.js';
 
 export const driveError = (status, code, message = 'No se pudo completar la operación de Drive.') => Object.assign(new Error(message), { status, code, retryable: false });
 export const driveId = value => typeof value === 'string' && value.length <= 200 && /^[A-Za-z0-9_-]+$/.test(value) && !value.includes('\n');
@@ -14,6 +15,9 @@ export function validateDriveBag(task) {
 export async function withDriveAuthority(pool, auth, { taskId = null, admin = false } = {}, operation) {
   const id = auth?.id, version = auth?.session_version;
   if (!Number.isSafeInteger(id) || id < 1 || !Number.isSafeInteger(version) || version < 1) throw driveError(401, 'DRIVE_SESSION_INVALID');
+  // Retired UI integration: do not mint actor-only provider capabilities from
+  // a delegated session. Existing direct-account integrations remain intact.
+  if (captureOwnerProfileWriteAuthority(auth) !== null) throw driveError(403,'DRIVE_DELEGATION_UNSUPPORTED');
   const db = await pool.connect(); let begun = false, releaseError;
   try {
     await db.query('BEGIN'); begun = true;

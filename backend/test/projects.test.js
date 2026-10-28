@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createProjectsRouter, normalizeProjectInput, normalizeProjectChild, projectRequestHash,
   projectPermissions, projectSummaryDto, lockProjectLinks } from '../src/projects.js';
 import { projectDeliverableContentHash } from '../src/project-deliverable-approvals.js';
+import { configuredOwnerProfiles, rememberOwnerProfileSession } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
 
 const P = '10000000-0000-4000-8000-000000000001';
 const C = '20000000-0000-4000-8000-000000000001';
@@ -67,7 +69,7 @@ test('summary never includes arbitrary fields, even for administrators', () => {
   assert.equal(dto.href, `/proyectos?proyecto=${P}`);
 });
 
-function harness({ user = owner, project = {}, childState = 'pendiente', fault, task = {}, hidden = false } = {}) {
+function harness({ user = owner, project = {}, childState = 'pendiente', fault, task = {}, hidden = false, principalRows = [], onConnect = () => {}, authorityPool = {} } = {}) {
   const routes = new Map(), calls = [], events = [];
   let released = false;
   let receipt;
@@ -76,6 +78,7 @@ function harness({ user = owner, project = {}, childState = 'pendiente', fault, 
   const row = { id: P, titulo: 'Proyecto', cliente_id: 1, cliente_nombre: 'Cliente', responsable_id: 2, responsable_nombre: 'Persona', tipo: 'web', estado: 'en_curso', archivado: false, revision: 1, descripcion: '', fecha_inicio: null, fecha_entrega: null, tareas: 0, tareas_visibles: 0, finalizadas: 0, hitos: 0, entregables: 1, ...project };
   const db = { release() { released = true; }, async query(sql, params = []) {
     calls.push({ sql, params });
+    if (sql.includes('FROM usuarios WHERE id=ANY')) return {rows:principalRows};
     if (fault?.(sql)) throw Object.assign(new Error('private driver failure'), { code: 'P0001' });
     if (sql.startsWith('SELECT id,nombre,rol,activo,session_version FROM usuarios')) return { rows: [user] };
     if (sql.includes('FROM proyectos WHERE id=$1 FOR UPDATE')) return { rows: [row] };
@@ -114,7 +117,8 @@ function harness({ user = owner, project = {}, childState = 'pendiente', fault, 
   } };
   const router = { use(fn) { routes.set('middleware', fn); } };
   for (const method of ['get', 'post', 'patch', 'put', 'delete']) router[method] = (path, fn) => routes.set(`${method} ${path}`, fn);
-  createProjectsRouter({ express: { Router: () => router }, pool: { connect: async () => db } });
+  authorityPool.connect=async()=>{onConnect();return db;};bindDatabaseAuthorityClient(db,authorityPool);
+  createProjectsRouter({ express: { Router: () => router }, pool: authorityPool });
   const run = async (method, path, body, overrides = {}) => {
     let status, payload, error;
     const res = { status(n) { status = n; return this; }, json(v) { payload = v; } };
@@ -123,6 +127,39 @@ function harness({ user = owner, project = {}, childState = 'pendiente', fault, 
   };
   return { run, calls, events, routes, released: () => released };
 }
+
+test('project writes retain delegated principal after global mutexes before actor; capture errors stay in HTTP handler',async()=>{
+  const pool={};
+  const policy=configuredOwnerProfiles({NODE_ENV:'test',RENDER_DB_ENVIRONMENT:'test',
+    DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:91001,francoUserId:91005,agustinUserId:91006})},pool).policy;
+  for(const patch of [{},{activo:false},{rol:'diseno'},{session_version:2}]) {
+    const exp=Math.floor(Date.now()/1000)+300;
+    const auth={id:91005,rol:'admin',session_version:1,root_id:91001,root_session_version:1,root_exp:exp,exp,owner_profile:'franco'};
+    rememberOwnerProfileSession(auth,auth,policy);
+    const principalRows=[{id:91001,rol:'admin',activo:true,session_version:1,...patch},
+      {id:91005,rol:'admin',activo:true,session_version:1}];
+    const h=harness({user:principalRows[1],principalRows,authorityPool:pool,onConnect(){auth.id=91006;}});
+    const result=await h.run('patch','/:id',{}, {auth});
+    assert.equal(result.status,Object.keys(patch).length?401:400);assert.equal(result.error,undefined);
+    const sql=h.calls.map(c=>c.sql),retained=sql.findIndex(s=>s.includes('id=ANY'));
+    assert.ok(sql.findIndex(s=>s.includes("hashtext('vinculo-objetivo-mensual')"))<retained);
+    assert.ok(sql.findIndex(s=>s.includes("hashtext('proyecto-vinculos')"))<retained);
+    assert.match(sql[retained],/ORDER BY id FOR SHARE$/);
+    const actor=sql.findIndex(s=>s.startsWith('SELECT id,nombre,rol,activo,session_version FROM usuarios'));
+    if(Object.keys(patch).length)assert.equal(actor,-1);else assert.ok(retained<actor);
+    assert.equal(sql.some(s=>/^(UPDATE|INSERT|DELETE)/.test(s)),false);assert.equal(sql.at(-1),'ROLLBACK');
+    if(!Object.keys(patch).length) {
+      const readAuth={...auth,id:91005};rememberOwnerProfileSession(readAuth,readAuth,policy);
+      const read=harness({user:principalRows[1],authorityPool:pool});
+      assert.equal((await read.run('get','/',undefined,{auth:readAuth})).status,200);
+      assert.match(read.calls[0].sql,/REPEATABLE READ READ ONLY/);
+      assert.equal(read.calls.some(c=>/FOR SHARE|FOR UPDATE|pg_advisory/.test(c.sql)),false);
+    }
+  }
+  const forged=harness();const denied=await forged.run('patch','/:id',{}, {auth:{...admin,root_id:91001}});
+  assert.equal(denied.status,401);assert.equal(denied.error,undefined);assert.equal(forged.calls.length,0);
+});
 
 test('approval then corrections retain actor/resource and historical approved state', async () => {
   const generic = harness();

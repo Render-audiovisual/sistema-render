@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { feedbackVersionIso } from './feedback-receipts.js';
 import { normalizeFeedback, assertFeedbackBusinessInput } from './feedback-fields.js';
 import { getTaskActor } from './task-access.js';
@@ -16,7 +17,7 @@ const businessKeys=['cliente','responsable','responsables','responsable_ids','re
 const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':object(value)?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stable(value[key])).join(',')+'}':JSON.stringify(value);
 function actorObservation(auth){
   if(!positive(auth?.id)||!positive(auth?.session_version)||typeof auth?.rol!=='string'||!auth.rol.trim())throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
-  return Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol});
+  return bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol}));
 }
 function text(value){if(typeof value!=='string'||value.includes('\u0000'))throw fail(400,'El contenido de la nota debe ser texto válido.');return value;}
 function feedbackPatch(value,create){
@@ -74,6 +75,7 @@ function operationDto(input,id,version,replayed){return{request_id:input.request
 
 export async function applyFeedbackBrowserOperation(pool,auth,body,query={}){
   const observed=actorObservation(auth);
+  const ownerAuthority=captureOwnerProfileWriteAuthority(observed);
   if(!object(query)||Object.keys(query).length)throw fail(400,'No se permiten parámetros de consulta.');
   const input=normalizeFeedbackBrowserOperation(body);
   const hash=createHash('sha256').update(stable({contract:'feedback-browser-operation-v1',action:input.action,note_id:input.note_id??null,expected_updated_at:input.expected_updated_at??null,fields:input.fields??null})).digest('hex');
@@ -81,6 +83,7 @@ export async function applyFeedbackBrowserOperation(pool,auth,body,query={}){
   try{
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
     await db.query('SELECT pg_advisory_xact_lock(20261019,1)');
+    await retainCapturedOwnerProfileAuthority(db,ownerAuthority,{lockMode:'share'});
     const actor=(await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE',[observed.id])).rows[0];
     if(!actor||actor.id!==observed.id||actor.activo!==true||actor.session_version!==observed.session_version||actor.rol!==observed.rol)throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
     const receipt=(await db.query(`SELECT action,payload_hash,note_id,

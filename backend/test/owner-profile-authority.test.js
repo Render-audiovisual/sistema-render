@@ -2,9 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 import { configuredOwnerProfiles, parseOwnerProfilePolicy, ownerProfileLogoutSubject,
-  retainOwnerProfileAuthority } from '../src/owner-profile-authority.js';
+  retainOwnerProfileAuthority, captureOwnerProfileWriteAuthority,
+  retainCapturedOwnerProfileAuthority, rememberOwnerProfileSession } from '../src/owner-profile-authority.js';
+import { bindCapturedOwnerProfileAuthority, checkCapturedOwnerProfileAuthority } from '../src/owner-profile-authority.js';
 import { configuredBrowserSessions, createPrincipalAuthentication } from '../src/browser-session-config.js';
 import { issueUserToken } from '../src/auth.js';
+import { withProductionAuthority } from '../src/production-authority.js';
+import { withFinanceWrite } from '../src/finance-write-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
 
 const secret = 'synthetic-owner-profile-unit-test-only-secret';
 const origin = 'https://render.example.test';
@@ -19,9 +24,10 @@ function fixture(env={}) {
   const db={async query(sql,params=[]){calls.push({sql,params});
     if(sql.includes('FROM usuarios WHERE id=ANY'))return {rows:rows.filter(r=>params[0].includes(r.id)).map(r=>({...r}))};
     if(sql.includes('FROM usuarios WHERE id=$1'))return {rows:rows.filter(r=>r.id===params[0]).map(r=>({...r}))};
-    if(/^(BEGIN|COMMIT|ROLLBACK|SET LOCAL)/.test(sql))return {rows:[]};
+    if(/^(BEGIN|COMMIT|ROLLBACK|SET LOCAL)/.test(sql)||sql.includes('pg_advisory_xact_lock'))return {rows:[]};
     assert.fail('Unexpected SQL');},release(){}};
   const pool={query:db.query,async connect(){return db;}},settings={...config,...env};
+  bindDatabaseAuthorityClient(db,pool);
   const transport=configuredBrowserSessions(settings,pool);
   const issued=(target=rows[0],options) => {const res=response(),context=transport.establishSession(target,res,options);
     const cookie=res.headers['set-cookie'].split(';')[0];return {res,context,cookie,claims:jwt.verify(cookie.split('=')[1],secret)};};
@@ -151,4 +157,105 @@ test('transaction root guard observes revocation after middleware (production re
   await assert.rejects(retainOwnerProfileAuthority(f.pool,delegated.req.auth,f.transport.ownerProfiles.policy),{status:401});
   assert.ok(f.calls.at(-1).sql.includes('FOR SHARE'));
   assert.deepEqual(ownerProfileLogoutSubject({id:99,session_version:4}),{id:99,session_version:4});
+});
+
+test('captured delegation cannot be forged and survives caller mutation while observing current revocation', async()=>{
+  const f=fixture(),root=await f.authenticate(f.issued());
+  assert.equal(captureOwnerProfileWriteAuthority(root.req.auth),null);
+  const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+  const delegated=await f.authenticate(f.issued(material.user,{delegation:material.delegation}));
+  const auth=delegated.req.auth;
+  assert.throws(()=>captureOwnerProfileWriteAuthority({...auth}),{status:401});
+  const handle=captureOwnerProfileWriteAuthority(auth);
+  assert.deepEqual(Object.keys(handle),[]);
+  await assert.rejects(retainCapturedOwnerProfileAuthority(f.pool,{}),{status:401});
+  await assert.rejects(retainCapturedOwnerProfileAuthority(f.pool,undefined),{status:401});
+  auth.root_session_version=999;
+  await retainCapturedOwnerProfileAuthority(f.pool,handle);
+  assert.match(f.calls.at(-1).sql,/ORDER BY id FOR SHARE/);
+  f.rows[0].session_version++;
+  await assert.rejects(retainCapturedOwnerProfileAuthority(f.pool,handle),{status:401});
+  await retainCapturedOwnerProfileAuthority(f.pool,null);
+});
+
+test('verified delegation cannot be changed to its sibling or stripped before capture',async()=>{
+  for(const mutate of [a=>{a.id=32;a.owner_profile='agustin';},a=>{a.root_session_version++;},
+    a=>{for(const key of ['root_id','root_session_version','root_exp','owner_profile'])delete a[key];}]){
+    const f=fixture(),root=await f.authenticate(f.issued());
+    const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+    const delegated=await f.authenticate(f.issued(material.user,{delegation:material.delegation}));
+    mutate(delegated.req.auth);
+    assert.throws(()=>captureOwnerProfileWriteAuthority(delegated.req.auth),{status:401});
+  }
+});
+
+test('shorter delegated expiry is checked again after waiting for principal locks',async()=>{
+  const f=fixture(),now=Date.now,instant=now();
+  const auth={id:31,session_version:1,root_id:1,root_session_version:1,owner_profile:'franco',
+    exp:Math.floor(instant/1000)+10,root_exp:Math.floor(instant/1000)+120};
+  rememberOwnerProfileSession(auth,auth,f.transport.ownerProfiles.policy);
+  const captured=captureOwnerProfileWriteAuthority(auth);
+  try {
+    const db={async query(...args){const result=await f.pool.query(...args);Date.now=()=>instant+11000;return result;}};
+    bindDatabaseAuthorityClient(db,f.pool);
+    await assert.rejects(retainCapturedOwnerProfileAuthority(db,captured),{status:401});
+  } finally {Date.now=now;}
+});
+
+test('immutable scalar projections preserve principal on recapture and read-only checks never lock',async()=>{
+  const f=fixture(),root=await f.authenticate(f.issued());
+  const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+  const delegated=(await f.authenticate(f.issued(material.user,{delegation:material.delegation}))).req.auth;
+  const first=bindCapturedOwnerProfileAuthority(delegated,Object.freeze({id:31,session_version:1}));
+  const next=bindCapturedOwnerProfileAuthority(first,Object.freeze({...first}));
+  assert.throws(()=>bindCapturedOwnerProfileAuthority(first,{...first}),{status:401});
+  assert.throws(()=>bindCapturedOwnerProfileAuthority(first,Object.freeze({...first,id:32})),{status:401});
+  const handle=captureOwnerProfileWriteAuthority(next);
+  await checkCapturedOwnerProfileAuthority(f.pool,handle);
+  assert.doesNotMatch(f.calls.at(-1).sql,/FOR SHARE|FOR UPDATE/);
+  await retainCapturedOwnerProfileAuthority(f.pool,handle,{lockMode:'update'});
+  assert.match(f.calls.at(-1).sql,/ORDER BY id FOR UPDATE/);
+  await assert.rejects(retainCapturedOwnerProfileAuthority(f.pool,handle,{lockMode:'invalid'}),{status:401});
+  f.rows[0].session_version++;
+  await assert.rejects(checkCapturedOwnerProfileAuthority(f.pool,handle),{status:401});
+});
+
+test('matching user IDs and epochs in another pool never authorize a delegated operation',async()=>{
+  const f=fixture(),other=fixture(),root=await f.authenticate(f.issued());
+  const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+  const delegated=(await f.authenticate(f.issued(material.user,{delegation:material.delegation}))).req.auth;
+  const handle=captureOwnerProfileWriteAuthority(delegated),before=other.calls.length;
+  await assert.rejects(retainCapturedOwnerProfileAuthority(other.pool,handle),{status:401});
+  await assert.rejects(checkCapturedOwnerProfileAuthority(other.pool,handle),{status:401});
+  await assert.rejects(retainOwnerProfileAuthority(other.pool,delegated,f.transport.ownerProfiles.policy),{status:401});
+  assert.equal(other.calls.length,before,'Wrong destination rejected before SQL');
+});
+
+for (const [name,write] of [
+  ['production',(pool,auth,mutate)=>withProductionAuthority(pool,auth,false,mutate)],
+  ['finance',withFinanceWrite],
+]) test(`${name} retains delegated principal before domain writes and rejects revocation during connection wait`,async()=>{
+  for (const revoked of [false,true]) {
+    const f=fixture(),root=await f.authenticate(f.issued());
+    const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+    const delegated=await f.authenticate(f.issued(material.user,{delegation:material.delegation}));
+    f.calls.length=0;
+    const pool={async connect(){
+      const db=await f.pool.connect();
+      if(revoked)f.rows[0].session_version++;
+      return db;
+    }};
+    let mutations=0;
+    const work=write(pool,delegated.req.auth,async()=>{mutations++;return 'saved';});
+    if(revoked) {
+      await assert.rejects(work,{status:401});assert.equal(mutations,0);
+      assert.ok(f.calls.some(c=>c.sql==='ROLLBACK'));
+      assert.equal(f.calls.some(c=>c.sql==='COMMIT'),false);
+    } else {assert.equal(await work,'saved');assert.equal(mutations,1);}
+    const principal=f.calls.findIndex(c=>c.sql.includes('ORDER BY id FOR SHARE'));
+    assert.ok(principal>0);
+    const actor=f.calls.findIndex(c=>c.sql.includes('WHERE id=$1 FOR SHARE'));
+    if(!revoked)assert.ok(actor>principal);
+    if(name==='finance')assert.ok(f.calls.findIndex(c=>c.sql.includes('pg_advisory_xact_lock'))<principal);
+  }
 });

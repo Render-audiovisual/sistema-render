@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { configuredOwnerProfiles, rememberOwnerProfileSession } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
 import { createEditorialPublicationRouter, editorialPieceIdentity, normalizePublicationInstant,
   normalizeEditorialPublicationInput, editorialPublicationIntentHash, editorialPublicationDto } from '../src/editorial-publication.js';
 
@@ -71,12 +73,13 @@ test('DTO proves all evidence fields and current reference, never raw private me
   assert.equal(editorialPublicationDto({ ...piece, estado: 'lista', fecha_publicacion_real: null }, null, null, ADMIN).classification, 'no_publicada');
 });
 
-function harness({ domain = 'historia', user = ADMIN, hidden = false, inactiveClient = false, changedClient = false, fault = null, historical = false } = {}) {
+function harness({ domain = 'historia', user = ADMIN, hidden = false, inactiveClient = false, changedClient = false, fault = null, historical = false, principalRows = [], onConnect = () => {}, authorityPool = {} } = {}) {
   const routes = new Map(), calls = [];
   let released = false, snapshot;
   let state = { piece: { id: 1, cliente_id: 7, estado: historical ? 'publicada' : 'lista', fecha_programada: '2025-12-01', fecha_publicacion_real: historical ? TIME : null }, version: null, events: [] };
   const db = { release() { released = true; }, async query(sql, params = []) {
     calls.push({ sql, params });
+    if (sql.includes('FROM usuarios WHERE id=ANY')) return { rows: principalRows };
     if (fault?.(sql)) throw Object.assign(new Error('secret driver fault'), { code: 'P0001' });
     if (sql.startsWith('BEGIN')) { snapshot = structuredClone(state); return { rows: [] }; }
     if (sql === 'ROLLBACK') { state = snapshot; return { rows: [] }; }
@@ -103,7 +106,8 @@ function harness({ domain = 'historia', user = ADMIN, hidden = false, inactiveCl
   } };
   const router = { use(fn) { routes.set('middleware', fn); } };
   for (const method of ['get', 'post']) router[method] = (path, fn) => routes.set(`${method} ${path}`, fn);
-  createEditorialPublicationRouter({ express: { Router: () => router }, pool: { connect: async () => db } });
+  authorityPool.connect=async()=>{onConnect();return db;};bindDatabaseAuthorityClient(db,authorityPool);
+  createEditorialPublicationRouter({ express: { Router: () => router }, pool: authorityPool });
   return { calls, routes, state: () => state, released: () => released, async run(action = null, body = undefined, extra = {}) {
     let status, payload, error;
     const res = { status(value) { status = value; return this; }, json(value) { payload = value; } };
@@ -112,6 +116,39 @@ function harness({ domain = 'historia', user = ADMIN, hidden = false, inactiveCl
     return { status, payload, error };
   } };
 }
+
+test('publication capture survives connection wait; revoked root denies confirm/withdraw/replay before actor or evidence', async()=>{
+  const pool={};
+  const policy=configuredOwnerProfiles({NODE_ENV:'test',RENDER_DB_ENVIRONMENT:'test',
+    DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:91001,francoUserId:91005,agustinUserId:91006})},pool).policy;
+  for(const action of ['confirmar','retirar']) for(const patch of [{},{activo:false},{rol:'diseno'},{session_version:2}]) {
+    const exp=Math.floor(Date.now()/1000)+300;
+    const auth={id:91005,rol:'admin',session_version:1,root_id:91001,root_session_version:1,root_exp:exp,exp,owner_profile:'franco'};
+    rememberOwnerProfileSession(auth,auth,policy);
+    const principalRows=[{id:91001,rol:'admin',activo:true,session_version:1,...patch},
+      {id:91005,rol:'admin',activo:true,session_version:1}];
+    const h=harness({user:principalRows[1],principalRows,authorityPool:pool,hidden:true,onConnect(){auth.id=91006;}});
+    const result=await h.run(action,action==='confirmar'?input():{request_id:KEY,expected_revision:0},{auth});
+    assert.equal(result.status,Object.keys(patch).length?401:404);assert.equal(result.error,undefined);
+    const sql=h.calls.map(c=>c.sql), retained=sql.findIndex(s=>s.includes('id=ANY'));
+    assert.ok(sql.findIndex(s=>s.includes('pg_advisory_xact_lock'))<retained);
+    assert.match(sql[retained],/ORDER BY id FOR SHARE$/);
+    const actor=sql.findIndex(s=>s.startsWith('SELECT id,rol,activo,session_version FROM usuarios'));
+    if(Object.keys(patch).length) assert.equal(actor,-1);else assert.ok(retained<actor);
+    assert.equal(sql.some(s=>/^(UPDATE|INSERT)/.test(s)),false);assert.equal(sql.at(-1),'ROLLBACK');
+    if(!Object.keys(patch).length) {
+      const readAuth={...auth,id:91005};rememberOwnerProfileSession(readAuth,readAuth,policy);
+      const read=harness({user:principalRows[1],authorityPool:pool});
+      assert.equal((await read.run(null,undefined,{auth:readAuth})).status,200);
+      assert.match(read.calls[0].sql,/REPEATABLE READ READ ONLY/);
+      assert.equal(read.calls.some(c=>/FOR SHARE|FOR UPDATE|pg_advisory/.test(c.sql)),false);
+    }
+  }
+  const forged=harness();
+  const rejected=await forged.run('confirmar',input(),{auth:{...ADMIN,root_id:91001}});
+  assert.equal(rejected.status,401);assert.equal(forged.calls.length,0);
+});
 
 for (const domain of ['historia', 'publicacion']) {
   test(`${domain}: confirm, withdraw and replay return current status without duplicate evidence`, async () => {
@@ -157,7 +194,7 @@ test('request lock precedes client then piece then version, writes READ COMMITTE
   const client = sql.findIndex(s => s.includes('FROM clientes WHERE') && s.includes('FOR SHARE'));
   const piece = sql.findIndex(s => s.includes('FOR UPDATE OF p'));
   const version = sql.findIndex(s => s.includes('FROM editorial_publicacion_versiones') && s.includes('FOR UPDATE'));
-  assert.ok(actor < request && request < client && client < piece && piece < version);
+  assert.ok(request < actor && actor < client && client < piece && piece < version);
   assert.match(sql[actor], /FOR SHARE$/);
   assert.equal(h.calls[request].params[0], `4:${KEY}`);
   assert.equal(h.released(), true);

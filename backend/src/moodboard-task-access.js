@@ -1,4 +1,5 @@
 import { buildTaskAccessClause } from './task-access.js';
+import { captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const error = (status, message) => Object.assign(new Error(message), { status });
@@ -36,10 +37,12 @@ export async function mutateMoodboardTaskLink(pool, auth, referenceId, taskId, {
   if (typeof remove !== 'boolean') throw new TypeError('Invalid link operation.');
   const id = auth?.id, version = auth?.session_version;
   if (!positive(id) || !positive(version)) throw error(401, 'La sesión ya no está vigente.');
+  const delegation=captureOwnerProfileWriteAuthority(auth);
   const db = await pool.connect();
   let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db,delegation);
     const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [id])).rows[0];
     if (!current || current.id !== id || current.activo !== true || current.session_version !== version)
       throw error(401, 'La sesión ya no está vigente.');

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { captureClientCreator, lockCurrentClientCreator } from '../src/client-create-authority.js';
 import { lockClientAdministration } from '../src/client-agreement.js';
+import { configuredOwnerProfiles, rememberOwnerProfileSession } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
 
 const observed = () => ({ id: 11, session_version: 7 });
 const current = () => ({ ...observed(), activo: true, rol: 'admin', nombre: 'Current synthetic owner', usuario: 'current-synthetic' });
@@ -93,4 +95,66 @@ test('SQL failure propagates to caller cleanup without leaking into an authority
   const failure = new Error('synthetic database transport failure');
   const db = { query: async () => { throw failure; } };
   await assert.rejects(lockCurrentClientCreator(db,captureClientCreator(observed())),error=>error===failure);
+});
+
+function delegatedCreator() {
+  const env = { NODE_ENV: 'test', RENDER_DB_ENVIRONMENT: 'test',
+    DATABASE_URL: 'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES: JSON.stringify({ accountId: 1, francoUserId: 31, agustinUserId: 32 }) };
+  const exp = Math.floor(Date.now() / 1000) + 600;
+  const auth = { id: 31, session_version: 7, root_id: 1, root_session_version: 3,
+    owner_profile: 'franco', root_exp: exp, exp };
+  const rows = [1,31,32].map(id => ({ id, session_version: id === 1 ? 3 : 7,
+    activo: true, rol: 'admin', nombre: `Synthetic ${id}`, usuario: `synthetic-${id}` }));
+  const calls = [];
+  const db = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes('id=ANY')) return { rows: rows.map(row => ({ ...row })) };
+    if (sql.includes('id=$1')) return { rows: rows.filter(row => row.id === params[0]) };
+    return { rows: [] };
+  } };
+  const pool = { async connect() { return db; } };
+  bindDatabaseAuthorityClient(db, pool);
+  const policy = configuredOwnerProfiles(env, pool).policy;
+  rememberOwnerProfileSession(auth, auth, policy);
+  return { auth, rows, calls, db, pool };
+}
+
+test('delegated creator preserves opaque authority through recapture and locks principals after mutex before actor', async () => {
+  const f = delegatedCreator();
+  const observed = captureClientCreator(captureClientCreator(f.auth));
+  assert.deepEqual(observed, { id: 31, session_version: 7 });
+  assert.deepEqual(Object.keys(observed), ['id', 'session_version']);
+  f.auth.root_session_version = 999;
+  await f.db.query('BEGIN');
+  await lockClientAdministration(f.db);
+  const actor = await lockCurrentClientCreator(f.db, observed);
+  assert.equal(actor.id, 31);
+  assert.equal(f.calls[1].sql, 'SELECT pg_advisory_xact_lock(8142, 1)');
+  assert.match(f.calls[2].sql, /id=ANY.*ORDER BY id FOR SHARE$/);
+  assert.deepEqual(f.calls[2].params, [[1,31,32]]);
+  assert.match(f.calls[3].sql, /id=\$1 FOR SHARE$/);
+});
+
+test('delegated creator rejects root/actor revocation before actor or business reads', async () => {
+  for (const id of [1,31]) for (const patch of [{ activo: false }, { rol: 'edicion' }, { session_version: 99 }]) {
+    const f = delegatedCreator(), observed = captureClientCreator(f.auth);
+    Object.assign(f.rows.find(row => row.id === id), patch);
+    await assert.rejects(lockCurrentClientCreator(f.db, observed), { status: 401 });
+    assert.equal(f.calls.length, 1);
+    assert.match(f.calls[0].sql, /ORDER BY id FOR SHARE$/);
+  }
+});
+
+test('delegated creator rejects claim mutation before initial capture without querying', () => {
+  const f = delegatedCreator();
+  f.auth.id = 32; f.auth.owner_profile = 'agustin';
+  assert.throws(() => captureClientCreator(f.auth), { status: 401 });
+  assert.deepEqual(f.calls, []);
+});
+
+test('delegated creator rejects a lease from another pool even with matching principal rows', async () => {
+  const source = delegatedCreator(), destination = delegatedCreator();
+  await assert.rejects(lockCurrentClientCreator(destination.db, captureClientCreator(source.auth)), { status: 401 });
+  assert.deepEqual(destination.calls, []);
 });

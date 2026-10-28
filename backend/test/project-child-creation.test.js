@@ -65,7 +65,12 @@ for(const kind of ['etapas','hitos','entregables'])test(`${kind}: fresh atomic r
   assert.equal(fresh.body.replayed,false);assert.equal(fresh.body.proyecto.revision,2);
   const sql=f.calls.map(c=>c.sql);
   assert.equal(sql[0],'BEGIN ISOLATION LEVEL READ COMMITTED');
-  assert.ok(sql[1].endsWith('FOR SHARE'));
+  const actor=sql.findIndex(s=>s.startsWith('SELECT id,nombre,rol,activo,session_version FROM usuarios'));
+  const objective=sql.findIndex(s=>s.includes("hashtext('vinculo-objetivo-mensual')"));
+  const mutex=sql.findIndex(s=>s.includes("hashtext('proyecto-vinculos')"));
+  assert.ok(objective>0 && objective<mutex && mutex<actor);
+  assert.ok(sql[actor].endsWith('FOR SHARE'));
+  assert.ok(actor<sql.findIndex(s=>s.includes('FROM proyectos WHERE')));
   assert.ok(sql.findIndex(s=>s.includes('pg_advisory_xact_lock'))<sql.findIndex(s=>s.includes('FROM proyectos WHERE')));
   assert.ok(sql.findIndex(s=>s.startsWith('INSERT INTO project_child_create_receipts'))<sql.indexOf('COMMIT'));
   assert.equal(f.calls.filter(c=>c.sql.startsWith('INSERT INTO proyecto_actividad')).length,1);

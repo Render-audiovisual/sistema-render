@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createEditingDeliveriesRouter, editingDeliveryTaskId, normalizeEditingDeliveryInput,
   editingDeliveryPayloadHash, editingDeliveryDto } from '../src/editing-deliveries.js';
 import { EDITING_PROGRESS_SCHEMA } from '../src/editing-progress-ledger.js';
+import { configuredOwnerProfiles, rememberOwnerProfileSession, bindCapturedOwnerProfileAuthority } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
 
 const KEY = '10000000-0000-4000-8000-000000000001';
 const SECOND = '20000000-0000-4000-8000-000000000002';
@@ -62,7 +64,7 @@ test('event DTO closes all roles to safe immutable fields, never finance/raw met
   assert.doesNotMatch(JSON.stringify(dto), /PRIVATE|SECRET|metadata|request_id|payload_hash/);
 });
 
-function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = false, fault = null } = {}) {
+function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = false, fault = null, principalRows = [], onConnect = () => {}, authorityPool = {} } = {}) {
   const calls = [], routes = new Map();
   let released = false, snapshot;
   let state = { task: { id: 8, revision: 2, estado: 'en_progreso', tipo_tarea: 'edicion', workspace: 'render_os', archived: 'false', trashed: 'false', assigned,
@@ -70,6 +72,7 @@ function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = fal
     propiedades_extra: { workspace: 'render_os', guiones: 'Guion', revision_aprobada: true, revision_aprobada_por: 'Líder', revision_aprobada_por_id: 1, revision_aprobada_at: TIME, finalizada_at: TIME, edicion_responsable_id: 4 }, ...task }, events: [], progress: [] };
   const db = { release() { released = true; }, async query(sql, params = []) {
     calls.push({ sql, params });
+    if(sql.includes('FROM usuarios WHERE id=ANY'))return {rows:principalRows};
     const error = fault?.(sql);
     if (error) throw error instanceof Error ? error : Object.assign(new Error('Unexpected SQL failure'), { code: 'P0001' });
     if (sql.startsWith('BEGIN')) { snapshot = structuredClone(state); return { rows: [] }; }
@@ -110,7 +113,9 @@ function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = fal
     return { rows: [] };
   } };
   const router = { use(fn) { routes.set('middleware', fn); }, get(path, fn) { routes.set(`GET ${path}`, fn); }, post(path, fn) { routes.set(`POST ${path}`, fn); } };
-  createEditingDeliveriesRouter({ express: { Router: () => router }, pool: { connect: async () => db } });
+  authorityPool.connect=async()=>{onConnect();return db;};
+  bindDatabaseAuthorityClient(db,authorityPool);
+  createEditingDeliveriesRouter({ express: { Router: () => router }, pool: authorityPool });
   return { calls, routes, state: () => state, released: () => released, async run(write = true, input = body(), extra = {}) {
     let status, payload, error;
     const res = { status(value) { status = value; return this; }, json(value) { payload = value; } };
@@ -118,6 +123,42 @@ function harness({ user = { ...ACTOR }, task = {}, assigned = true, linked = fal
     return { status, payload, error };
   } };
 }
+
+test('delegated delivery capture survives pool wait; revoked principal blocks actor/domain/receipts and reads stay lock-free',async()=>{
+  const pool={};
+  const policy=configuredOwnerProfiles({NODE_ENV:'test',RENDER_DB_ENVIRONMENT:'test',
+    DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:91001,francoUserId:91005,agustinUserId:91006})},pool).policy;
+  for(const patch of [{},{activo:false},{rol:'edicion'},{session_version:2}]) {
+    const exp=Math.floor(Date.now()/1000)+300;
+    const auth={id:91005,rol:'admin',session_version:1,root_id:91001,root_session_version:1,root_exp:exp,exp,owner_profile:'franco'};
+    rememberOwnerProfileSession(auth,auth,policy);
+    const captured=bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version}));
+    const principalRows=[{id:91001,rol:'admin',activo:true,session_version:1,...patch},
+      {id:91005,rol:'admin',activo:true,session_version:1}];
+    const h=harness({user:principalRows[1],principalRows,authorityPool:pool,task:{workspace:'other'},onConnect(){auth.id=91006;}});
+    const result=await h.run(true,body(),{auth:captured});
+    assert.equal(result.status,Object.keys(patch).length?401:404);assert.equal(result.error,undefined);
+    const sql=h.calls.map(c=>c.sql),retained=sql.findIndex(s=>s.includes('id=ANY'));
+    assert.ok(sql.findIndex(s=>s.includes("hashtext('editing-delivery-request')"))<retained);
+    assert.ok(sql.findIndex(s=>s.includes("hashtext('vinculo-objetivo-mensual')"))<retained);
+    assert.match(sql[retained],/ORDER BY id FOR SHARE$/);
+    const actor=sql.findIndex(s=>s.startsWith('SELECT id,rol,activo,session_version,usuario,nombre FROM usuarios'));
+    if(Object.keys(patch).length)assert.equal(actor,-1);else assert.ok(retained<actor);
+    assert.equal(sql.some(s=>/^(UPDATE|INSERT|DELETE)/.test(s)),false);assert.equal(sql.at(-1),'ROLLBACK');
+    assert.equal(h.state().events.length,0);assert.equal(h.state().progress.length,0);
+    if(!Object.keys(patch).length) {
+      const read=harness({user:principalRows[1],authorityPool:pool});
+      assert.equal((await read.run(false,undefined,{auth:captured})).status,200);
+      assert.equal(read.calls.some(c=>/FOR SHARE|FOR UPDATE|pg_advisory/.test(c.sql)),false);
+      const wrong=harness({user:principalRows[1]});
+      assert.equal((await wrong.run(true,body(),{auth:captured})).status,401);
+      assert.equal(wrong.calls.some(c=>c.sql.includes('FROM usuarios')),false);
+    }
+  }
+  const forged=harness();assert.equal((await forged.run(true,body(),{auth:{...ACTOR,root_id:91001}})).status,401);
+  assert.equal(forged.calls.length,0);
+});
 
 test('delivery atomically enters review, clears approval/finalization, preserves unrelated metadata and raw content', async () => {
   for (const estado of ['pendiente', 'en_progreso', 'en_revision', 'aprobada']) {
@@ -211,7 +252,7 @@ test('resource helper order covers goal/publication/visit before task UPDATE wit
   const visit = calls.findIndex(c => c.sql.startsWith('SELECT id FROM produccion_visitas WHERE'));
   const video = calls.findIndex(c => c.sql.startsWith('SELECT id FROM produccion_videos WHERE'));
   const write = calls.findIndex(c => c.sql.startsWith('UPDATE tareas'));
-  assert.ok(actor < request && request < global && global < period && period < tasks && tasks < publication && publication < goal && goal < visit && visit < video && video < write);
+  assert.ok(request < global && global < actor && actor < period && period < tasks && tasks < publication && publication < goal && goal < visit && visit < video && video < write);
   assert.match(calls[actor].sql, /FOR SHARE$/);
   assert.deepEqual(calls[tasks].params, [[7, 8]]);
   assert.equal(calls.slice(video + 1).some(c => c.sql.includes('FROM tareas') && c.sql.includes('FOR UPDATE')), false);

@@ -1,6 +1,14 @@
 # Publicación segura en Hostinger — preparación sin cambios remotos
 
-Fecha:27/10/2026. Estado: ejecutor implementado y ensayado únicamente en copia; configuración propuesta no aplicada. No autorización para migrar/publicar. Correos de Agustín y Franco pendientes por decisión del usuario; conservar Líder y sus tareas sin repartir. No cambiar roles por nombre ni promover a Franco Romero.
+Actualización:28/10/2026. El usuario autorizó publicar conservando la base vigente y eligió completar primero los perfiles compartidos Agustín/Franco. La autorización no sustituye las comprobaciones de este procedimiento: aún no se ejecutaron migración ni despliegue productivos. Se conserva Líder y sus tareas sin repartir; los perfiles no constituyen autenticaciones humanas independientes. No hacen falta dos correos nuevos para este flujo compartido. No cambiar roles por nombre ni promover a Franco Romero.
+
+Revisión visual de solo lectura renovada el28/10: Hostinger sigue mostrando la rama `hostinger-deploy`, commit `43f02707e299293c5b0c2bb6f12386bd4642746b`, Node24.x y autoimplementación activada. No se pulsó Redeploy ni se cambiaron variables. El backup mostrado de26/10 no demuestra respaldo actual de PostgreSQL. El guard de perfiles continúa restringido a entornos locales mientras no se acepte la integración transversal; no eliminarlo para forzar un despliegue.
+
+Respaldo renovado el28/10 a las20:06UTC: lectura TLS estricta de producción, dos archivos lógicos privados y restauración aislada del esquema operativo. Verificación:64 tablas,8087 filas,244 restricciones originales y46 secuencias; hashes y conteos idénticos. Copia durable: `/Users/agustinobregon/Documents/Render-Backups/2026-10-28-owner-profile-release-pmB5Qo`. No es una certificación de restauración completa de servicios Supabase ni de archivos externos. Las escrituras posteriores al snapshot se deben volver a observar en la ventana de publicación; este respaldo no sustituye la base vigente.
+
+Incidencia de confidencialidad: una lectura técnica del diálogo de Hostinger incluyó inesperadamente la conexión privada al cerrar el formulario. No se reproduce ni incorpora la credencial a documentación, código o paquete. Se borró la variable de trabajo y se cerró el formulario sin guardarlo. Coordinar rotación con el usuario y actualización atómica de la conexión del servicio antes de publicar; no cambiar la contraseña unilateralmente ni pedirla por chat. La autorización de respaldo se limitó al formulario privado127.0.0.1:56509, no habilita reutilizar la credencial en un destino distinto para ejecutar migraciones.
+
+Último candidato local: `/private/tmp/render-owner-profile-candidate-C89ww7/app`, manifiesto v2 con341 archivos, Node24 y dependencias instaladas. SHA256 del manifiesto: `8e1b56a2fc407612fa882b7b8cf1a0bfbf805de4bd084a19ec164cb0125ccdac`. No es un despliegue aprobado: faltan habilitación explícita de perfiles productivos con IDs reales, revisión de la cohorte vigente y ventana/executor final. El checklist ahora rechaza un mapping de perfiles que el runtime productivo todavía no admite.
 
 ## 1. Configuración preparada, no guardada en el panel
 

@@ -1,3 +1,5 @@
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
 const denied = () => Object.assign(new Error('La sesión cambió. Volvé a iniciar sesión antes de actualizar la tarea.'), { status: 401 });
 const positive = value => Number.isSafeInteger(value) && value > 0;
 
@@ -8,6 +10,8 @@ const positive = value => Number.isSafeInteger(value) && value > 0;
 export async function assertCurrentTaskWriteActor(db, captured) {
   const id = captured?.id, version = captured?.session_version, role = captured?.rol;
   if (!positive(id) || id > 2147483647 || !positive(version) || typeof role !== 'string' || !role) throw denied();
+  const retention = retainTaskWriteDelegation(db, captured);
+  if (retention) await retention;
   const row = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [id])).rows[0];
   if (!row || row.id !== id || row.activo !== true || row.session_version !== version || row.rol !== role) throw denied();
   return { id:row.id, rol:row.rol, activo:true, session_version:row.session_version };
@@ -15,3 +19,12 @@ export async function assertCurrentTaskWriteActor(db, captured) {
 
 // Compatibility for existing state-only callers; one identity implementation.
 export const assertCurrentTaskStateActor = assertCurrentTaskWriteActor;
+
+export function captureTaskWriteActor(auth, extra = {}) {
+  const captured = Object.freeze({ ...extra, id:auth?.id, rol:auth?.rol, session_version:auth?.session_version });
+  return bindCapturedOwnerProfileAuthority(auth,captured);
+}
+export function retainTaskWriteDelegation(db, captured) {
+  const delegation = captureOwnerProfileWriteAuthority(captured);
+  return delegation === null ? undefined : retainCapturedOwnerProfileAuthority(db, delegation);
+}

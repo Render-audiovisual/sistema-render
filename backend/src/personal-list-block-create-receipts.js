@@ -1,5 +1,6 @@
 import { personalListCreationRequestId, personalListCreationHash } from './personal-list-create-receipts.js';
 import { withPersonalListWrite } from './personal-list-write-authority.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -15,7 +16,7 @@ function capture(auth) {
   if (!positive(auth?.id) || !positive(auth?.session_version) || typeof auth?.rol !== 'string' || !auth.rol.trim()) {
     throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');
   }
-  return Object.freeze({ id: auth.id, rol: auth.rol, session_version: auth.session_version });
+  return bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id: auth.id, rol: auth.rol, session_version: auth.session_version }));
 }
 async function ownedList(db, id, userId) {
   const row = (await db.query('SELECT id FROM listas_personales WHERE id=$1 AND usuario_id=$2 FOR SHARE', [id, userId])).rows[0];
@@ -68,9 +69,11 @@ export async function createPersonalListBlockWithReceipt(pool, auth, { requestId
 // Lookup performs no DML, never creates missing blocks or repairs tombstones.
 export async function findPersonalListBlockCreation(pool, auth, parentId, requestId) {
   const observed = capture(auth), key = personalListCreationRequestId(requestId), id = listId(parentId);
+  const ownerAuthority = captureOwnerProfileWriteAuthority(observed);
   const db = await pool.connect(); let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, ownerAuthority, { lockMode: 'share' });
     const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
     if (!current || current.id !== observed.id || current.activo !== true
       || current.session_version !== observed.session_version || current.rol !== observed.rol) {

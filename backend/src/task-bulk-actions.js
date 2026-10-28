@@ -1,4 +1,4 @@
-import { assertCurrentTaskWriteActor } from './task-state-authority.js';
+import { assertCurrentTaskWriteActor, captureTaskWriteActor } from './task-state-authority.js';
 import { buildTaskAccessClause, getTaskActor } from './task-access.js';
 
 const fail = (message, status) => Object.assign(new Error(message), { status });
@@ -7,7 +7,7 @@ const denied = () => fail('Solo podés eliminar o restaurar tareas propias o don
 export async function applyTaskBulkAction(pool, { auth, ids, action }) {
   // Capture identity and intent before acquiring a connection. Never reuse a
   // mutable request object after a concurrent authorization change.
-  const captured = Object.freeze({ id: auth?.id, rol: auth?.rol, session_version: auth?.session_version });
+  const captured = captureTaskWriteActor(auth);
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 250 ||
       ids.some(id => !Number.isSafeInteger(id) || id < 1) || new Set(ids).size !== ids.length ||
       !['papelera', 'restaurar'].includes(action)) throw fail('Acción masiva inválida.', 400);

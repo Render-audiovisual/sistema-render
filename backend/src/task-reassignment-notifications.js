@@ -1,4 +1,5 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { captureTaskWriteActor, retainTaskWriteDelegation } from './task-state-authority.js';
 
 const positive=value=>Number.isSafeInteger(value)&&value>0&&value<=2147483647;
 const fail=(message,status=401)=>Object.assign(new Error(message),{status});
@@ -12,12 +13,14 @@ export function captureAssignmentNotification(options) {
   const auth=options.assignmentNotificationActor;
   if (!positive(auth?.id)||!positive(auth.session_version)||!SYSTEM_USER_ROLES.includes(auth.rol))
     throw fail('Sesión de reasignación inválida.');
-  if (mode==='created') return Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version,mode});
+  if (mode==='created') return captureTaskWriteActor(auth,{mode});
   if (!positive(options.assignmentNotificationTaskId)) throw fail('Tarea de reasignación inválida.',400);
-  return Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version,taskId:options.assignmentNotificationTaskId});
+  return captureTaskWriteActor(auth,{taskId:options.assignmentNotificationTaskId});
 }
 
 export async function lockAssignmentNotificationActor(db,capture) {
+  const retention=retainTaskWriteDelegation(db,capture);
+  if(retention)await retention;
   const user=(await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE',[capture.id])).rows[0];
   if (!user||user.id!==capture.id||user.activo!==true||user.rol!==capture.rol||user.session_version!==capture.session_version)
     throw fail('La sesión de reasignación ya no está autorizada.');

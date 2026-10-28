@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { captureFinanceActor, withFinanceSnapshot } from './finance-snapshot.js';
+import { captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 const invalid = () => fail(400, 'TEAM_PAYMENT_INPUT_INVALID', 'Revisá los datos explícitos del registro de pago.');
@@ -135,12 +136,14 @@ async function payment(db, paymentId, lock = false) {
   return teamPaymentDto(row);
 }
 async function writePayment(pool, captured, operation, targetId, input) {
+  const delegation=captureOwnerProfileWriteAuthority(captured);
   const hash = teamPaymentIntentHash(operation, targetId, input), db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
     // Same mutex as user administration; never hold actor SHARE while waiting.
     await db.query('SELECT pg_advisory_xact_lock(20261019, 1)');
+    await retainCapturedOwnerProfileAuthority(db,delegation);
     const actor = (await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE', [captured.id])).rows[0];
     if (!actor || actor.id !== captured.id || actor.activo !== true || actor.session_version !== captured.session_version)
       throw fail(401, 'TEAM_PAYMENT_SESSION_INVALID', 'La sesión cambió. Volvé a iniciar sesión.');

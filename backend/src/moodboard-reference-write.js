@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { buildMoodboardTaskReadPredicate } from './moodboard-task-access.js';
 import { createMoodboardImageStorage } from './moodboard-image-storage.js';
 
@@ -10,7 +11,7 @@ const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':obj
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function actorObservation(auth){
   if(!positive(auth?.id)||!positive(auth?.session_version)||typeof auth?.rol!=='string'||!auth.rol.trim())throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
-  return Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol});
+  return bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol}));
 }
 function id(value){
   if(positive(value))return value;
@@ -77,6 +78,7 @@ export function normalizeMoodboardReferenceOperation(body){
   input.fields=Object.freeze(fields);return Object.freeze(input);
 }
 async function currentActor(db,observed,write){
+  if(write)await retainCapturedOwnerProfileAuthority(db,captureOwnerProfileWriteAuthority(observed));
   const actor=(await db.query(`SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1${write?' FOR SHARE':''}`,[observed.id])).rows[0];
   if(!actor||actor.id!==observed.id||actor.activo!==true||actor.session_version!==observed.session_version||actor.rol!==observed.rol)throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
   return actor;

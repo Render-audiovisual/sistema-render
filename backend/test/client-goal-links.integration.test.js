@@ -15,7 +15,8 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
     const pool = new pg.Pool({connectionString:url.toString()}); await runMigrations(pool);
     const suffix = Date.now();
     const user = (await pool.query(`INSERT INTO usuarios(usuario,nombre,rol,password_hash)
-      VALUES($1,'Vínculos QA','community','QA') RETURNING id`, [`links-${suffix}`])).rows[0];
+      VALUES($1,'Vínculos QA','admin','QA') RETURNING id,session_version`, [`links-${suffix}`])).rows[0];
+    const linkAuth={id:user.id,rol:'admin',session_version:user.session_version};
     const clients = (await pool.query(`INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles,activo)
       VALUES($1,8,4,true),($2,1,0,true) RETURNING id`, [`Vínculos QA ${suffix}`,`Otra QA ${suffix}`])).rows;
     const ids = clients.map(client => client.id);
@@ -41,16 +42,16 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       const plannedOptions = await goalLinkOptions(pool,source.id,'2026-10');
       assert.ok(plannedOptions.casilleros.some(piece => piece.id===slot.id && piece.publicacion_id===planned.id));
       const snapshots = (await pool.query('SELECT * FROM tareas WHERE id=ANY($1::int[]) ORDER BY id',[[source.id,slot.tarea_id]])).rows;
-      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),estado:'publicada'},'QA'), {status:400});
-      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),expected_tarea_updated_at:'2000-01-01'},'QA'), {status:409});
-      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),expected_pieza_updated_at:'2000-01-01'},'QA'), {status:409});
+      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),estado:'publicada'},linkAuth), {status:400});
+      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),expected_tarea_updated_at:'2000-01-01'},linkAuth), {status:409});
+      await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),expected_pieza_updated_at:'2000-01-01'},linkAuth), {status:409});
       for (const task of [await makeTask('Reel otro',{client:ids[1]}),await makeTask('Reel septiembre',{date:'2026-09-01'}),
         await makeTask('Video visita',{type:'produccion'}),await makeTask('Reel privado',{metadata:{workspace:'privado'}})]) {
-        await assert.rejects(linkGoalTask(pool,slot.id,payload(task,slot),'QA'));
+        await assert.rejects(linkGoalTask(pool,slot.id,payload(task,slot),linkAuth));
       }
       const carousel = (await pool.query("SELECT * FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo='carrusel' LIMIT 1",[opts.objetivo.id])).rows[0];
-      await assert.rejects(linkGoalTask(pool,carousel.id,payload(source,carousel),'QA'), {status:400});
-      const result = await linkGoalTask(pool,slot.id,payload(source,slot),'QA');
+      await assert.rejects(linkGoalTask(pool,carousel.id,payload(source,carousel),linkAuth), {status:400});
+      const result = await linkGoalTask(pool,slot.id,payload(source,slot),linkAuth);
       assert.equal(result.completadas,1); assert.equal(result.total,8);
       assert.deepEqual((await pool.query('SELECT * FROM tareas WHERE id=ANY($1::int[]) ORDER BY id',[[source.id,slot.tarea_id]])).rows,snapshots);
       assert.equal((await pool.query('SELECT reels FROM cliente_objetivos_mensuales WHERE id=$1',[opts.objetivo.id])).rows[0].reels,8);
@@ -60,7 +61,7 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       assert.equal(audit.registro_anterior.publicacion_id,planned.id);
       assert.deepEqual((await pool.query('SELECT * FROM publicaciones WHERE id=$1',[planned.id])).rows[0],planned);
       assert.equal((await goalLinkOptions(pool,source.id,'2026-10')).vinculo_actual.id,slot.id);
-      await assert.rejects(linkGoalTask(pool,second.id,payload(source,second),'QA'),{status:409});
+      await assert.rejects(linkGoalTask(pool,second.id,payload(source,second),linkAuth),{status:409});
       await pool.query("UPDATE tareas SET estado='publicada' WHERE id=$1",[slot.tarea_id]);
       assert.equal((await pool.query("SELECT count(*)::int n FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo='video' AND estado='publicada'",[opts.objetivo.id])).rows[0].n,1);
       await pool.query("UPDATE tareas SET estado='en_revision' WHERE id=$1",[source.id]);
@@ -68,17 +69,17 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       await pool.query("UPDATE tareas SET estado='publicada' WHERE id=$1",[source.id]);
       const competing = await makeTask('Reel concurrente');
       const doneSlot = (await pool.query('SELECT * FROM cliente_objetivo_piezas WHERE id=$1',[slot.id])).rows[0];
-      await assert.rejects(linkGoalTask(pool,slot.id,payload(competing,doneSlot),'QA'),{status:409});
+      await assert.rejects(linkGoalTask(pool,slot.id,payload(competing,doneSlot),linkAuth),{status:409});
       await pool.query('UPDATE cliente_objetivo_piezas SET publicacion_id=$2 WHERE id=$1',[second.id,planned.id]);
       await pool.query("UPDATE publicaciones SET estado='publicada' WHERE id=$1",[planned.id]);
-      await assert.rejects(linkGoalTask(pool,second.id,payload(competing,second),'QA'),{status:409});
+      await assert.rejects(linkGoalTask(pool,second.id,payload(competing,second),linkAuth),{status:409});
       await pool.query("UPDATE publicaciones SET estado='pendiente' WHERE id=$1",[planned.id]);
       const third = opts.casilleros[2];
-      const simultaneous = await Promise.allSettled([linkGoalTask(pool,second.id,payload(competing,second),'QA'),linkGoalTask(pool,third.id,payload(competing,third),'QA')]);
+      const simultaneous = await Promise.allSettled([linkGoalTask(pool,second.id,payload(competing,second),linkAuth),linkGoalTask(pool,third.id,payload(competing,third),linkAuth)]);
       assert.equal(simultaneous.filter(item => item.status==='fulfilled').length,1);
       const child = await makeTask('Reel edición hija',{parent:source.id});
       const available = (await goalLinkOptions(pool,competing.id,'2026-10')).casilleros[0];
-      await assert.rejects(linkGoalTask(pool,available.id,payload(child,available),'QA'), {status:409});
+      await assert.rejects(linkGoalTask(pool,available.id,payload(child,available),linkAuth), {status:409});
       assert.equal((await prepareGoal(pool,params)).creadas,0);
       assert.equal((await pool.query('SELECT tarea_id FROM cliente_objetivo_piezas WHERE id=$1',[slot.id])).rows[0].tarea_id,source.id);
       await assert.rejects(goalLinkOptions(pool,competing.id,'2026-09'),{status:400});

@@ -1,4 +1,5 @@
 import express from 'express';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 const fail=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
@@ -13,9 +14,10 @@ function boardId(value){
 function noQuery(query){if(!query||typeof query!=='object'||Array.isArray(query)||Object.keys(query).length)throw fail(400,'No se permiten parámetros de consulta.');}
 function actorObservation(auth){
   if(!positive(auth?.id)||!positive(auth?.session_version)||typeof auth?.rol!=='string'||!auth.rol.trim())throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
-  return Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol});
+  return bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol}));
 }
 async function currentActor(db,observed,write){
+  if(write)await retainCapturedOwnerProfileAuthority(db,captureOwnerProfileWriteAuthority(observed));
   const actor=(await db.query(`SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1${write?' FOR SHARE':''}`,[observed.id])).rows[0];
   if(!actor||actor.id!==observed.id||actor.activo!==true||actor.session_version!==observed.session_version||actor.rol!==observed.rol)throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
   return actor;

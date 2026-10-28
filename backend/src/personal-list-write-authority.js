@@ -1,10 +1,12 @@
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
 const unauthorized = () => Object.assign(new Error('La sesión cambió. Volvé a iniciar sesión.'), { status: 401 });
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 
 function captureActor(auth) {
   const { id, rol, session_version } = auth || {};
   if (!positive(id) || !positive(session_version) || typeof rol !== 'string' || !rol.trim()) throw unauthorized();
-  return Object.freeze({ id, rol, session_version });
+  return bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id, rol, session_version }));
 }
 
 function freezeInput(value, seen = new WeakSet()) {
@@ -18,12 +20,14 @@ function freezeInput(value, seen = new WeakSet()) {
 // lease, and never let callbacks send HTTP or perform external work here.
 export async function withPersonalListWrite(pool, auth, normalizedInput, run) {
   const observed = captureActor(auth);
+  const ownerAuthority = captureOwnerProfileWriteAuthority(observed);
   const input = freezeInput(structuredClone(normalizedInput));
   if (typeof run !== 'function') throw new TypeError('Personal list write callback required');
   const db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, ownerAuthority, { lockMode: 'update' });
     // Same exclusive first user lock as087. No SHARE->UPDATE upgrade, and no
     // domain/advisory lock before the user; MIA locks its target SHARE first.
     const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR UPDATE', [observed.id])).rows[0];

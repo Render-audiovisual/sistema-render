@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { effectiveTaskStateSql } from './task-review-query.js';
 import { projectDomainConflict } from './project-errors.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { approveProjectDeliverable, PROJECT_DELIVERABLE_READ_SQL, projectDeliverableDto } from './project-deliverable-approvals.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -231,10 +232,17 @@ export function createProjectsRouter({ express, pool }) {
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const route = (write, handler) => async (req, res, next) => {
     let db, discard;
-    const observedAuth = {id:req.auth?.id,session_version:req.auth?.session_version,rol:req.auth?.rol};
     try {
+      const observedAuth = bindCapturedOwnerProfileAuthority(req.auth, Object.freeze({id:req.auth?.id,session_version:req.auth?.session_version,rol:req.auth?.rol}));
+      const authority = write ? captureOwnerProfileWriteAuthority(observedAuth) : null;
+      if (write && req.params?.id !== undefined) uuid(req.params.id);
       db = await pool.connect();
       await db.query(write ? 'BEGIN ISOLATION LEVEL READ COMMITTED' : 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      if (write) {
+        // All writes use the same order, including those that later link tasks.
+        await lockProjectLinks(db, { tasks: true });
+        await retainCapturedOwnerProfileAuthority(db, authority);
+      }
       const user = await actor(db, observedAuth, write);
       const result = await handler(req, db, user);
       await db.query('COMMIT');

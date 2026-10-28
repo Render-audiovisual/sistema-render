@@ -1,13 +1,20 @@
+import { captureTaskWriteActor, assertCurrentTaskWriteActor } from './task-state-authority.js';
+
 const fail = (message, status, code) => Object.assign(new Error(message), { status, code });
 
-export async function convertUnlinkedFlyer(pool, rawId) {
+export async function convertUnlinkedFlyer(pool, rawId, auth) {
   if (typeof rawId !== 'string' || !/^[1-9]\d*$/.test(rawId)
     || !Number.isSafeInteger(Number(rawId)) || Number(rawId) > 2147483647) {
     throw fail('Flyer inválido.', 400, 'FLYER_INVALID');
   }
+  const captured=captureTaskWriteActor(auth);
+  if (!Number.isSafeInteger(captured.id) || !Number.isSafeInteger(captured.session_version))
+    throw fail('Sesión requerida.',401,'FLYER_SESSION_INVALID');
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
+    const actor=await assertCurrentTaskWriteActor(db,captured);
+    if(actor.rol!=='admin')throw fail('Solo administración puede convertir publicaciones.',403,'FLYER_ACCESS_DENIED');
     const source = await db.query("SELECT * FROM publicaciones WHERE id=$1 AND tipo='flyer' FOR UPDATE", [rawId]);
     if (!source.rowCount) throw fail('Flyer no encontrado en publicaciones.', 404, 'FLYER_NOT_FOUND');
     const piece = source.rows[0];

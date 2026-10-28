@@ -1,4 +1,5 @@
 import { buildDatabasePoolConfig } from './database-transport.js';
+import { parseOwnerProfilePolicy } from './owner-profile-authority.js';
 
 export const HOSTINGER_RELEASE_ORIGIN = 'https://sistema.rendercorrientes.com';
 const placeholder = /(?:REQUIRED|PRESERVE_EXISTING|REPLACE_ME|CHANGE_ME|PLACEHOLDER|<[^>]*>)/i;
@@ -25,6 +26,12 @@ export function validateHostingerReleaseConfig(env = {}, { nodeVersion, currentD
   exact('RENDER_BROWSER_SESSIONS', 'true');
   exact('RENDER_BROWSER_ORIGIN', HOSTINGER_RELEASE_ORIGIN);
   exact('RENDER_BROWSER_ALLOW_LOCAL_HTTP', 'false');
+  let ownerProfilesStatus='deferred';
+  if (!absent(env.RENDER_OWNER_PROFILES)) {
+    try { parseOwnerProfilePolicy(env);ownerProfilesStatus='pass'; }
+    catch { ownerProfilesStatus='invalid'; }
+  }
+  add('OWNER_PROFILE_CONFIGURATION','required',ownerProfilesStatus);
   // Preservation, not implicit rotation or a new strength policy. Never trim.
   add('JWT_SECRET', 'preserve', !present(env.JWT_SECRET) ? 'missing'
     : !present(currentJwtSecret) ? 'unverified' : env.JWT_SECRET === currentJwtSecret ? 'pass' : 'invalid');

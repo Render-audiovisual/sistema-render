@@ -1,6 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeExpectedEditingDelivery, assertCurrentEditingApprover, assertEditingApprovalDelivery } from '../src/editing-approval.js';
+import { configuredOwnerProfiles, rememberOwnerProfileSession, bindCapturedOwnerProfileAuthority } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
+
+test('delegated approver retains principal before actor and closed proof preserves authority through recapture', async()=>{
+  const pool={};
+  const policy=configuredOwnerProfiles({NODE_ENV:'test',RENDER_DB_ENVIRONMENT:'test',
+    DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:91001,francoUserId:91005,agustinUserId:91006})},pool).policy;
+  const exp=Math.floor(Date.now()/1000)+300;
+  const auth={id:91005,rol:'admin',session_version:1,root_id:91001,root_session_version:1,root_exp:exp,exp,owner_profile:'franco'};
+  rememberOwnerProfileSession(auth,auth,policy);
+  const captured=bindCapturedOwnerProfileAuthority(auth,Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version}));
+  const users=[91001,91005,91006].map(id=>({id,rol:'admin',activo:true,session_version:1})),calls=[];
+  const db={async query(sql,params){calls.push(sql);return {rows:sql.includes('id=ANY')?users:users.filter(user=>user.id===params[0])};}};
+  bindDatabaseAuthorityClient(db,pool);
+  auth.id=91006;
+  const proof=await assertCurrentEditingApprover(db,captured);
+  assert.deepEqual(proof,{id:91005,rol:'admin',activo:true,session_version:1});assert.ok(Object.isFrozen(proof));
+  assert.match(calls[0],/ORDER BY id FOR SHARE$/);assert.match(calls[1],/WHERE id=\$1 FOR SHARE$/);
+  assert.deepEqual(await assertCurrentEditingApprover(db,proof),proof);
+  const foreignCalls=[];
+  const foreign=bindDatabaseAuthorityClient({async query(sql){foreignCalls.push(sql);return {rows:users};}},{});
+  await assert.rejects(assertCurrentEditingApprover(foreign,proof),{status:401});assert.equal(foreignCalls.length,0);
+  for(const patch of [{activo:false},{rol:'edicion'},{session_version:2}]) {
+    Object.assign(users[0],{activo:true,rol:'admin',session_version:1},patch);calls.length=0;
+    await assert.rejects(assertCurrentEditingApprover(db,proof),{status:401});assert.equal(calls.length,1);
+  }
+  calls.length=0;
+  await assert.rejects(assertCurrentEditingApprover(db,{...proof,root_id:91001}),{status:401});assert.equal(calls.length,0);
+});
 
 const ID = 'a0000000-0000-4000-8000-000000000001';
 const OLD = 'b0000000-0000-4000-8000-000000000002';

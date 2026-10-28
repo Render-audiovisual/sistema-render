@@ -1,7 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { legacyPieceSelection, normalizeEditorialPiecePatch, readLegacyEditorialPiece, writeEditorialPiece } from '../src/editorial-piece-write.js';
+import { legacyPieceSelection, normalizeEditorialPiecePatch, readLegacyEditorialPiece, writeEditorialPiece, captureEditorialActor, currentEditorialActor } from '../src/editorial-piece-write.js';
+import { configuredOwnerProfiles, rememberOwnerProfileSession } from '../src/owner-profile-authority.js';
+import { bindDatabaseAuthorityClient } from '../src/database-authority-context.js';
+
+function delegatedEditorialActor(pool = {}) {
+  const policy = configuredOwnerProfiles({ NODE_ENV:'test', RENDER_DB_ENVIRONMENT:'test',
+    DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:91001,francoUserId:91005,agustinUserId:91006}) },pool).policy;
+  const exp = Math.floor(Date.now()/1000)+300;
+  const actor = {id:91005,session_version:1,rol:'admin',root_id:91001,root_session_version:1,root_exp:exp,exp,owner_profile:'franco'};
+  rememberOwnerProfileSession(actor, actor, policy);
+  return actor;
+}
+
+test('immutable editorial capture retains principal authority through recapture; read-only never locks principal', async()=>{
+  const pool={},original=delegatedEditorialActor(pool), captured=captureEditorialActor(original), twice=captureEditorialActor(captured);
+  assert.ok(Object.isFrozen(captured)); assert.deepEqual(Object.keys(captured).sort(),['id','rol','session_version']);
+  original.id=91006; original.session_version=99;
+  const calls=[], users=[91001,91005,91006].map(id=>({id,rol:'admin',activo:true,session_version:1}));
+  const db={async query(sql,params){calls.push(sql);return {rows:sql.includes('id=ANY')?users:users.filter(u=>u.id===params[0])};}};
+  bindDatabaseAuthorityClient(db,pool);
+  assert.equal((await currentEditorialActor(db,twice,true)).id,91005);
+  assert.match(calls[0],/ORDER BY id FOR SHARE$/); assert.match(calls[1],/WHERE id=\$1 FOR SHARE$/);
+  calls.length=0; await currentEditorialActor(db,twice,false);
+  assert.equal(calls.length,1);assert.doesNotMatch(calls[0],/FOR SHARE|FOR UPDATE/);
+  for(const patch of [{activo:false},{rol:'diseno'},{session_version:2}]) {
+    Object.assign(users[0],{activo:true,rol:'admin',session_version:1},patch); calls.length=0;
+    await assert.rejects(currentEditorialActor(db,twice,true),{status:401});assert.equal(calls.length,1);
+  }
+  assert.throws(()=>captureEditorialActor({...delegatedEditorialActor()}),{status:401});
+});
+
+test('piece write captures delegation before pool wait and rejects revoked root after mutex before actor/domain', async()=>{
+  const f=fake(),actor=delegatedEditorialActor(f.pool);
+  bindDatabaseAuthorityClient(f.db,f.pool);
+  const query=f.db.query;
+  f.db.query=async(sql,params)=>sql.includes('FROM usuarios WHERE id=ANY')
+    ? (f.trace.push([sql,params]),{rows:[{id:91001,rol:'admin',activo:false,session_version:1},{id:91005,rol:'admin',activo:true,session_version:1}]})
+    : query(sql,params);
+  f.pool.connect=async()=>{actor.id=91006;return f.db;};
+  await assert.rejects(writeEditorialPiece(f.pool,actor,'historia','3',{copy:'new',expected_revision:0}),{status:401});
+  assert.match(f.trace[1][0],/pg_advisory_xact_lock/);assert.match(f.trace[2][0],/ORDER BY id FOR SHARE$/);
+  assert.equal(f.trace.some(([sql])=>/^(UPDATE|INSERT)|WHERE id=\$1 FOR SHARE/.test(sql)),false);
+  assert.equal(f.trace.at(-2)[0],'ROLLBACK');
+});
 
 const auth = () => ({id:7,rol:'admin',session_version:2});
 const error = status => value => value.status === status;

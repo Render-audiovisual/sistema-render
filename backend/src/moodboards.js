@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import express from "express";
+import { captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { mutateMoodboardTaskLink } from './moodboard-task-access.js';
 import { readMoodboardTaskPage, readMoodboardTaskContext } from './moodboard-task-pages.js';
 import { createMoodboardCategoriesRouter } from './moodboard-categories.js';
@@ -39,12 +40,14 @@ export async function initializeMoodboards(pool, auth) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || !Number.isSafeInteger(auth.session_version)) {
     throw Object.assign(new Error('Volvé a iniciar sesión.'), { status: 401 });
   }
+  const delegation=captureOwnerProfileWriteAuthority(auth);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // One explicit initializer at a time; no duplicate board creation when two
     // team members initialize simultaneously. Never seed fictional references.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['render:moodboards:initialize']);
+    await retainCapturedOwnerProfileAuthority(client,delegation);
     const actor = (await client.query('SELECT id,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [auth.id])).rows[0];
     if (!actor || actor.activo !== true || Number(actor.session_version) !== auth.session_version) {
       throw Object.assign(new Error('La sesión ya no está vigente.'), { status: 401 });

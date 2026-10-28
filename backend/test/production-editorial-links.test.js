@@ -158,6 +158,7 @@ function mockLink({ oldPublication = 10, incomingPublication = null } = {}) {
   const db = { async connect() { return db; }, release() { calls.push({ sql: 'RELEASE' }); },
     async query(statement, params = []) {
       calls.push({ sql: statement, params });
+      if (statement.startsWith('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios')) return { rows: [{id:7,rol:'admin',activo:true,session_version:2,nombre:'Persisted QA',usuario:'qa'}] };
       if (statement.includes('SELECT p.tarea_id,p.publicacion_id,o.clave')) return { rows: [{ tarea_id: 1, publicacion_id: oldPublication, clave: 'cliente-1', periodo: '2026-10' }] };
       if (statement.includes('SELECT t.*,p.tipo pieza_tipo')) return { rows: [task] };
       if (statement.includes('SELECT p.*,to_char(o.periodo')) return { rows: [piece] };
@@ -172,7 +173,7 @@ function mockLink({ oldPublication = 10, incomingPublication = null } = {}) {
 for (const incomingPublication of [null, undefined, 20]) {
   test(`generic goal replacement rejects clearing/swapping existing publication (${incomingPublication}) before writes`, async () => {
     const { db, calls, body } = mockLink({ incomingPublication });
-    await assert.rejects(linkGoalTask(db, 1, body, 'QA'), { status: 409 });
+    await assert.rejects(linkGoalTask(db, 1, body, {id:7,rol:'admin',session_version:2}), { status: 409 });
     assert.equal(calls.some(call => /^(INSERT|UPDATE|DELETE)/.test(call.sql)), false);
     assert.ok(calls.some(call => call.sql === 'ROLLBACK'));
     assert.equal(calls.some(call => call.sql === 'COMMIT'), false);
@@ -182,16 +183,17 @@ for (const incomingPublication of [null, undefined, 20]) {
 
 test('generic unbound slot replacement remains possible without inventing a publication', async () => {
   const { db, calls, body } = mockLink({ oldPublication: null, incomingPublication: null });
-  await linkGoalTask(db, 1, body, 'QA');
+  await linkGoalTask(db, 1, body, {id:7,rol:'admin',session_version:2});
   const update = calls.find(call => call.sql.startsWith('UPDATE cliente_objetivo_piezas'));
   assert.equal(update.params[2], null);
+  assert.equal(calls.find(call => call.sql.startsWith('INSERT INTO cliente_objetivo_vinculos')).params[4], 'Persisted QA');
   assert.ok(calls.some(call => call.sql === 'COMMIT'));
   assert.equal(calls.some(call => /^(INSERT INTO publicaciones|UPDATE tareas)/.test(call.sql)), false);
 });
 
 test('matching existing publication is preserved rather than silently relinked', async () => {
   const { db, calls, body } = mockLink({ incomingPublication: 10 });
-  await linkGoalTask(db, 1, body, 'QA');
+  await linkGoalTask(db, 1, body, {id:7,rol:'admin',session_version:2});
   const update = calls.find(call => call.sql.startsWith('UPDATE cliente_objetivo_piezas'));
   assert.equal(update.params[2], 10);
   assert.ok(calls.some(call => call.sql === 'COMMIT'));

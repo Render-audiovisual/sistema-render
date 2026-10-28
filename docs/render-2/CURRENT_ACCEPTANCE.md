@@ -2,7 +2,25 @@
 
 El sistema canónico continúa en desarrollo local y no está aceptado globalmente ni preparado para despliegue. Este resumen distingue los resultados vigentes de los diagnósticos históricos de MASTER_LOCAL_ACCEPTANCE.md y CURRENT_MASTER_REVIEW_155.md. No convierte pruebas parciales en terminación del prompt maestro.
 
+## Última integración comprobada — 28/10/2026
+
+Coordinador y cuatro agentes (Euler, Poincare, Fermat y Meitner), con archivos asignados sin sobrescrituras: retención de principal compartido en autoridades de tareas, producción, reconciliación, orden del tablero, edición/entregas, clientes/usuarios, objetivos/vínculos, listas/comentarios, feedback, editorial/proyectos, contratos/pagos y borradores de envío/chat. Cambios de foto/contraseña e invitaciones pasan por autoridad de cuenta; convertir un flyer exige sesión completa. Las lecturas sensibles de Finanzas/Reportes/catálogos comprueban también la raíz en su snapshot. Drive no emite capacidades actor-only desde un perfil delegado; sus flujos directos existentes no se certifican por este cierre.
+
+El contexto compartido vincula claims completos inmutables, expiración y política a la instancia exacta del pool. `AuthorityBoundPool` etiqueta leases Promise/callback; otra conexión con mismos IDs/versiones no concede autoridad. Capturas escalares conservan material opaco al recapturar. Locks UPDATE en familias que actualizan usuarios evitan upgrades SHARE→UPDATE conocidos. Revisión independiente del contexto no encontró nuevosP0/P1 en ese cambio; no sustituye la revisión de todos los escritores ni certifica proveedores externos.
+
+Verificación final: backend3315PASS/0FAIL/194SKIP; frontend3398PASS/0FAIL/1SKIP; dos suites aisladas PostgreSQL/HTTP25PASS/0FAIL/0SKIP, después de integrar el contexto. Los SKIP no se consideran comprobados. Build Vite correcto. Candidato local Node24 con dependencias instaladas y manifiesto v2 generado; no publicado. Logs privados: `/private/tmp/render-owner-profile-release-regression.log`, `/private/tmp/render-owner-profile-frontend-final.log`, `/private/tmp/render-owner-profile-complete-physical.log`, `/private/tmp/render-owner-profile-package-final.log`.
+
+Respaldo fresco de producción restaurado en aislamiento:64 tablas/8087 filas,244 restricciones originales y46 secuencias coincidentes. Archivos y comprobantes privados conservados en `/Users/agustinobregon/Documents/Render-Backups/2026-10-28-owner-profile-release-pmB5Qo`. No se migró ni reemplazó producción; las tareas de Líder siguen sin repartir y no se trasladaron los borrados de la copia.
+
+**Estado: NO-GO de publicación.** El guard de perfiles sigue local-only; faltan habilitación productiva y preparación de actores reales sin IDsQA, alcance/snapshot/asignaciones vigentes para el ejecutor y comprobación de proveedores/ventana final. Además, una lectura técnica de Hostinger mostró una conexión privada durante el cierre de un diálogo: se requiere coordinar con el usuario la rotación y actualización del servicio sin cortar su conexión; no guardar/reproducir la credencial ni cambiarla unilateralmente. Detalles operativos en HOSTINGER_SAFE_PUBLICATION_RUNBOOK.md. No afirmar que solo falta pulsar Redeploy.
+
 ## Arquitectura y evidencia operativa
+
+### Solicitud de publicación sobre datos vigentes — 2026-10-28
+
+El usuario autorizó publicar enHostinger conservando tareas/reportes actuales de la base viva, no sustituirla por56011 ni trasladar borrados/correos/perfilesQA. Inspección visual renovada confirma deployment43f02707e299293c5b0c2bb6f12386bd4642746b, rama hostinger-deploy,Node24.x yautodeployactivado. No push/redeploy/configwrites/DBwrites.
+
+Revisión independiente Euler: NO-GO hasta refrescar snapshot/respaldo/restauración/plan de asignaciones sobre todos losIDs actuales y empaquetar candidato nuevo;41SQLforward siguen requiriendo alcance exacto58→99 y configuración/mantenimiento reales. Revisión Poincare: NO-GO con perfilescompartidos porque parseOwnerProfilePolicy rechaza production y retainOwnerProfileAuthority todavía no está integrado en transacciones de escritura; la revocación de raíz podría competir con el commit de un actor delegado.73pruebasfocales del agentePASS no prueban cierre de esa carrera. Sin selector, posible release con Líder1, pero es cambio visible de alcance que requiere elección del usuario, no decisión silenciosa. No remover guard ni usarIDs91001/91005/91006 en producción. Publicación pendiente, no confundir con commitlocal3fc7814.
 
 ### Correos y permisos del equipo en copia local — 2026-10-28
 
@@ -1791,6 +1809,18 @@ Estado vigente: corregido y verificado en PERSONAL_LIST_WRITE_AUTHORITY_QA.md. L
 - Notas de falsos positivos: hipótesis sustentada por fuente, no explotación ejecutada. Las pruebas nuevas de creación/recuperación no cubren estos otros escritores. Falta revisar todas las familias antes de declarar el cierre.
 
 ## Siguiente integración y responsables
+
+### Perfiles compartidos: preparación transaccional (2026-10-28)
+
+Actualización posterior: integrada retención de principal en `withProductionAuthority` y `withFinanceWrite` (después del mutex financiero), y en la autoridad de Tareas. Las capturas de creación/edición/aprobación en server, notificaciones de asignación, papelera/restauración, eliminación y visitas legacy conservan delegación mediante material opaco, incluso al recapturar. No se extendió aún a todas las familias independientes.
+
+La revisión independiente de Euler detectó mutación anterior a captura y vencimiento delegado menor al raíz: corregidos mediante vinculación completa de claims verificados y nueva comprobación de `exp` después de esperar locks. Poincare entregó inventario de rutas pendientes (usuarios, clientes, comentarios, listas, feedback, editorial/objetivos y capacidades externas). No se declara cierre transversal ni habilitación productiva; siguen pendientes el contexto de destino y los casos de actualización de usuarios con cambio de modo de lock.
+
+Resultados actuales: 64 pruebas unitarias pasan. La prueba opt-in `render2-owner-profile-write-authority.integration.test.js` pasa 7/7, usando clúster nuevo en puerto55629 y verificando dependencias reales mediante `pg_blocking_pids`, en ambos órdenes de revocación para Producciones, contratos financieros y autoridad de Tareas. Incluye doble captura de Tareas, rollback sin mutación y persistencia del commit autorizado. El clúster propio se detuvo y su directorio se verificó eliminado. La primera ejecución restringida falló por permiso de memoria compartida; la repetición autorizada fuera de esa restricción pasó. No se tocaron las copias56011/55991 ni producción. Esta prueba no certifica todos los endpoints HTTP ni todos los módulos de Finanzas.
+
+El usuario eligió completar la seguridad de los perfiles antes de publicar, sin omitir el selector. Se agregó captura inmutable de la autorización delegada mediante un identificador opaco en WeakMap, vinculado a la política verificada durante autenticación. El guard transaccional conserva la lectura ordenada FOR SHARE y vuelve a comprobar revocación y vencimiento. Copiar un DTO, alterar el objeto original o fabricar el identificador no concede autoridad.
+
+Verificación parcial: 48 pruebas unitarias de perfiles y autoridades de tareas, finanzas y producciones pasan. Esto NO prueba todavía la integración de delegación en esos escritores: falta propagar el nuevo identificador por todas las rutas y verificar carreras reales en un PostgreSQL descartable. El bloqueo de configuración productiva sigue vigente. No se modificaron producción, Hostinger ni datos comerciales; no se ejecutó despliegue ni push. La guía de seguridad determinó mantener el rechazo por defecto en lugar de habilitar producción prematuramente.
 
 Proyectos y recuperación nativa de Mi lista ya tienen recorridos parciales documentados. Siguen la aceptación transversal de permisos/UX, dispositivos independientes y convivencia concurrente. S175-01 no se reabre por los textos históricos anteriores. Los cierres locales no certifican todos los permisos del sistema ni autorizan despliegue.
 

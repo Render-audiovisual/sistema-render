@@ -218,9 +218,9 @@ test('model/task context defaults safe; chat task and recommendation outputs are
   const original=task();
   safe(wilsonChatTaskContext([original]));
   assert.equal(wilsonChatTaskContext([original],{rol:'admin'})[0],original);
-  const pool={async query(sql,params){
+  const pool={async connect(){return this;},release(){},async query(sql,params){
     if(sql.includes('FROM tareas t')) return {rows:[original]};
-    if(sql.includes('FROM usuarios')) return {rows:[{id:11,nombre:'Editor',usuario:'editor',rol:'edicion'}]};
+    if(sql.includes('FROM usuarios')) return {rows:[{id:11,nombre:'Editor',usuario:'editor',rol:'edicion',activo:true,session_version:1}]};
     if(sql.includes('INSERT INTO wilson_conversaciones')) return {rows:[{id:1,usuario_id:11,periodo:'2026-10'}]};
     if(sql.includes('INSERT INTO wilson_mensajes')) return {rows:[{id:1,contenido:params[2],metadata:JSON.parse(params[4])}]};
     return {rows:[]};
@@ -229,7 +229,7 @@ test('model/task context defaults safe; chat task and recommendation outputs are
   for(const [method,path,body] of [['get','/conversacion',{}],['post','/mensajes',{contenido:'Qué hago primero'}]]){
     const run=router.stack.find(layer=>layer.route?.path===path&&layer.route.methods[method]).route.stack[0].handle;
     const res=response();
-    await run({auth:{id:11,nombre:'Editor',usuario:'editor',rol:'edicion'},body},res,error=>{throw error;});
+    await run({auth:{id:11,nombre:'Editor',usuario:'editor',rol:'edicion',session_version:1},body},res,error=>{throw error;});
     assert.equal(res.statusCode,method==='post'?201:200);safe(res.body);
     assert.equal(res.body.priorities.recommendations[0].propiedades_extra.copy_trabajo,'Copy operativo');
   }

@@ -1,4 +1,5 @@
 import { normalizePeriod } from './client-config.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { annotateTaskAssignments } from './task-assignments.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
 import { productionReportRange, loadProductionReport } from './production-reporting.js';
@@ -12,7 +13,7 @@ export function captureReportActor(auth) {
   if (!positive(auth?.id) || !positive(auth?.session_version) || typeof auth?.rol !== 'string' || !auth.rol.trim()) {
     throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');
   }
-  return Object.freeze({ id:auth.id, session_version:auth.session_version, rol:auth.rol });
+  return bindCapturedOwnerProfileAuthority(auth,Object.freeze({ id:auth.id, session_version:auth.session_version, rol:auth.rol }));
 }
 
 // Omitted selectors retain the existing monthly default. Present selectors are
@@ -41,11 +42,13 @@ export function normalizeReportQuery(query = {}, now = new Date()) {
 // no route flag or mutable dependency hook is exposed.
 export async function loadReportSnapshot(pool, auth, query = {}) {
   const observed = captureReportActor(auth);
+  const delegation=captureOwnerProfileWriteAuthority(observed);
   const { mesConfiguracion, productionRange } = normalizeReportQuery(query);
   const db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await checkCapturedOwnerProfileAuthority(db,delegation);
     const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [observed.id])).rows[0];
     if (!actor || actor.id !== observed.id || actor.activo !== true || actor.session_version !== observed.session_version || actor.rol !== observed.rol) {
       throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');

@@ -1,8 +1,6 @@
-import pg from "pg";
+import { AuthorityBoundPool as Pool } from './database-authority-context.js';
 import { buildDatabasePoolConfig } from './database-transport.js';
 export { isLoopbackDatabaseUrl } from './database-transport.js';
-
-const { Pool } = pg;
 
 const config = buildDatabasePoolConfig(process.env);
 const unconfigured = () => Promise.reject(Object.assign(

@@ -1,3 +1,5 @@
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
 const fail = (message, status) => Object.assign(new Error(message), { status });
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -11,10 +13,13 @@ export function normalizeExpectedEditingDelivery(value) {
 /** Caller owns the transaction and invokes this BEFORE any task UPDATE/lock. */
 export async function assertCurrentEditingApprover(db, auth) {
   if (!positive(auth?.id) || auth.id > 2147483647 || !Number.isSafeInteger(auth.session_version)) throw fail('Sesión requerida.', 401);
-  const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [auth.id])).rows[0];
-  if (!user || user.id !== auth.id || user.activo !== true || user.session_version !== auth.session_version || user.rol !== auth.rol) throw fail('La sesión ya no está autorizada.', 401);
+  const observed = bindCapturedOwnerProfileAuthority(auth, Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version}));
+  const authority = captureOwnerProfileWriteAuthority(observed);
+  if (authority !== null) await retainCapturedOwnerProfileAuthority(db, authority);
+  const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+  if (!user || user.id !== observed.id || user.activo !== true || user.session_version !== observed.session_version || user.rol !== observed.rol) throw fail('La sesión ya no está autorizada.', 401);
   if (user.rol !== 'admin') throw fail('Solo administración puede aprobar una entrega.', 403);
-  return { id: user.id, rol: user.rol, activo: true, session_version: user.session_version };
+  return bindCapturedOwnerProfileAuthority(observed, Object.freeze({ id: user.id, rol: user.rol, activo: true, session_version: user.session_version }));
 }
 
 /** AFTER the caller's task UPDATE/CAS, while that task row remains locked.

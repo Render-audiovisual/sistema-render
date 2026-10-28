@@ -90,7 +90,7 @@ import { createEditorialPiece } from './editorial-piece-create.js';
 import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
-import { assertCurrentTaskWriteActor } from './task-state-authority.js';
+import { assertCurrentTaskWriteActor, captureTaskWriteActor } from './task-state-authority.js';
 import { applyTaskBulkAction } from './task-bulk-actions.js';
 import { deleteLegacyTask } from './task-deletion.js';
 import { captureLegacyProductionActor, retainLegacyProductionActor, retainIntegrationProductionLeader, assertLegacyProductionTaskAccess } from './legacy-production-authority.js';
@@ -797,16 +797,18 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
 
 router.post("/usuarios/:id/invitacion", requireRole("admin"), async (req, res, next) => {
   try {
-    const result = await pool.query(
+    const delivery = await withUserAdministration(pool,req.auth, async db => {
+    const result = await db.query(
       `SELECT id, usuario, nombre, rol, email_notificaciones, google_email
        FROM usuarios WHERE id = $1`,
       [req.params.id],
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado." });
+      throw Object.assign(new Error("Usuario no encontrado."),{status:404});
     }
 
-    const delivery = await enviarInstruccionesAcceso({ usuario: result.rows[0] });
+    return enviarInstruccionesAcceso({ usuario: result.rows[0] });
+    });
     if (!delivery.enviado) {
       const messages = {
         correo_no_configurado: "El servidor de correo no está configurado.",
@@ -899,13 +901,13 @@ router.patch("/usuarios/foto", async (req, res, next) => {
       return res.status(400).json({ error: "La foto es demasiado pesada." });
     }
 
-    const updated = await pool.query(
+    const updated = await withSelfIdentityChange(pool,req.auth, db => db.query(
       `UPDATE usuarios
        SET foto_perfil = $1
        WHERE id = $2 AND session_version=$3 AND activo IS TRUE
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
       [foto || null, req.auth.id, req.auth.session_version],
-    );
+    ));
 
     if (updated.rows.length === 0) {
       return res.status(401).json({ error: "La sesión cambió. Volvé a iniciar sesión." });
@@ -948,11 +950,11 @@ router.patch("/usuarios/password", async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password_nueva, 10);
-    const updated=await pool.query("UPDATE usuarios SET password_hash = $1, session_version=session_version+1 WHERE id = $2 AND session_version=$3 AND activo IS TRUE RETURNING id", [
+    const updated=await withSelfIdentityChange(pool,req.auth, db => db.query("UPDATE usuarios SET password_hash = $1, session_version=session_version+1 WHERE id = $2 AND session_version=$3 AND activo IS TRUE RETURNING id", [
       passwordHash,
       req.auth.id,
       req.auth.session_version,
-    ]);
+    ]));
     if(!updated.rows.length)return res.status(401).json({error:"La sesión cambió. Volvé a iniciar sesión."});
     res.json({ ok: true });
   } catch (error) {
@@ -1527,7 +1529,7 @@ router.get('/tareas/creaciones/:requestId',async(req,res,next)=>{
 
 router.post("/tareas", async (req, res, next) => {
   try {
-    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
+    const assignmentNotificationActor = captureTaskWriteActor(req.auth);
     const policy={states:ESTADOS_TAREA_VALIDOS,types:TIPOS_TAREA_VALIDOS,priorities:PRIORIDADES_TAREA_VALIDAS};
     const attempt=extractTaskCreateAttempt(req.body,policy);
     const input=attempt?.input??structuredClone(req.body);
@@ -1590,7 +1592,7 @@ const TAREA_COLUMNAS_EDITABLES = [
 
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
-    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
+    const assignmentNotificationActor = captureTaskWriteActor(req.auth);
     try { assertTaskBusinessInput(req.body); assertTaskCoordinationPatch(req.body); }
     catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
@@ -1912,7 +1914,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
 router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
   try {
-    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
+    const assignmentNotificationActor = captureTaskWriteActor(req.auth);
     const expectedEditingDelivery = normalizeExpectedEditingDelivery(req.body?.expected_entrega_id);
     if (!isTaskLeader(req.auth)) {
       return res.status(403).json({ error: "Solo Franco o Agustín pueden aprobar una tarea para publicación." });
@@ -2783,7 +2785,7 @@ router.post("/piezas", requireRole("admin"), editorialCreateHandler);
 
 router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), async (req, res, next) => {
   try {
-    res.status(201).json(await convertUnlinkedFlyer(pool, req.params.publicacionId));
+    res.status(201).json(await convertUnlinkedFlyer(pool, req.params.publicacionId,req.auth));
   } catch (error) {
     if ([400,404,409].includes(error.status)) return res.status(error.status).json({ error: error.message, code: error.code });
     next(error);

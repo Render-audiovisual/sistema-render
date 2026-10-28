@@ -39,7 +39,7 @@ export function requireCurrentIdentity(pool, { ownerProfilePolicy = null } = {})
         req.auth = { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol,
           session_version: version, root_id: claims.root_id, root_session_version: claims.root_session_version,
           root_exp: claims.root_exp, owner_profile: claims.owner_profile, exp: claims.exp };
-        rememberOwnerProfileSession(req.auth, claims);
+        rememberOwnerProfileSession(req.auth, claims, ownerProfilePolicy);
         return next();
       }
       const { rows } = await pool.query(

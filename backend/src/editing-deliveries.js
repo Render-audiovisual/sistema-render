@@ -4,6 +4,7 @@ import { lockTaskOperationResources } from './task-operation-receipts.js';
 import { isTaskApproved, taskTransitionError } from './workflow-contract.js';
 import { getStateNotification } from './task-workflow.js';
 import { recordEditingProgressDelivery } from './editing-progress-ledger.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const ALLOWED_STATES = ['pendiente', 'en_progreso', 'en_revision', 'aprobada'];
@@ -88,12 +89,17 @@ export function createEditingDeliveriesRouter({ express, pool, notifyAssignment 
       const id = editingDeliveryTaskId(req.params.id);
       if (Object.keys(req.query ?? {}).length) throw fail('No se permiten parámetros de consulta.');
       const input = write ? normalizeEditingDeliveryInput(req.body) : null;
+      const observed = bindCapturedOwnerProfileAuthority(req.auth, Object.freeze({id:req.auth?.id,rol:req.auth?.rol,session_version:req.auth?.session_version}));
+      const authority = write ? captureOwnerProfileWriteAuthority(observed) : null;
       db = await pool.connect();
       await db.query(write ? 'BEGIN ISOLATION LEVEL READ COMMITTED' : 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const user = await actor(db, req.auth, write);
       if (write) {
-        await db.query("SELECT pg_advisory_xact_lock(hashtext('editing-delivery-request'),hashtext($1))", [`${user.id}:${input.request_id}`]);
+        await db.query("SELECT pg_advisory_xact_lock(hashtext('editing-delivery-request'),hashtext($1))", [`${observed.id}:${input.request_id}`]);
         await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+        await retainCapturedOwnerProfileAuthority(db, authority);
+      }
+      const user = await actor(db, observed, write);
+      if (write) {
         await lockTaskOperationResources(db, id);
       }
       let task = await readTask(db, id, user);

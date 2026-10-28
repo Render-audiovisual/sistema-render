@@ -151,6 +151,7 @@ test('actual router registers approval route, revalidates actor SHARE before han
   const routes=[];const express={Router:()=>({use(){},get(){},post(path,handler){routes.push({path,handler});},patch(){},put(){},delete(){}})};
   let released;const failure=Error('rollback failed'),calls=[];
   const db={async query(sql){calls.push(sql);if(sql.startsWith('BEGIN'))return{rows:[]};
+    if(sql.includes('pg_advisory_xact_lock'))return{rows:[]};
     if(sql==='ROLLBACK')throw failure;
     if(sql.startsWith('SELECT id,nombre,rol,activo,session_version'))return{rows:[{...user,activo:false}]};
     assert.fail('revoked actor must not reach approval handler');},release(error){released=error;}};
@@ -158,7 +159,13 @@ test('actual router registers approval route, revalidates actor SHARE before han
   const route=routes.find(r=>r.path==='/:id/entregables/:child/aprobaciones');assert.ok(route);
   let status;const res={status(n){status=n;return this;},json(){}};
   await route.handler({auth:user,body:fixture().body(),params:{id:id(1),child:id(2)}},res,error=>{throw error;});
-  assert.equal(status,401);assert.match(calls[1],/FOR SHARE/);assert.equal(released,failure);
+  assert.equal(status,401);
+  const actor=calls.findIndex(sql=>sql.startsWith('SELECT id,nombre,rol,activo,session_version'));
+  assert.match(calls[actor],/FOR SHARE$/);
+  const objective=calls.findIndex(sql=>sql.includes("hashtext('vinculo-objetivo-mensual')"));
+  const mutex=calls.findIndex(sql=>sql.includes("hashtext('proyecto-vinculos')"));
+  assert.ok(objective>0 && objective<mutex && mutex<actor);
+  assert.equal(released,failure);
 });
 
 test('079 preserves legacy rows, guards direct SQL edits/revision ABA and keeps receipts immutable',()=>{

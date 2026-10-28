@@ -133,12 +133,13 @@ test('preparation rechecks locked piece metadata and never replaces an already-u
 
 test('manual goal link rejects archived task-backed piece only after task and piece locks, without writes',async()=>{
   const calls=[],db={release(){},async query(sql,params){calls.push({sql,params});
+    if(sql.startsWith('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios'))return{rows:[{id:7,rol:'admin',activo:true,session_version:2,nombre:'Persisted QA'}]};
     if(sql.includes('SELECT p.tarea_id,p.publicacion_id,o.clave'))return{rows:[{tarea_id:3,publicacion_id:null,clave:'cliente-1',periodo:'2026-10'}]};
     if(sql.startsWith('SELECT t.*,p.tipo pieza_tipo'))return{rows:[{id:2,tipo_tarea:'edicion',subtipo:'reel',estado:'pendiente',publicacion_id:8,pieza_metadata:{archivado_tablero:'true'},propiedades_extra:{workspace:'render_os'}}]};
     if(/^(BEGIN|ROLLBACK|SELECT pg_advisory|SELECT id FROM tareas|SELECT p.id FROM publicaciones|SELECT h.id FROM historias)/.test(sql))return{rows:[]};
     throw Error('Unexpected SQL '+sql);
   }};
-  await assert.rejects(linkGoalTask({connect:async()=>db},1,{tarea_id:2,expected_tarea_updated_at:'2026-10-01T00:00:00Z',expected_pieza_updated_at:'2026-10-01T00:00:00Z'},'QA'),error=>error.status===409);
+  await assert.rejects(linkGoalTask({connect:async()=>db},1,{tarea_id:2,expected_tarea_updated_at:'2026-10-01T00:00:00Z',expected_pieza_updated_at:'2026-10-01T00:00:00Z'},{id:7,rol:'admin',session_version:2}),error=>error.status===409);
   assert.ok(calls.findIndex(call=>call.sql.startsWith('SELECT id FROM tareas'))<calls.findIndex(call=>call.sql.startsWith('SELECT p.id FROM publicaciones')));
   assert.ok(calls.findIndex(call=>call.sql.startsWith('SELECT p.id FROM publicaciones'))<calls.findIndex(call=>call.sql.startsWith('SELECT t.*,p.tipo pieza_tipo')));
   assert.equal(calls.some(call=>/^(INSERT|UPDATE|DELETE|COMMIT)/.test(call.sql)),false);

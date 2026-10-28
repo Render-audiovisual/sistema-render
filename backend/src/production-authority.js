@@ -1,3 +1,5 @@
+import { captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
 const denied = (status, message) => Object.assign(new Error(message), { status });
 
 // Capture the authenticated observation before waiting for a pool slot. Names
@@ -8,10 +10,12 @@ export async function withProductionAuthority(pool, auth, requireAdmin, mutate) 
   if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(version) || version <= 0) {
     throw denied(401, 'Volvé a iniciar sesión para registrar la producción.');
   }
+  const delegation = captureOwnerProfileWriteAuthority(auth);
   const db = await pool.connect();
   let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, delegation);
     // Acquire before any visit/task/piece locks; keep revocation ordered after
     // a valid commit, or observe it before permitting any domain side effects.
     const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [id])).rows[0];

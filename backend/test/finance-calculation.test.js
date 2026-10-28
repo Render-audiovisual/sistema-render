@@ -65,15 +65,17 @@ test("Finanzas expone el cálculo automático a mes vencido", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
   assert.match(backend, /buildAutomaticFinanceSummary/);
-  assert.match(frontend, /INGRESOS ESPERADOS/);
-  assert.match(frontend, /no confirma facturas emitidas ni cobros/);
-  assert.match(frontend, /Mes vencido/);
+  assert.match(frontend, /Ingresos por contratos/);
+  assert.match(frontend, /no confirma facturas emitidas/);
+  assert.match(frontend, /Mes de cobro previsto/);
+  assert.match(frontend, /labelPeriod\(finance.workPeriod\)/);
   assert.match(frontend, /Gastos fijos/);
-  assert.match(frontend, /Dólar usado/);
+  assert.match(frontend, /Dólar para gastos en USD/);
   assert.doesNotMatch(frontend, /Equipo \+ Franco programador|Herramientas USD|Herramientas ARS/);
   assert.match(backend, /getCardDollarRate/);
   assert.match(frontend, /No acreditan cobros ni pagos realizados/);
-  assert.match(frontend, /Los pagos manuales se registran por separado/);
+  assert.match(frontend, /<summary>Pagos al equipo<\/summary>/);
+  assert.match(frontend, /<TeamPaymentsPanel/);
   assert.doesNotMatch(frontend, /Guardar cierre mensual/);
 });
 

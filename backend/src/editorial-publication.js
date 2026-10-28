@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { editorialPublicationDomainConflict } from './editorial-publication-errors.js';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const DOMAINS = { historia: 'historias', publicacion: 'publicaciones' };
@@ -94,13 +95,20 @@ export function createEditorialPublicationRouter({ express, pool }) {
       const identity = editorialPieceIdentity(req.params.dominio, req.params.id);
       if (Object.keys(req.query ?? {}).length) throw fail('No se permiten parámetros adicionales.');
       const input = action ? normalizeEditorialPublicationInput(action, req.body) : null;
+      const observedAuth = bindCapturedOwnerProfileAuthority(req.auth, Object.freeze({
+        id:req.auth?.id, session_version:req.auth?.session_version, rol:req.auth?.rol,
+      }));
+      const authority = action ? captureOwnerProfileWriteAuthority(observedAuth) : null;
       db = await pool.connect();
       await db.query(action ? 'BEGIN ISOLATION LEVEL READ COMMITTED' : 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const user = await currentActor(db, req.auth, Boolean(action));
+      if (action) {
+        await db.query("SELECT pg_advisory_xact_lock(hashtext('editorial-publicacion-request'),hashtext($1))", [`${observedAuth.id}:${input.request_id}`]);
+        await retainCapturedOwnerProfileAuthority(db, authority);
+      }
+      const user = await currentActor(db, observedAuth, Boolean(action));
       let expectedClient = null;
       if (action) {
         // Serialize actor/request across pieces before any piece/version lock.
-        await db.query("SELECT pg_advisory_xact_lock(hashtext('editorial-publicacion-request'),hashtext($1))", [`${user.id}:${input.request_id}`]);
         const discovered = (await db.query(`SELECT cliente_id FROM ${identity.table} WHERE id=$1`, [identity.id])).rows[0];
         if (!discovered) throw fail('Pieza no encontrada.', 404);
         expectedClient = discovered.cliente_id;

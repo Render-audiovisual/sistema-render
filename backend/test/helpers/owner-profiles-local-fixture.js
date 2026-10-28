@@ -45,7 +45,7 @@ export async function loginOwnerFixture(base, usuario = 'qa_franco') {
 // Fresh generated cluster only. No shared harness changes, production config,
 // previously restored copies, old52920 runtime, providers or password intake.
 export async function startOwnerProfilesFixture({ httpPort = 0, pgPort = 55991, frontendReady = false } = {}) {
-  if (![0, 52922].includes(httpPort) || pgPort !== 55991 || (httpPort === 52922 && frontendReady !== true)) throw Error('Owner fixture needs explicit local build readiness.');
+  if (![0, 52922].includes(httpPort) || ![55991,55630].includes(pgPort) || (httpPort === 52922 && (frontendReady !== true || pgPort !== 55991))) throw Error('Owner fixture needs explicit local build readiness.');
   const f = await startLocalHarness({ port: pgPort, clusterOnly: true });
   const children = new Set(); let closed = false;
   const cleanup = async () => {
@@ -116,7 +116,7 @@ export async function startOwnerProfilesFixture({ httpPort = 0, pgPort = 55991, 
 async function childMain() {
   const root = process.env.RENDER2_OWNER_FIXTURE_ROOT, port = Number(process.env.RENDER2_OWNER_PG_PORT);
   assertFixtureIdentity({ root, cwd: process.cwd(), port, url: process.env.DATABASE_URL });
-  assert.equal(port, 55991); assert.equal(process.env.NODE_ENV, 'test');
+  assert.ok([55991,55630].includes(port)); assert.equal(process.env.NODE_ENV, 'test');
   assert.equal(process.env.RENDER_DB_ENVIRONMENT, 'test'); assert.equal(process.env.DOTENV_CONFIG_PATH, '/dev/null');
   assert.equal(process.env.RENDER_DISABLE_SERVER_START, 'true');
   const { pool } = await import('../../src/db.js');

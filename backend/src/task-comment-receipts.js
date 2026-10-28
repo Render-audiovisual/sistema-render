@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { buildTaskAccessClause } from './task-access.js';
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -8,7 +9,7 @@ function captureActor(auth) {
   if (!positive(id) || !positive(session_version) || typeof rol !== 'string' || !rol.trim()) {
     throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');
   }
-  return Object.freeze({ id, rol, session_version });
+  return bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id, rol, session_version }));
 }
 function requestKey(value, required) {
   if (value === undefined) {
@@ -33,9 +34,11 @@ const frozenCopy = value => Array.isArray(value) ? Object.freeze(value.map(froze
   : value && typeof value === 'object' ? Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, frozenCopy(item)]))) : value;
 
 async function transaction(pool, observed, key, run) {
+  const ownerAuthority = captureOwnerProfileWriteAuthority(observed);
   const db = await pool.connect(); let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, ownerAuthority, { lockMode: 'share' });
     const actor = (await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
     if (!actor || actor.id !== observed.id || actor.activo !== true || actor.rol !== observed.rol || actor.session_version !== observed.session_version) {
       throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');

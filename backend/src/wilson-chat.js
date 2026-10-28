@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { isTaskApproved } from "./workflow-contract.js";
 import { buildTaskAccessClause, getTaskActor } from "./task-access.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -9,6 +10,31 @@ import { captureLegacyProductionActor, retainLegacyProductionActor, assertLegacy
 
 const TZ = "America/Argentina/Cordoba";
 const taskComplete = task => ["finalizada", "publicada"].includes(task.estado);
+
+// Browser writes only. The scheduled and WhatsApp integration actors do not
+// enter this boundary. Capture before leasing; keep all chat writes atomic.
+async function withWilsonChatWrite(pool, auth, run, { admin = false } = {}) {
+  if (![auth?.id, auth?.session_version].every(n => Number.isSafeInteger(n) && n > 0)
+    || typeof auth.rol !== 'string') throw Object.assign(new Error('La sesión ya no está autorizada.'), { status: 401 });
+  const observed = bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id: auth.id, session_version: auth.session_version, rol: auth.rol }));
+  const authority = captureOwnerProfileWriteAuthority(observed);
+  const db = await pool.connect();
+  let discard;
+  try {
+    await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
+    const actor = (await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+    if (!actor || actor.id !== observed.id || actor.activo !== true || actor.session_version !== observed.session_version
+      || actor.rol !== observed.rol) throw Object.assign(new Error('La sesión ya no está autorizada.'), { status: 401 });
+    if (admin && !canResetWilsonConversations(actor)) throw Object.assign(new Error('Solo un Líder puede restablecer las conversaciones.'), { status: 403 });
+    const result = await run(db, actor);
+    await db.query('COMMIT');
+    return result;
+  } catch (error) {
+    try { await db.query('ROLLBACK'); } catch (rollback) { discard = rollback; }
+    throw error;
+  } finally { db.release(discard); }
+}
 
 // Serialization boundary for UI/model task context, never for business logic.
 // Omitting auth intentionally yields the safe operational projection.
@@ -303,8 +329,10 @@ export function createWilsonChatRouter({ express, pool }) {
 
   router.post("/conversacion/leida", async (req, res, next) => {
     try {
-      const current = await conversation(pool, req.auth.id);
-      await pool.query(`UPDATE wilson_conversaciones SET last_read_at=NOW(),updated_at=NOW() WHERE id=$1`, [current.id]);
+      await withWilsonChatWrite(pool, req.auth, async (pool, actor) => {
+        const current = await conversation(pool, actor.id);
+        await pool.query(`UPDATE wilson_conversaciones SET last_read_at=NOW(),updated_at=NOW() WHERE id=$1`, [current.id]);
+      });
       return res.json({ ok: true, no_leidos: 0 });
     } catch (error) { return next(error); }
   });
@@ -313,30 +341,33 @@ export function createWilsonChatRouter({ express, pool }) {
     try {
       const content = String(req.body.contenido || "").trim().slice(0, 2000);
       if (!content) return res.status(400).json({ error: "Escribí un mensaje." });
-      const current = await conversation(pool, req.auth.id);
-      const priorTarget = await previousTargetId(pool, current.id);
-      const userMessage = await append(pool, current.id, "usuario", content);
-      const { target, denied, source } = await resolveTargetUser(pool, req.auth, content, priorTarget);
-      const priorities = await personalTasks(pool, denied ? req.auth : target);
-      const snapshot = denied ? null : buildEmployeeSnapshot(await employeeTasks(pool, target), target);
-      if (!denied && req.auth.rol === "admin" && isEmployeeMessageCommand(content)) {
-        if (source === "self") {
-          const assistantMessage = await append(pool, current.id, "wilson", "Decime a quién querés que le escriba antes de preparar el mensaje.", "respuesta");
-          return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, req.auth) });
+      const result = await withWilsonChatWrite(pool, req.auth, async (pool, actor) => {
+        const current = await conversation(pool, actor.id);
+        const priorTarget = await previousTargetId(pool, current.id);
+        const userMessage = await append(pool, current.id, "usuario", content);
+        const { target, denied, source } = await resolveTargetUser(pool, actor, content, priorTarget);
+        const priorities = await personalTasks(pool, denied ? actor : target);
+        const snapshot = denied ? null : buildEmployeeSnapshot(await employeeTasks(pool, target), target);
+        if (!denied && actor.rol === "admin" && isEmployeeMessageCommand(content)) {
+          if (source === "self") {
+            const assistantMessage = await append(pool, current.id, "wilson", "Decime a quién querés que le escriba antes de preparar el mensaje.", "respuesta");
+            return { userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, actor) };
+          }
+          const token = crypto.randomUUID();
+          const draft = buildEmployeeReminder(target, snapshot);
+          await pool.query(
+            `INSERT INTO wilson_acciones_pendientes(token,conversacion_id,usuario_id,accion,payload,expires_at)
+             VALUES($1,$2,$3,'enviar_mensaje_empleado',$4::jsonb,NOW()+INTERVAL '30 minutes')`,
+            [token, current.id, actor.id, JSON.stringify({ target_user_id: target.id, target_name: target.nombre, message: draft })],
+          );
+          const assistantMessage = await append(pool, current.id, "wilson", `Voy a enviarle a ${target.nombre}:\n\n“${draft}”\n\n¿Confirmás?`, "confirmacion", { token, target_user: target });
+          return { userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, actor) };
         }
-        const token = crypto.randomUUID();
-        const draft = buildEmployeeReminder(target, snapshot);
-        await pool.query(
-          `INSERT INTO wilson_acciones_pendientes(token,conversacion_id,usuario_id,accion,payload,expires_at)
-           VALUES($1,$2,$3,'enviar_mensaje_empleado',$4::jsonb,NOW()+INTERVAL '30 minutes')`,
-          [token, current.id, req.auth.id, JSON.stringify({ target_user_id: target.id, target_name: target.nombre, message: draft })],
-        );
-        const assistantMessage = await append(pool, current.id, "wilson", `Voy a enviarle a ${target.nombre}:\n\n“${draft}”\n\n¿Confirmás?`, "confirmacion", { token, target_user: target });
-        return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, req.auth) });
-      }
-      const reply = naturalReply(content, priorities, req.auth, snapshot, denied);
-      const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null, target_user: denied ? null : target });
-      return res.status(201).json({ userMessage, assistantMessage, tasks: wilsonChatTaskContext(reply.tasks, req.auth), priorities: operationalPriorities(priorities, req.auth) });
+        const reply = naturalReply(content, priorities, actor, snapshot, denied);
+        const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null, target_user: denied ? null : target });
+        return { userMessage, assistantMessage, tasks: wilsonChatTaskContext(reply.tasks, actor), priorities: operationalPriorities(priorities, actor) };
+      });
+      return res.status(201).json(result);
     } catch (error) { return next(error); }
   });
 
@@ -345,15 +376,23 @@ export function createWilsonChatRouter({ express, pool }) {
       if (!canRecordProduction(req.auth)) return res.status(403).json({ error: "Solo Germán o un Líder pueden registrar videos." });
       const amount = Number(req.body.cantidad); const date = String(req.body.fecha || localParts().year + "-" + localParts().month + "-" + localParts().day);
       if (!Number.isInteger(amount) || amount <= 0 || !isValidProductionDate(date)) return res.status(400).json({ error: "Revisá la cantidad y la fecha." });
-      const access = buildTaskAccessClause(req.auth, "t", "$2"); const values = [req.body.tarea_id]; if (access.value) values.push(access.value);
-      const found = await pool.query(`SELECT t.* FROM tareas t WHERE t.id=$1 AND t.propiedades_extra->>'workspace'='render_os'${access.sql}`, values);
-      const task = found.rows[0];
-      if (!task || !isProductionVisitTask(task)) return res.status(404).json({ error: "No encontré esa visita entre tus tareas." });
-      const current = await conversation(pool, req.auth.id); const token = crypto.randomUUID();
-      await pool.query(`INSERT INTO wilson_acciones_pendientes(token,conversacion_id,usuario_id,accion,tarea_id,payload,expires_at) VALUES($1,$2,$3,'registrar_produccion',$4,$5::jsonb,NOW()+INTERVAL '30 minutes')`, [token, current.id, req.auth.id, task.id, JSON.stringify({ cantidad: amount, fecha: date })]);
-      const message = await append(pool, current.id, "wilson", `Voy a registrar ${amount} video${amount === 1 ? "" : "s"} en “${task.titulo}” con fecha ${date}. ¿Confirmás?`, "confirmacion", { token, task_id: task.id });
-      return res.status(201).json({ message, confirmation: { token, task_id: task.id } });
-    } catch (error) { return next(error); }
+      const taskId = req.body.tarea_id;
+      const result = await withWilsonChatWrite(pool, req.auth, async (pool, actor) => {
+        if (!canRecordProduction(actor)) throw Object.assign(new Error('Solo Germán o un Líder pueden registrar videos.'), { status: 403 });
+        const access = buildTaskAccessClause(actor, "t", "$2"); const values = [taskId]; if (access.value) values.push(access.value);
+        const found = await pool.query(`SELECT t.* FROM tareas t WHERE t.id=$1 AND t.propiedades_extra->>'workspace'='render_os'${access.sql}`, values);
+        const task = found.rows[0];
+        if (!task || !isProductionVisitTask(task)) throw Object.assign(new Error('No encontré esa visita entre tus tareas.'), { status: 404 });
+        const current = await conversation(pool, actor.id); const token = crypto.randomUUID();
+        await pool.query(`INSERT INTO wilson_acciones_pendientes(token,conversacion_id,usuario_id,accion,tarea_id,payload,expires_at) VALUES($1,$2,$3,'registrar_produccion',$4,$5::jsonb,NOW()+INTERVAL '30 minutes')`, [token, current.id, actor.id, task.id, JSON.stringify({ cantidad: amount, fecha: date })]);
+        const message = await append(pool, current.id, "wilson", `Voy a registrar ${amount} video${amount === 1 ? "" : "s"} en “${task.titulo}” con fecha ${date}. ¿Confirmás?`, "confirmacion", { token, task_id: task.id });
+        return { message, confirmation: { token, task_id: task.id } };
+      });
+      return res.status(201).json(result);
+    } catch (error) {
+      if ([403, 404].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
   });
 
   router.post("/confirmaciones/:token", async (req, res, next) => {
@@ -418,24 +457,21 @@ export function createWilsonChatRouter({ express, pool }) {
 
   router.delete("/conversaciones", async (req, res, next) => {
     if (!canResetWilsonConversations(req.auth)) return res.status(403).json({ error: "Solo un Líder puede restablecer las conversaciones." });
-    const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      const messageCount = await client.query(`SELECT COUNT(*)::int total FROM wilson_mensajes`);
-      const deleted = await client.query(`DELETE FROM wilson_conversaciones RETURNING id`);
-      const details = { conversations_deleted: deleted.rowCount, messages_deleted: messageCount.rows[0]?.total || 0 };
-      await client.query(
-        `INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,detalles)
-         VALUES('wilson','web',$1,$2,'restablecer_conversaciones',$3::jsonb)`,
-        [String(req.auth.id), getTaskActor(req.auth), JSON.stringify(details)],
-      );
-      await client.query("COMMIT");
+      const details = await withWilsonChatWrite(pool, req.auth, async (client, actor) => {
+        const messageCount = await client.query(`SELECT COUNT(*)::int total FROM wilson_mensajes`);
+        const deleted = await client.query(`DELETE FROM wilson_conversaciones RETURNING id`);
+        const details = { conversations_deleted: deleted.rowCount, messages_deleted: messageCount.rows[0]?.total || 0 };
+        await client.query(
+          `INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,detalles)
+           VALUES('wilson','web',$1,$2,'restablecer_conversaciones',$3::jsonb)`,
+          [String(actor.id), getTaskActor(actor), JSON.stringify(details)],
+        );
+        return details;
+      }, { admin: true });
       return res.json({ ok: true, ...details });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
       return next(error);
-    } finally {
-      client.release();
     }
   });
 

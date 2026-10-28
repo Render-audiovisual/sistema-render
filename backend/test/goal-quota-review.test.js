@@ -216,6 +216,7 @@ test('link options bound candidate ordinals to stored quota and forged extra wri
     revision: 1, updated_at: '2026-10-01', propiedades_extra: { workspace: 'render_os' } };
   const db = { async query(sql, params = []) {
     calls.push({sql,params});
+    if (sql.startsWith('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios')) return {rows:[{...auth,activo:true,nombre:'Persisted QA'}]};
     if (sql.includes('SELECT t.*,p.tipo pieza_tipo')) return {rows:[task]};
     if (sql.includes('p.id<>$1')) return {rows:[]};
     if (sql.startsWith('SELECT id,nombre,reels')) return {rows:[{id:9,reels:1,carruseles:0}]};
@@ -226,7 +227,7 @@ test('link options bound candidate ordinals to stored quota and forged extra wri
     throw Error(`Unexpected link query: ${sql}`);
   }, release() {} };
   await goalLinkOptions(db,20,'2026-10');
-  await assert.rejects(linkGoalTask({connect:async()=>db},10,{tarea_id:20,expected_tarea_updated_at:'2026-10-01',expected_pieza_updated_at:'2026-10-01'},'qa'),{status:409});
+  await assert.rejects(linkGoalTask({connect:async()=>db},10,{tarea_id:20,expected_tarea_updated_at:'2026-10-01',expected_pieza_updated_at:'2026-10-01'},auth),{status:409});
   assert.equal(calls.some(call=>call.sql.startsWith('UPDATE')),false);
   const source = readFileSync(new URL('../src/client-goals.js',import.meta.url),'utf8');
   assert.match(source,/FROM cliente_objetivo_piezas WHERE objetivo_id=\$1 AND tipo=\$2 AND numero <= \$3/);

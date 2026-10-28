@@ -1,9 +1,7 @@
-import { assertCurrentTaskWriteActor } from './task-state-authority.js';
+import { assertCurrentTaskWriteActor, captureTaskWriteActor } from './task-state-authority.js';
 import { buildTaskAccessClause } from './task-access.js';
 
-export const captureLegacyProductionActor = auth => Object.freeze({
-  id:auth?.id, rol:auth?.rol, session_version:auth?.session_version,
-});
+export const captureLegacyProductionActor = captureTaskWriteActor;
 
 export async function retainLegacyProductionActor(db, captured, { leader = false } = {}) {
   const actor = await assertCurrentTaskWriteActor(db, captured);

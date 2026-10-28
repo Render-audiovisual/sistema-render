@@ -1,3 +1,20 @@
+import { bindCapturedOwnerProfileAuthority, captureOwnerProfileWriteAuthority, retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
+
+function captureDispatchActor(auth) {
+  if (![auth?.id, auth?.session_version].every(n => Number.isSafeInteger(n) && n > 0)
+    || !['admin', 'community'].includes(auth.rol)) throw Object.assign(new Error('La sesión ya no está autorizada.'), { status: 401 });
+  return bindCapturedOwnerProfileAuthority(auth, Object.freeze({ id: auth.id, session_version: auth.session_version, rol: auth.rol }));
+}
+async function retainDispatchActor(db, observed, authority) {
+  await retainCapturedOwnerProfileAuthority(db, authority, { lockMode: 'share' });
+  const actor = (await db.query('SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+  if (!actor || actor.id !== observed.id || actor.activo !== true || actor.session_version !== observed.session_version
+    || actor.rol !== observed.rol || !['admin', 'community'].includes(actor.rol)) {
+    throw Object.assign(new Error('La sesión ya no está autorizada.'), { status: 401 });
+  }
+  return actor;
+}
+
 export const PUBLICATION_DISPATCH_STATES = new Set([
   "borrador",
   "programada",
@@ -173,9 +190,14 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
     } catch (error) {
       return res.status(400).json({ error: error.message });
     }
+    let observed, authority;
+    try { observed = captureDispatchActor(req.auth); authority = captureOwnerProfileWriteAuthority(observed); }
+    catch (error) { return next(error); }
     const client = await pool.connect();
+    let releaseError;
     try {
-      await client.query("BEGIN");
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await retainDispatchActor(client, observed, authority);
       const existing = await client.query(`SELECT e.id,e.estado,${DISPATCH_REVISION} AS revision FROM publicacion_envios e WHERE e.id=$1 FOR UPDATE`, [id]);
       if (!existing.rowCount) {
         await client.query("ROLLBACK");
@@ -230,10 +252,10 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
       await client.query("COMMIT");
       return res.json(result.rows[0]);
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(error => { releaseError = error; });
       return next(error);
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   });
 
@@ -245,9 +267,14 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
       return res.status(400).json({ error: error.message });
     }
 
+    let observed, authority;
+    try { observed = captureDispatchActor(req.auth); authority = captureOwnerProfileWriteAuthority(observed); }
+    catch (error) { return next(error); }
     const client = await pool.connect();
+    let releaseError;
     try {
-      await client.query("BEGIN");
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      const actor = await retainDispatchActor(client, observed, authority);
       const clientExists = await client.query("SELECT id FROM clientes WHERE id=$1", [payload.clientId]);
       if (!clientExists.rowCount) {
         await client.query("ROLLBACK");
@@ -273,8 +300,8 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
         [
           payload.publicationId,
           payload.clientId,
-          req.auth.id || null,
-          req.auth.nombre || req.auth.usuario || "Equipo",
+          actor.id,
+          actor.nombre || actor.usuario || "Equipo",
           payload.type,
           payload.caption,
           payload.firstComment,
@@ -301,10 +328,11 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
       await client.query("COMMIT");
       return res.status(201).json(result.rows[0]);
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      if (error.code === "23505") {
+      await client.query("ROLLBACK").catch(error => { releaseError = error; });
+      if (error.code === "23505" && !releaseError) {
         try {
-          await client.query("BEGIN");
+          await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+          await retainDispatchActor(client, observed, authority);
           const replay = await client.query("SELECT id,creado_por_id,updated_at=created_at AS unchanged FROM publicacion_envios WHERE idempotency_key=$1 FOR UPDATE", [payload.requestKey]);
           if (replay.rowCount && !replay.rows[0].unchanged) {
             await client.query("ROLLBACK");
@@ -312,7 +340,7 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
           }
           if (replay.rowCount) {
             const existing = await client.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [replay.rows[0].id]);
-            if (String(replay.rows[0].creado_por_id) !== String(req.auth.id) || !sameDispatchPayload(existing.rows[0], payload)) {
+            if (String(replay.rows[0].creado_por_id) !== String(observed.id) || !sameDispatchPayload(existing.rows[0], payload)) {
               await client.query("ROLLBACK");
               return res.status(409).json({ error: "La clave de operación ya corresponde a otro envío. Revisá el registro guardado.", code: "DISPATCH_REPLAY_MISMATCH" });
             }
@@ -321,13 +349,13 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
           }
           await client.query("ROLLBACK");
         } catch (replayError) {
-          await client.query("ROLLBACK").catch(() => {});
+          await client.query("ROLLBACK").catch(error => { releaseError = error; });
           return next(replayError);
         }
       }
       return next(error);
     } finally {
-      client.release();
+      client.release(releaseError);
     }
   });
 

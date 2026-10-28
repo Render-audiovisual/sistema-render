@@ -1,11 +1,11 @@
-import { assertCurrentTaskWriteActor } from './task-state-authority.js';
+import { assertCurrentTaskWriteActor, captureTaskWriteActor } from './task-state-authority.js';
 
 const failure = (message, status) => Object.assign(new Error(message), { status });
 
 // Compatibility endpoint only: the canonical UI uses recoverable trash.
 // Retain current server authority through COMMIT, just like other task writers.
 export async function deleteLegacyTask(pool, { auth, id, renderOs = false }) {
-  const captured = Object.freeze({ id:auth?.id, rol:auth?.rol, session_version:auth?.session_version });
+  const captured = captureTaskWriteActor(auth);
   if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647 || typeof renderOs !== 'boolean')
     throw failure('Identificador de tarea inválido.', 400);
   const db = await pool.connect();
