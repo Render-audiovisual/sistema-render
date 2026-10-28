@@ -43,18 +43,25 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
       .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
     return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
       memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
-      reels:{count:first.reelsPublicados,quota:quota(getCuotaReelsMensual)},
-      carruseles:{count:first.carruselesPublicados,quota:quota(getCuotaCarruselesMensual)}, noActivity:publications.length===0};
+      reels:{count:first.reelsPublicados,historicalCount:first.reelsSinConfirmacion,quota:quota(getCuotaReelsMensual)},
+      carruseles:{count:first.carruselesPublicados,historicalCount:first.carruselesSinConfirmacion,quota:quota(getCuotaCarruselesMensual)}, noActivity:publications.length===0};
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
-function ClientMonthlyFormatBar({label,count,quota}) {
+function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
   const percent = known ? Math.min(100, count / quota * 100) : 0;
-  return <div className="client-monthly-format"><div><span>{label}</span><strong>{known ? `${count} de ${quota}` : `${count} · sin cuota configurada`}</strong></div>
+  const historicalPercent = known ? Math.min(100, historicalCount / quota * 100) : 0;
+  return <div className="client-monthly-format"><div><span>{label}</span><strong>{known ? `${count} de ${quota} confirmadas` : `${count} confirmadas · sin cuota configurada`}</strong></div>
     <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: publicaciones confirmadas`:undefined}
       aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(count,quota):undefined}
-      aria-valuetext={known?`${count} publicaciones confirmadas de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
+      aria-valuetext={known?`${count} publicaciones confirmadas de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div>
+    <div className="client-monthly-history-label"><span>Registradas en historial</span><strong>{historicalCount}</strong></div>
+    <div className="client-monthly-track client-monthly-history-track" role={known?'progressbar':undefined}
+      aria-label={known?`${label}: registradas en historial, sin confirmación manual verificable`:undefined}
+      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(historicalCount,quota):undefined}
+      aria-valuetext={known?`${historicalCount} registradas en historial; cuota ${quota}; sin confirmación manual verificable`:undefined}>
+      <span style={{width:`${historicalPercent}%`}} /></div></div>;
 }
 export function ClientMonthlyProgressList({clients,publicaciones,period}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
@@ -64,7 +71,7 @@ export function ClientMonthlyProgressList({clients,publicaciones,period}) {
         {row.noActivity&&<small>Sin actividad registrada</small>}</div>
       <ClientMonthlyFormatBar label="Reels" {...row.reels}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles}/>
     </li>)}</ul>}
-    <p className="client-monthly-evidence">Publicaciones confirmadas del mes planificado. Finalizar tareas no confirma publicaciones; la falta de registros no demuestra falta de trabajo.</p>
+    <p className="client-monthly-evidence">Mes planificado: azul, confirmadas; gris tramado, registradas en historial sin confirmación manual verificable. Son conteos separados, no una confirmación conjunta de cumplimiento. Finalizar tareas no confirma publicaciones; la falta de registros no demuestra falta de trabajo.</p>
   </section>;
 }
 

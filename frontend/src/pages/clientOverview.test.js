@@ -3,6 +3,69 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createClientOverviewLoader } from "./clientOverview.js";
 import { createCapturedRequest } from '../shared/session/captured-request.js';
+import ts from 'typescript';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import * as clientStats from '../clientesStats.js';
+
+const monthlySource = readFileSync(new URL('./Clientes.jsx', import.meta.url), 'utf8');
+const monthlyTree = ts.createSourceFile('Clientes.jsx', monthlySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+const monthlyFunctions = ['clientMonthlyProgressRows', 'ClientMonthlyFormatBar', 'ClientMonthlyProgressList'];
+const monthlyDeclarations = monthlyTree.statements.filter(node => ts.isFunctionDeclaration(node) && monthlyFunctions.includes(node.name?.text));
+assert.equal(monthlyDeclarations.length, 3);
+const monthlyCode = ts.transpileModule(monthlyDeclarations.map(node => node.getText(monthlyTree).replace(/^export\s+/, '')).join('\n'),
+  { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText;
+const monthly = Function('React', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, ...Object.values(clientStats));
+const monthClient = { id: 1, nombre: 'Cliente QA', activo: true, cuota_reels: 4, cuota_carruseles: 2 };
+const monthPiece = (id, extra = {}) => ({ id, cliente_id: 1, tipo: 'reel', estado: 'publicada', fecha_programada: '2026-10-05', ...extra });
+function confirmedMonthPiece(id, extra = {}) {
+  return monthPiece(id, { 'fecha_publicación_real': '2026-11-01T12:00:00Z', publicacion_evidencia: {
+    classification: 'confirmada_manualmente', revision: 1,
+    confirmation: { id: '12345678-1234-4234-8234-123456789abc', actor_id: 7, source: 'manual',
+      occurred_at: '2026-11-01T12:00:00Z', recorded_at: '2026-11-01T12:01:00Z' },
+  }, ...extra });
+}
+
+test('monthly rows keep historical and confirmed progression disjoint, deduplicated and in planned month', () => {
+  const historical = monthPiece(1), confirmed = confirmedMonthPiece(2);
+  const pieces = [historical, historical, confirmed, monthPiece(3, { fecha_programada: '2026-09-05' }),
+    monthPiece(4, { estado: 'pendiente' }), monthPiece(5, { tipo: 'carrusel' })];
+  const before = JSON.stringify(pieces);
+  const [row] = monthly.clientMonthlyProgressRows([monthClient], pieces, '2026-10');
+  assert.deepEqual(row.reels, { count: 1, historicalCount: 1, quota: 4 });
+  assert.deepEqual(row.carruseles, { count: 0, historicalCount: 1, quota: 2 });
+  assert.equal(row.noActivity, false);
+  assert.equal(JSON.stringify(pieces), before);
+  const [transition] = monthly.clientMonthlyProgressRows([monthClient], [confirmedMonthPiece(1)], '2026-10');
+  assert.equal(transition.reels.count, 1); assert.equal(transition.reels.historicalCount, 0);
+});
+
+test('shared feed quota and historical progress appear once, with no task-derived or empty-history credit', () => {
+  const clients = [1, 2].map(id => ({ ...monthClient, id, nombre: `Cuenta ${id}`, grupo_feed_id: 9,
+    grupo_feed_nombre: 'Lavalle QA', cuota_feed_reels: 8, cuota_feed_carruseles: 3 }));
+  const rows = monthly.clientMonthlyProgressRows(clients, [monthPiece(1), monthPiece(2, { cliente_id: 2 })], '2026-10');
+  assert.equal(rows.length, 1); assert.deepEqual(rows[0].clientIds, [1, 2]);
+  assert.deepEqual(rows[0].reels, { count: 0, historicalCount: 2, quota: 8 });
+  const [empty] = monthly.clientMonthlyProgressRows(clients, [], '2026-10');
+  assert.equal(empty.noActivity, true); assert.equal(empty.reels.count + empty.reels.historicalCount, 0);
+});
+
+test('actual monthly JSX labels separate tracks, preserves true counts above quota and avoids fabricated ranges without quota', () => {
+  const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,
+    { clients: [monthClient], publicaciones: [monthPiece(1)], period: '2026-10' }));
+  assert.match(html, /Registradas en historial/); assert.match(html, /0 de 4 confirmadas/);
+  assert.match(html, /sin confirmación manual verificable/); assert.match(html, /Mes planificado/);
+  assert.match(html, /client-monthly-history-track/); assert.doesNotMatch(html, /Sin actividad registrada/);
+  const over = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
+    { label: 'Reels', count: 5, historicalCount: 7, quota: 4 }));
+  assert.match(over, /5 de 4 confirmadas/); assert.match(over, /7 registradas en historial/);
+  assert.equal((over.match(/width:100%/g) || []).length, 2);
+  const noQuota = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
+    { label: 'Reels', count: 0, historicalCount: 7, quota: 0 }));
+  assert.match(noQuota, /sin cuota configurada/); assert.doesNotMatch(noQuota, /role="progressbar"|aria-valuemax/);
+  const css = readFileSync(new URL('./ClientesProgress.css', import.meta.url), 'utf8');
+  assert.match(css, /\.client-monthly-list \.client-monthly-history-track>span\{background:repeating-linear-gradient/);
+});
 
 // Canonical parsed requests and real captured-session binding, no mounted UI/DB.
 function deferred() {

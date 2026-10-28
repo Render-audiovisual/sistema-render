@@ -4,6 +4,24 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Copia actual del hosting en la revisión local — 2026-10-28
+
+El usuario confirmó reemplazar los datos operativos locales de prueba por una copia actual del sistema publicado, conservando los accesos locales Franco/Agustín. Autorizó usar DATABASE_URL de Hostinger exclusivamente en el formulario privado127.0.0.1:56509 para captura de solo lectura; no se imprimió ni persistió esa conexión. El formulario anterior había vencido sin capturar; se renovó en el mismo puerto. Ninguna variable de Hostinger fue guardada ni hubo despliegue/push.
+
+Captura nueva verificada: PostgreSQL17,64 tablas públicas,343 tareas,520 publicaciones,1 historia,17 clientes (incluye inactivos) y0 visitas en el registro nuevo. El manifest se emitió2026-10-28T13:35:29.962Z; es una instantánea, no sincronización continua. Las visitas históricas anotadas como tareas siguen en sus tareas: no se inventaron registros de grabación.
+
+Se restauró una base nueva PG18 en `/private/tmp/render2-hosting-copy-6N1JBB`, puerto56011. Se aplicó el tren exacto de41 migraciones canónicas sobre las58 entradas reconocidas, con99 al final y cero pendientes/desconocidas. Gate independiente comparó tipos y hashes proyectados de las64 tablas originales. Se añadieron356 asignaciones explícitas para343 tareas usando los ocho IDs revisados previamente; Líder sigue siendoID1, sin reparto ni promoción de Franco Romero14. El contenido, autorías, fechas y estados originales se preservaron.
+
+Excepción técnica explícita: las credenciales/vínculos Google/WhatsApp de usuarios de origen se inutilizaron solamente en la copia; IDs/nombres/roles/activo y datos operativos se conservaron. El trigger de seguridad incrementó `user_admin_version` exactamente una vez, comprobado por usuario. Se añadieron únicamente los tres accesos locales91001/91005/91006, sin tareas propias ni vínculos a las tareas del origen. Se desactivó también su bandera WhatsApp predeterminada. Los dos contadores temporales de login usados por QA se retiraron por claves exactas antes del gate; no eran datos del origen. Informes de intentos fallidos se conservaron, sin declararlos aceptación.
+
+Gate final ACCEPTED: `/private/tmp/render2-hosting-copy-6N1JBB/final-integrity-acceptance.json`, SHA256 `dd5bb59ff1c3b7b805c5442f5c030f78c47c870213981592fcc0e41963751e94`. También verificó47 tablas nuevas con recuentos esperados y detención del restore prístino de referencia. Prueba HTTP en52923: datos reales, perfiles, Inicio personal sin heredar tareas de Líder, sueldos403 para empleado y Reportes sin importes privados; hashes comerciales antes/después idénticos. Proveedores, trabajos automáticos y arranque/migraciones implícitos desactivados.
+
+Tras aceptar, se retiraron sólo los dos HTTP locales identificados y se abrió la copia nueva en52922. Ambas bases previas quedaron conservadas; la revisión activa no contiene las cinco tareas sintéticas. El cambio de base invalidó las cookies anteriores para evitar que borradores de tareas de prueba coincidieran con IDs del origen. Se ingresó con el acceso local conservado y se comprobó el selector Franco/Agustín.
+
+Clientes distingue avance confirmado (azul) de registros históricos sin evidencia nueva (gris tramado), por mes planificado y sin duplicar cuotas compartidas. No se crearon confirmaciones, fechas de publicación ni progresos artificiales. Frontend3391PASS/0FAIL/1optativa omitida;135 focales; build correcto. Revisión visual muestra historial del origen en las barras.
+
+Respaldos privados duraderos con hashes de copia comprobados: `/Users/agustinobregon/Documents/Render-Backups/2026-10-28-current-local-review-0FEa1C`. Incluyen el dump de la revisión anterior, los dos dumps actuales y sus verificaciones. El procedimiento no guarda DATABASE_URL ni su contraseña. Los archivos de base son sensibles y no forman parte de Git. Esta preparación no habilita publicar ni reemplazar producción: los datos posteriores a la instantánea permanecen sólo en el sistema vivo. Captura final de Clientes: `/private/tmp/render-current-hosting-clients-history.png`.
+
 ### Simplificación operativa y clientes locales — 2026-10-27
 
 Se retiran Proyectos/Publicaciones del menú y los accesos de Inicio, sin borrar tablas ni registros. Los editores internos compatibles permanecen disponibles: Calendario ofrece acceso al escritor existente de piezas con mes/cliente. Reportes no se rediseña en este corte.
