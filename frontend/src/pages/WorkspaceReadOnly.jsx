@@ -1022,12 +1022,12 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
   };
   const endDrag = (event) => event.currentTarget.classList.remove("is-dragging");
   return <article data-task-id={task.id} draggable={canDrag} className={`ros-task-card ${canDrag ? "can-move" : "view-only"}`}
-    onPointerDown={(event) => { dragRef.current = { blocked: Boolean(event.target.closest('button,select,input,textarea,a,[contenteditable="true"]')), suppressClick: false }; }}
+    onPointerDown={(event) => { dragRef.current = { blocked: Boolean(event.target.closest('button:not(.ros-card-open),select,input,textarea,a,[contenteditable="true"]')), suppressClick: false }; }}
     onDragStart={startDrag} onDragEnd={endDrag}
     onDragOver={onOrderDrop ? event => { if(event.dataTransfer.types.includes('text/task-id')) event.preventDefault(); } : undefined}
     onDrop={onOrderDrop ? event => onOrderDrop(event,task) : undefined}
     onClick={(event) => { if (dragRef.current.suppressClick || event.target.closest('button,select,input,textarea,a,[contenteditable="true"]')) return; onOpen(task.id); }}>
-    <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canDrag && <span className="ros-card-drag-handle" aria-hidden="true" title="Arrastrá desde la tarjeta, fuera de sus controles">⠿</span>}</div><h3><button type="button" className="ros-card-open" onClick={()=>onOpen(task.id)}>{task.titulo}</button></h3><p>{task.cliente_nombre || "Sin cliente"}</p>
+    <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canDrag && <span className="ros-card-drag-handle" aria-hidden="true" title="Arrastrá desde cualquier parte de la tarjeta">⠿</span>}</div><h3><button type="button" className="ros-card-open" draggable={canDrag} onClick={(event)=>{ if (!dragRef.current.suppressClick || event?.detail === 0) onOpen(task.id); }}>{task.titulo}</button></h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {canonicalTaskState(task.estado) === 'aprobada' && <small className="ros-card-summary">Aprobada</small>}
     {task.estado === 'en_revision' && effectiveTaskFilterState(task) === 'aprobada' && <small className="ros-card-summary">Aprobada (registro histórico; sin evidencia de entrega)</small>}
@@ -1234,9 +1234,9 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     if (orderState.busy || orderState.locked) return;
     if (status === canonicalTaskState(task.estado)) return;
     if (!canUserMoveTaskToState(task, sesion?.usuario, status)) {
-      onError(status === "finalizada"
-        ? "No tenés permiso para completar esta tarea."
-        : "No tenés permiso para mover esta tarea.");
+      onError(status === 'finalizada' && isProductionVisitTask(task) && !getProductionVisitProgress(task).complete
+        ? 'Completá primero el registro de la visita en Producciones. Mover la tarea no registra videos ni publica contenido.'
+        : status === "finalizada" ? "No tenés permiso para completar esta tarea." : "No tenés permiso para mover esta tarea.");
       return;
     }
     if (status === "aprobada") {
@@ -1326,7 +1326,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
           onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => dropOnProcessButton(event,column)}>
           <header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header>
-          {column.states.length > 1 && <p className="ros-card-summary">Incluye aprobadas. El orden manual no está disponible en este grupo.</p>}
           <div>{windowed.items.map((task,index) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move}
             canMove={canUserMoveTask(task, sesion?.usuario)} moveBlocked={orderState.busy||orderState.locked} onOrderDrop={sort==='manual'&&archiveMode==='active'?dropBeforeTask:undefined}
             manualControls={orderControls(task,items,index,windowed.limit)}/>)}

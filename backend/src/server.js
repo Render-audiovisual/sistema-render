@@ -112,7 +112,6 @@ import { parseTaskReviewRead, parseTaskStateRead, buildTaskReviewClause, effecti
 import { createClientGoalsRouter, reconcileMonthlyGoals } from "./client-goals.js";
 import {
   getStateNotification,
-  isTaskFinalizer,
   isTaskLeader,
   isVideoEditingTask,
   validateProductionHandoff,
@@ -1601,7 +1600,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
       return res.status(400).json({ error: 'La observación de visita solo corresponde a finalizar la tarea.' });
     const expectedEditingDelivery = normalizeExpectedEditingDelivery(body.expected_entrega_id);
     if (expectedEditingDelivery && body.estado !== 'aprobada') return res.status(400).json({ error: "La entrega observada solo se usa al aprobar." });
-    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id", "expected_production_visit"].includes(key));
+    // Capture this BEFORE server-generated approval/notification metadata is
+    // added. Only this closed state-only shape gets shared movement authority.
+    const stateOnlyRequest = Object.hasOwn(body, 'estado') && Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id", "expected_production_visit"].includes(key));
     let estadoAnterior = null;
     let tareaAnteriorCompleta = null;
     let esRenderOS = req.query.workspace === "render_os";
@@ -1695,17 +1696,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
       if (tareaAnteriorCompleta?.propiedades_extra?.workspace === "render_os") esRenderOS = true;
       estadoAnterior = tareaAnterior.rows[0]?.estado || null;
     }
-    if (
-      esRenderOS &&
-      Object.prototype.hasOwnProperty.call(body, "estado") &&
-      (body.estado === "finalizada" || isTaskFinalized({ estado: estadoAnterior })) &&
-      !isTaskFinalizer(req.auth) &&
-      !(req.auth.rol === "produccion" && tareaAnteriorCompleta?.tipo_tarea === "produccion")
-    ) {
-      return res.status(403).json({ error: body.estado === "finalizada"
-        ? "No tenés permiso para completar esta tarea."
-        : "No tenés permiso para reabrir esta tarea completada." });
-    }
+    if (stateOnlyRequest && esRenderOS && tareaAnteriorCompleta
+      && (tareaAnteriorCompleta.propiedades_extra?.workspace !== 'render_os'
+        || [true, 'true'].includes(tareaAnteriorCompleta.propiedades_extra?.archivada_render_os)
+        || [true, 'true'].includes(tareaAnteriorCompleta.propiedades_extra?.papelera_render_os)))
+      return res.status(404).json({ error: 'Tarea no encontrada.' });
     if (esRenderOS && body.estado === "en_revision" && estadoAnterior !== "en_revision" && tareaAnteriorCompleta) {
       const visitaParaEntregar = {
         ...tareaAnteriorCompleta,
@@ -1731,8 +1726,6 @@ router.patch("/tareas/:id", async (req, res, next) => {
         return res.status(400).json({ error: "Prioridad inválida." });
       }
     }
-    const produccionPuedeCompletarPropia = req.auth.rol === "produccion"
-      && tareaAnteriorCompleta?.tipo_tarea === "produccion";
     if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "tarea_padre_id") && body.tarea_padre_id) {
       const padreRenderOS = await pool.query(
         `SELECT id FROM tareas
@@ -1827,11 +1820,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
       valores.push(body.expected_revision);
     }
 
-    const movimientoGlobalFinalizador = esRenderOS
-      && isTaskFinalizer(req.auth)
-      && stateOnlyRequest;
-    const acceso = movimientoGlobalFinalizador
-      ? { sql: "", value: null }
+    const movimientoGlobalEstado = esRenderOS && stateOnlyRequest;
+    const acceso = movimientoGlobalEstado
+      ? { sql: " AND t.propiedades_extra->>'workspace' = 'render_os' AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true' AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'", value: null }
       : buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
     where += acceso.sql;
     if (acceso.value) {
@@ -1865,8 +1856,8 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     if (result.rows.length === 0) {
       if (body.expected_updated_at || body.expected_revision) {
-        const accesoExistente = movimientoGlobalFinalizador
-          ? { sql: "", value: null }
+        const accesoExistente = movimientoGlobalEstado
+          ? { sql: " AND t.propiedades_extra->>'workspace' = 'render_os' AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true' AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'", value: null }
           : buildTaskAccessClause(req.auth, "t", "$2");
         const paramsExistente = [id];
         if (accesoExistente.value) paramsExistente.push(accesoExistente.value);

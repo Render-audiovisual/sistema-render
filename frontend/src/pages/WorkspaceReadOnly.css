@@ -45,6 +45,12 @@
   border-radius:0;
   overflow:visible;
 }
+@media(min-width:981px){
+  .render-workspace .ros-main{
+    max-width:none;
+    padding-inline:16px;
+  }
+}
 .render-workspace .ros-page{
   margin:0;
   max-width:none;
@@ -800,7 +806,9 @@
   padding:12px;
 }
 .render-workspace .ros-task-card:hover{border-color:var(--ros-lime-muted);box-shadow:0 8px 20px #20241816}
-.render-workspace .ros-task-card.can-move{cursor:pointer}
+.render-workspace .ros-task-card.can-move{cursor:grab;user-select:none}
+.render-workspace .ros-task-card.can-move .ros-card-open{cursor:grab}
+.render-workspace .ros-task-card.is-dragging,.render-workspace .ros-task-card.is-dragging .ros-card-open{cursor:grabbing}
 .render-workspace .ros-task-card.view-only{cursor:pointer}
 .render-workspace .ros-card-drag-handle{
   align-items:center;

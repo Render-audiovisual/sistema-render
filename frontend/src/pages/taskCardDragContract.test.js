@@ -131,7 +131,7 @@ test('actual completed source drag suppresses the following card click across re
   assert.deepEqual(f.effects.filter(value => value === 'open'), ['open']); assert.equal(f.calls.length, 0);
 });
 
-test('actual title button pointer blocks drag without payload; its normal click opens once without triggering order writes', async () => {
+test('actual title pointer transports task ID, reorders once and suppresses click; fresh title click opens once', async () => {
   const f = fixture(), data = transfer(); let card = f.render(moved);
   const titleButton = node => {
     const pending = [node];
@@ -146,14 +146,18 @@ test('actual title button pointer blocks drag without payload; its normal click 
     assert.fail('Actual title open button must be present');
   };
   const button = titleButton(card), pointer = event(data);
-  pointer.target = { closest: selector => { assert.ok(selector.includes('button')); return button; } };
+  pointer.target = { closest: selector => { assert.ok(selector.includes('button')); return selector.includes('button:not(.ros-card-open)') ? null : button; } };
   card.props.onPointerDown(pointer); card = f.render(moved);
   const start = event(data); card.props.onDragStart(start);
-  assert.equal(start.prevented, true); assert.deepEqual(data.types, [], 'Button origin never transports a task ID');
-  f.render(anchor).props.onDrop(event(data)); await Promise.all(f.pending); assert.equal(f.calls.length, 0);
+  assert.equal(start.prevented, false); assert.equal(data.getData('text/task-id'), '5');
+  assert.equal(button.props.draggable, true);
+  f.render(anchor).props.onDrop(event(data)); await Promise.all(f.pending); assert.equal(f.calls.length, 1);
+  const suppressed = event(data, true); titleButton(card).props.onClick(suppressed);
+  assert.equal(f.effects.filter(value => value === 'open').length, 0);
+  card.props.onDragEnd(event(data)); card.props.onPointerDown(pointer); card = f.render(moved);
   const click = event(data, true); titleButton(card).props.onClick(click);
   if (!click.stopped) card.props.onClick(click);
-  assert.deepEqual(f.effects.filter(value => value === 'open'), ['open']); assert.equal(f.calls.length, 0);
+  assert.deepEqual(f.effects.filter(value => value === 'open'), ['open']); assert.equal(f.calls.length, 1);
   // A subsequent background gesture must still be draggable after button use.
   card.props.onPointerDown(event(data)); const background = event(data); card.props.onDragStart(background);
   assert.equal(background.prevented, false); assert.equal(data.getData('text/task-id'), '5');

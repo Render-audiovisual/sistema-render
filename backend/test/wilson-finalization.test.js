@@ -168,7 +168,25 @@ test('closed body rejects state/approval/visit injection and confirm task substi
   const preview=await f.preview();assert.equal((await f.run('confirm',{confirmacion_token:preview.confirmacion_token,task_ids:[999]})).statusCode,400);
 });
 
-for(const state of ['pendiente','en_progreso','en_revision','finalizada','publicada'])test(`no approval bypass or timestamp rewrite for ${state}`,async () => {
+for(const state of ['pendiente','en_progreso','en_revision'])test(`explicit private finalization from ${state} requires no prior approval and never publishes or invents evidence`,async () => {
+  const f=fixture({tasks:[task(101,{estado:state,propiedades_extra:{workspace:'render_os'}})]});
+  const original=structuredClone(f.live.tasks),assignments=structuredClone(f.live.assignments);
+  const preview=await f.run('preview',{task_ids:[101]});assert.equal(preview.statusCode,201);
+  assert.deepEqual(f.live.tasks,original,'Preview is not a task mutation');
+  const confirmed=await f.run('confirm',{confirmacion_token:preview.body.confirmacion_token});
+  assert.equal(confirmed.statusCode,200);assert.equal(f.live.tasks[0].estado,'finalizada');
+  assert.equal(f.live.tasks[0].revision,2);assert.ok(f.live.tasks[0].propiedades_extra.finalizada_at);
+  for(const field of ['revision_aprobada','revision_aprobada_por_id','revision_aprobada_por','revision_aprobada_at','revision_aprobada_entrega_id'])
+    assert.equal(f.live.tasks[0].propiedades_extra[field],undefined,'Completion does not manufacture approval evidence');
+  assert.deepEqual(f.live.assignments,assignments);
+  assert.equal(f.live.audits.length,1);
+  assert.ok(!f.calls.some(c=>/\b(?:publicaciones|historias|cliente_objetivo_piezas)\b/.test(c.sql)),'Task completion must not publish pieces');
+  const after=structuredClone(f.live);
+  const replay=await f.run('confirm',{confirmacion_token:preview.body.confirmacion_token});
+  assert.equal(replay.statusCode,200);assert.equal(replay.body.idempotent,true);assert.deepEqual(f.live,after,'Replay cannot rewrite completion timestamps');
+});
+
+for(const state of ['finalizada','publicada'])test(`already completed ${state} cannot rewrite timestamps or obtain a new finalization token`,async () => {
   const f=fixture({tasks:[task(101,{estado:state,propiedades_extra:{workspace:'render_os',revision_aprobada:true}})]});
   const before=structuredClone(f.live);assert.equal((await f.run('preview',{task_ids:[101]})).statusCode,409);assert.deepEqual(f.live,before);
 });

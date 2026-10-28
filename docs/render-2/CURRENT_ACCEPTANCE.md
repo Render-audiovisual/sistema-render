@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Arrastre de tarjeta y movimiento compartido — 2026-10-27
+
+Las tarjetas permiten arrastrar desde título y cuerpo, sin depender del tirador. Los controles internos mantienen su uso; el clic posterior al arrastre no abre el detalle y la activación por teclado sigue disponible.
+
+Cualquier integrante autenticado vigente, incluidos roles personalizados, puede mover, finalizar y reabrir tareas activas del tablero render_os aunque no sea responsable y sin aprobación previa. El permiso nuevo es exclusivamente de estado: no permite editar contenido ajeno, reasignar, borrar, aprobar evidencia ni acceder a finanzas. No publica piezas. Las tareas históricas fuera del tablero y las guardas de registro de visitas de producción conservan sus reglas.
+
+Pruebas:36 focales backend PASS;102 regresiones de contratos afectados PASS;3.366 frontend PASS;50 integración HTTP/PostgreSQL PASS con fixture nuevo55993 eliminado al terminar. Cubre todos los roles estándar y uno personalizado, seis estados de origen, contenido/asignación/borrado/aprobación/publicación/finanzas sin escalamiento, revisión obsoleta y anonimato. En navegador local52922: arrastre desde título hasta Finalizadas, desde cuerpo a En proceso y clic para abrir/cerrar detalle, persistencia al recargar y selector de pantalla angosta, con una tarea sintética. Captura `/private/tmp/render-whole-card-drag-finalized.png`. No se modificaron datos productivos. Los ajustes previos de margen y texto aclaratorio se conservan.
+
 ### Perfiles dentro de la misma sesión — 2026-10-27
 
 Reemplaza el comportamiento histórico de cierre de sesión descrito abajo. Inicio permite seleccionar Franco/Agustín sin nuevo ingreso mediante delegación por ID verificada en el servidor. Se muestra el perfil activo en Inicio y barra lateral; Login no tiene selector. Las tareas de Líder no se trasladan ni se reparten. Ver `LOCAL_OWNER_PROFILES.md` para contrato y limitación estricta a entornos locales.

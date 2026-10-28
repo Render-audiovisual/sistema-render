@@ -186,7 +186,8 @@ test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
   assert.match(workspaceSource, /if \(!canDrag \|\| moveBlocked \|\| dragRef\.current\.blocked\)/);
   assert.match(workspaceSource, /dragRef\.current\.suppressClick/);
   assert.match(workspaceSource, /dragRef\.current\.blocked/);
-  assert.match(workspaceSource, /<h3><button type="button" className="ros-card-open" onClick=\{\(\)=>onOpen\(task.id\)\}/);
+  assert.match(workspaceSource, /<h3><button type="button" className="ros-card-open" draggable=\{canDrag\} onClick=\{\(event\)=>\{/);
+  assert.match(workspaceSource, /!dragRef\.current\.suppressClick\s*\|\|\s*event\?\.detail\s*===\s*0/);
   assert.doesNotMatch(workspaceSource, /<article role="button" tabIndex=\{0\} data-task-id/);
   assert.doesNotMatch(workspaceSource, /className="ros-card-drag-handle" draggable="true"/);
 });

@@ -5,14 +5,12 @@ import { taskTransitionError } from '../../../backend/src/workflow-contract.js';
 const user={id:7,rol:'produccion'};
 const task={id:1,asignado_a_id:7,colaborador_ids:[],tipo_tarea:'produccion',subtipo:'coordinacion',titulo:'Coordinar material',estado:'aprobada',propiedades_extra:{workspace:'render_os'}};
 
-test('approved production non-visits cannot be finalized or reopened by a production employee',()=>{
-  assert.equal(canUserMoveTaskToState(task,user,'finalizada'),false);
-  assert.equal(taskTransitionError(task,'finalizada',user).status,403);
+test('render_os production non-visits allow finalization without approval and reopening by any team member',()=>{
+  assert.equal(canUserMoveTaskToState({...task,estado:'pendiente'},user,'finalizada'),true);
   for(const state of ['finalizada','publicada']) {
     const finished={...task,estado:state};
-    assert.equal(canUserMoveTask(finished,user),false);
-    assert.equal(canUserMoveTaskToState(finished,user,'pendiente'),false);
-    assert.equal(taskTransitionError(finished,'pendiente',user).status,403);
+    assert.equal(canUserMoveTask(finished,user),true);
+    assert.equal(canUserMoveTaskToState(finished,user,'pendiente'),true);
   }
   assert.equal(canUserMoveTaskToState(task,{...user,rol:'admin'},'finalizada'),true);
   assert.equal(canUserMoveTaskToState(task,{...user,rol:'community'},'finalizada'),true);

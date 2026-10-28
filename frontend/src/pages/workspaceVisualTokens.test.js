@@ -515,6 +515,81 @@ test('review refresh exception pins selectors, declarations and root scope witho
   assert.equal(retained.last.selector,'.unrelated');
   assert.notEqual(hash(structure(retained)),hash(structure(projected)));
 });
+// Explicitly reviewed: whole-card/title drag affordance and desktop whitespace.
+// Validate every property and ancestry before projecting to the ORIGINAL hash.
+// This is not a broad exemption for cursor, selection, .ros-main or media rules.
+function reviewedCardDragAndDesktopMarginBaseline(root) {
+  const copy = root.clone(), seen = [];
+  const rules = new Map([
+    ['.render-workspace .ros-task-card.can-move', [['cursor','grab'],['user-select','none']]],
+    ['.render-workspace .ros-task-card.can-move .ros-card-open', [['cursor','grab']]],
+    ['.render-workspace .ros-task-card.is-dragging,.render-workspace .ros-task-card.is-dragging .ros-card-open', [['cursor','grabbing']]],
+  ]);
+  const check = (rule, declarations) => {
+    assert.ok(rule.nodes.every(node => node.type === 'decl'));
+    assert.deepEqual(rule.nodes.map(node => [node.prop,node.value,!!node.important]),
+      declarations.map(([property,value]) => [property,value,false]));
+  };
+  copy.walkRules(rule => {
+    if (!/\.ros-task-card\.(?:can-move|is-dragging)/.test(rule.selector)) return;
+    assert.ok(rules.has(rule.selector), 'Only exact scoped card/title drag rules may be projected');
+    assert.equal(rule.parent.type, 'root', 'Drag rules cannot acquire responsive/nested scope');
+    check(rule, rules.get(rule.selector)); seen.push(rule.selector);
+    if (rule.selector === '.render-workspace .ros-task-card.can-move') {
+      rule.removeAll(); rule.append({prop:'cursor',value:'pointer'});
+    } else rule.remove();
+  });
+  assert.deepEqual(seen, [...rules.keys()], 'All three drag rules must occur exactly once in reviewed order');
+  let desktop = 0;
+  copy.walkAtRules('media', media => {
+    if (media.params !== '(min-width:981px)') return;
+    assert.equal(media.parent.type, 'root');
+    assert.equal(media.nodes.length, 1, 'Desktop exception cannot conceal other rules');
+    const [rule] = media.nodes;
+    assert.equal(rule.type, 'rule'); assert.equal(rule.selector, '.render-workspace .ros-main');
+    check(rule, [['max-width','none'],['padding-inline','16px']]);
+    desktop++; media.remove();
+  });
+  assert.equal(desktop, 1, 'Exactly one min981 desktop main exception is required');
+  return copy;
+}
+test('reviewed drag/desktop projection pins exact scope, properties, media and counts without mutating CSS or hashes', () => {
+  const original = roots.WorkspaceReadOnly.toString();
+  const baseline = reviewedCardDragAndDesktopMarginBaseline(roots.WorkspaceReadOnly);
+  assert.equal(roots.WorkspaceReadOnly.toString(), original);
+  const firstDrag = root => { let found; root.walkRules(rule => { if(rule.selector === '.render-workspace .ros-task-card.can-move') found = rule; }); assert.ok(found); return found; };
+  const mainMedia = root => { let found; root.walkAtRules('media', media => { if(media.params === '(min-width:981px)') found = media; }); assert.ok(found); return found; };
+  for (const mutate of [
+    root => { firstDrag(root).first.value = 'pointer'; },
+    root => { firstDrag(root).last.value = 'text'; },
+    root => { firstDrag(root).first.important = true; },
+    root => { firstDrag(root).append({prop:'touch-action',value:'none'}); },
+    root => { firstDrag(root).selector += ', body'; },
+    root => { firstDrag(root).cloneAfter(); },
+    root => { firstDrag(root).remove(); },
+    root => { const rule = firstDrag(root); const media = postcss.atRule({name:'media',params:'(max-width:700px)'}); rule.replaceWith(media); media.append(rule); },
+    root => { root.walkRules(rule => { if(rule.selector === '.render-workspace .ros-task-card.can-move .ros-card-open') rule.selector = '.render-workspace .ros-task-card.can-move button'; }); },
+    root => { root.walkRules(rule => { if(rule.selector.startsWith('.render-workspace .ros-task-card.is-dragging,')) rule.first.value = 'grab'; }); },
+    root => { mainMedia(root).params = '(min-width:980px)'; },
+    root => { mainMedia(root).first.selector = '.ros-main'; },
+    root => { mainMedia(root).first.first.value = '1400px'; },
+    root => { mainMedia(root).first.last.value = '24px'; },
+    root => { mainMedia(root).first.last.prop = 'padding'; },
+    root => { mainMedia(root).first.last.important = true; },
+    root => { mainMedia(root).append(postcss.rule({selector:'.unrelated'})); },
+    root => { mainMedia(root).cloneAfter(); },
+    root => { mainMedia(root).remove(); },
+    root => { const media = mainMedia(root); const supports = postcss.atRule({name:'supports',params:'(display:grid)'}); media.replaceWith(supports); supports.append(media); },
+  ]) {
+    const changed = roots.WorkspaceReadOnly.clone(); mutate(changed);
+    assert.throws(() => reviewedCardDragAndDesktopMarginBaseline(changed));
+  }
+  const unrelated = roots.WorkspaceReadOnly.clone();
+  unrelated.append(postcss.rule({selector:'.unrelated'}).append({prop:'position',value:'fixed'}));
+  const retained = reviewedCardDragAndDesktopMarginBaseline(unrelated);
+  assert.equal(retained.last.selector, '.unrelated');
+  assert.notEqual(hash(structure(retained)), hash(structure(baseline)), 'Unreviewed additions remain visible to the original fingerprint');
+});
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
@@ -524,6 +599,7 @@ for (const name of files) {
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedMobileCalendarBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedInlineErrorBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedReviewRefreshBaseline(baselineRoot);
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedCardDragAndDesktopMarginBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedMobileViewSelectorBaseline(baselineRoot);

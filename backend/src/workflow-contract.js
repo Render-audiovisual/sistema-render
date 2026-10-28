@@ -37,15 +37,24 @@ export function isTaskApproved(task = {}) {
     || (task.estado === TASK_STATES.IN_REVIEW && task.propiedades_extra?.revision_aprobada === true);
 }
 
-export function taskTransitionError(task, requested, auth) {
+export function taskTransitionError(task, requested, auth = {}) {
   const next = normalizeTaskState(requested);
   const previous = normalizeTaskState(task.estado);
   if (!Object.values(TASK_STATES).includes(next)) return { status: 400, error: 'Estado de trabajo inválido.' };
+  const shared = task.propiedades_extra?.workspace === 'render_os';
+  if (shared && (!Number.isSafeInteger(auth?.id) || auth.id < 1 || auth.id > 2147483647
+    || typeof auth.rol !== 'string' || !auth.rol.trim() || auth.activo === false))
+    return { status: 401, error: 'Necesitás una sesión vigente para mover tareas.' };
   if (next === previous) return null;
   if (next === TASK_STATES.APPROVED) {
     if (auth.rol !== 'admin') return { status: 403, error: 'Solo un administrador puede aprobar el trabajo.' };
     if (previous !== TASK_STATES.IN_REVIEW) return { status: 409, error: 'Enviá el trabajo a revisión antes de aprobarlo.' };
   }
+  // Shared work-state movement is not an approval decision or publication.
+  // Any current authenticated team account can complete/reopen ordinary
+  // RENDER OS work. Production evidence is checked by its transactional writer.
+  // Approval above remains a separate admin/evidence path, not a prerequisite.
+  if (shared) return null;
   if (next === TASK_STATES.FINALIZED) {
     const production = isProductionVisitTask(task);
     if (!['admin', 'community'].includes(auth.rol) && !(production && auth.rol === 'produccion')) {

@@ -10,6 +10,7 @@ import { canUserMoveTaskToState, canUserMoveTask, canUserEditTask } from '../wor
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { requestAppNavigation } from '../shared/navigation/location.js';
+import { isProductionVisitTask, getProductionVisitProgress } from '../features/render-os/utils/production-visits.js';
 
 // Real callbacks/JSX with in-memory transport, not a native drag or persistence claim.
 const ast = ts.createSourceFile('WorkspaceReadOnly.jsx', readFileSync(new URL('./WorkspaceReadOnly.jsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -44,6 +45,7 @@ function fixture({ rows = [task], role = 'admin', transport = async () => ({ ...
     setReviewRequestedTaskId: value => { state.review = value; effects.push(['review', value]); },
     incorporateRelatedTasks: items => effects.push(['related', items]), onError: message => effects.push(['error', message]),
     orderState: { busy: false, locked: false }, sesion: session, canonicalTaskState, STATUSES, canUserMoveTaskToState, canUserMoveTask, canUserEditTask, effectiveTaskFilterState,
+    isProductionVisitTask, getProductionVisitProgress,
     onApprove: (...args) => { effects.push(['approve', ...args]); return Promise.resolve(); }, onUpdate: (...args) => { effects.push(['update', ...args]); return Promise.resolve(); },
     sort: 'manual', archiveMode: 'active', manualReady: true, setDragOver() {}, compactBoard: true,
     selectMobileBoardColumn: value => effects.push(['column', value]), onReorder: (...args) => effects.push(['reorder', ...args]),
@@ -56,6 +58,21 @@ function fixture({ rows = [task], role = 'admin', transport = async () => ({ ...
     unmount() { live = false; deps.openRequestRef.current?.abort(); }, aba() { generation += 2; }, switchActor() { accept(8); } };
 }
 const noWrites = f => { assert.ok(!f.effects.some(([kind]) => ['approve', 'update', 'reorder'].includes(kind))); assert.ok(f.requests.every(call => !call.options.method || call.options.method === 'GET')); };
+
+test('actual team move callback completes another person task directly without approval, publication or review GET', () => {
+  for (const role of ['admin','diseno','edicion','produccion','community','programacion','custom_role_qa']) {
+    const row = {...task,estado:'pendiente',asignado_a_id:99}, f = fixture({role,rows:[row]});
+    assert.equal(f.move(row,'finalizada'),'move');
+    assert.deepEqual(f.effects[0].slice(0,3),['update',row.id,{estado:'finalizada'}]);
+    assert.equal(f.effects.some(([kind])=>kind==='approve'),false);assert.deepEqual(f.requests,[]);
+    assert.equal(row.estado,'pendiente','Only server confirmation may update the board');
+  }
+});
+test('actual incomplete-visit move reports a production integrity message rather than requiring approval', () => {
+  const row={...task,tipo_tarea:'produccion',titulo:'Visita QA',propiedades_extra:{workspace:'render_os',produccion_videos_previstos:2,produccion_registros:[{cantidad:1}]}},f=fixture({role:'edicion',rows:[row]});
+  assert.equal(f.move(row,'finalizada'),undefined);noWrites(f);
+  assert.match(f.effects.find(([kind])=>kind==='error')[1],/registro de la visita en Producciones/);
+});
 
 test('actual permitted editing approval opens explicit review via cookie-bound GET, never an approval or optimistic column transition', async () => {
   assert.equal(ast.parseDiagnostics.length, 0); const f = fixture();

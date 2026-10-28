@@ -24,6 +24,9 @@ function sameValue(left, right) {
 function isValidActorId(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
+const isRenderOsTask = task => task?.propiedades_extra?.workspace === 'render_os';
+const isActiveStateActor = user => isValidActorId(user?.id) && user.id <= 2147483647
+  && user.activo !== false && typeof user.rol === 'string' && Boolean(user.rol.trim());
 
 export function isTaskFinalizer(user) {
   return isValidActorId(user?.id) && (user.rol === "admin" || user.rol === "community");
@@ -53,6 +56,9 @@ export function canUserDeleteTask(task, user) {
 }
 
 export function canUserMoveTask(task, user) {
+  // State-only board operation. This does NOT grant field editing, assignment,
+  // deletion, approval evidence or actual editorial publication authority.
+  if (isRenderOsTask(task)) return isActiveStateActor(user);
   if (isTaskFinalizer(user)) return true;
   if (isTaskCompleted(task)) return isOwnProductionTask(task, user);
   return canUserOwnTask(task, user);
@@ -63,6 +69,11 @@ export function canUserMoveTaskToState(task, user, nextState) {
   if (!STATUSES.some((state) => state.id === nextState)) return false;
   const currentState = canonicalTaskState(task?.estado);
   if (nextState === "aprobada") return user.rol === "admin" && currentState === "en_revision";
+  if (isRenderOsTask(task)) {
+    // No approval prerequisite or ownership restriction for operational states.
+    // A visit cannot be represented as complete by inventing recorded material.
+    return nextState !== 'finalizada' || !isProductionVisitTask(task) || getProductionVisitProgress(task).complete;
+  }
   if (nextState === "finalizada") {
     // Existing visit completion is the only direct-finalization exception.
     const completedVisit = isProductionVisitTask(task) && getProductionVisitProgress(task).complete;

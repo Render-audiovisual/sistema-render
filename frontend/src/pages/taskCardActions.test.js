@@ -33,7 +33,7 @@ const user = { id: 7, rol: 'admin', activo: true, nombre: 'QA' };
 
 function fixture({ blocked = false, readOnly = false, manual = true } = {}) {
   const opens = [], moves = [], orders = [], ref = { current: { blocked: false, suppressClick: false } };
-  const actor = readOnly ? { id: 8, rol: 'diseno', activo: true } : user;
+  const actor = readOnly ? { id: 0, rol: 'diseno', activo: true } : user;
   const deps = { React, useRef: () => ref, AREAS, STATUSES, canonicalTaskState, isTaskCompleted,
     areaForTask, emojiForTaskCard, formatDate, initials, personForTask, taskResponsibleLabels, getProductionPhase,
     effectiveTaskFilterState, canUserMoveTaskToState, esperandoMaterial: () => false };
@@ -65,7 +65,7 @@ test('real card is a semantic article, not a focusable button containing interac
   for (const prop of ['role', 'tabIndex', 'onKeyDown', 'onKeyUp']) assert.equal(f.tree.props[prop], undefined, prop);
   const html = f.html(), opening = html.match(/^<article\b[^>]*>/)[0];
   assert.doesNotMatch(opening, /\brole=|\btabindex=/);
-  assert.match(html, /<h3><button type="button" class="ros-card-open">Editar video &lt;QA&gt; &amp; revisión<\/button><\/h3>/);
+  assert.match(html, /<h3><button type="button" class="ros-card-open" draggable="true">Editar video &lt;QA&gt; &amp; revisión<\/button><\/h3>/);
   assert.equal((html.match(/class="ros-card-open"/g) || []).length, 1);
   assert.ok(group(f.tree));
   assert.equal(descendants(f.tree).filter(n => n.props.role === 'button').length, 0);
@@ -93,13 +93,19 @@ for (const action of ['up', 'down', 'end']) test(`${action}: native reorder acti
   assert.deepEqual(f.opens, []); assert.deepEqual(f.moves, []);
 });
 
-test('pointer background still opens, interactive descendants do not, and dragging from title button is blocked', () => {
+test('pointer background opens, other interactive controls block drag, title allows drag and suppresses the following click', () => {
   const f = fixture();
   f.tree.props.onClick(pointerEvent()); assert.deepEqual(f.opens, [5]);
   f.tree.props.onClick(pointerEvent({ interactive: true })); assert.deepEqual(f.opens, [5]);
   const buttonOrigin = pointerEvent({ interactive: true });
   f.tree.props.onPointerDown(buttonOrigin); f.tree.props.onDragStart(buttonOrigin);
   assert.equal(buttonOrigin.prevented, 1); assert.deepEqual(buttonOrigin.dataTransfer.types, []);
+  const titleOrigin = pointerEvent();
+  titleOrigin.target.closest = selector => selector.includes('button:not(.ros-card-open)') ? null : { tagName: 'BUTTON' };
+  assert.equal(title(f.tree).props.draggable, true);
+  f.tree.props.onPointerDown(titleOrigin); f.tree.props.onDragStart(titleOrigin);
+  assert.equal(titleOrigin.prevented, 0); assert.equal(titleOrigin.dataTransfer.getData('text/task-id'), '5');
+  title(f.tree).props.onClick(); assert.deepEqual(f.opens, [5], 'Title click after drag cannot open the task');
   const background = pointerEvent(); f.tree.props.onPointerDown(background); f.tree.props.onDragStart(background);
   assert.equal(background.prevented, 0); assert.equal(background.dataTransfer.getData('text/task-id'), '5');
   f.tree.props.onClick(pointerEvent()); assert.deepEqual(f.opens, [5], 'Post-drag synthetic click remains suppressed');
@@ -123,6 +129,17 @@ test('read-only card remains openable through the same native title without gran
   title(f.tree).props.onClick(); assert.deepEqual(f.opens, [5]);
   const event = pointerEvent(); f.tree.props.onDragStart(event); assert.equal(event.prevented, 1);
   assert.deepEqual(event.dataTransfer.types, []); assert.deepEqual(f.orders, []); assert.deepEqual(f.moves, []);
+});
+
+test('native keyboard title activation opens after drag while the post-drag pointer click stays suppressed', () => {
+  const f = fixture(), origin = pointerEvent();
+  origin.target.closest = selector => selector.includes('button:not(.ros-card-open)') ? null : {tagName:'BUTTON'};
+  f.tree.props.onPointerDown(origin); f.tree.props.onDragStart(origin); f.tree.props.onDragEnd(origin);
+  const button = title(f.tree);
+  button.props.onClick({ detail: 1 }); assert.deepEqual(f.opens, []);
+  assert.equal(button.props.onKeyDown, undefined); assert.equal(button.props.onKeyUp, undefined);
+  button.props.onClick({ detail: 0 }); assert.deepEqual(f.opens, [task.id]);
+  assert.deepEqual(f.orders, []); assert.deepEqual(f.moves, []);
 });
 
 test('date ordering has no manual buttons while keeping native task opening', () => {

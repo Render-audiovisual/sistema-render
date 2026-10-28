@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { STATUSES, BOARD_COLUMNS, canonicalTaskState, isTaskCompleted } from "../../frontend/src/features/render-os/constants.js";
 import { canUserMoveTaskToState, canRetryTaskUpdate } from "../../frontend/src/features/render-os/utils/task-state.js";
-import { getProductionPhase } from "../../frontend/src/features/render-os/utils/production-visits.js";
+import { getProductionPhase, isProductionVisitTask, getProductionVisitProgress } from "../../frontend/src/features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
 import { effectiveTaskFilterState } from '../../frontend/src/features/render-os/utils/task-view-state.js';
@@ -43,7 +43,7 @@ test("approval is admin-only from review across all work types; IDs cannot be re
   }
 });
 
-test("finalization requires approval, preserves finalizer role limits, and never writes old states", () => {
+test("historical non-render_os finalization retains legacy gates and never writes old state aliases", () => {
   for (const user of [admin,community]) {
     for (const estado of ["pendiente","en_progreso","en_revision"]) {
       assert.equal(canUserMoveTaskToState({...task,estado},user,"finalizada"),false);
@@ -126,7 +126,7 @@ test("actual move callback keeps historical approval display out of generic busi
   assert.ok(body.startsWith('  const move = useCallback'));
   const writes = [], approvals = [], errors = [], openings = [];
   const context = { useCallback: callback => callback, orderState: { busy: false, locked: false },
-    canonicalTaskState, canUserMoveTaskToState, STATUSES, sesion: { usuario: admin },
+    canonicalTaskState, canUserMoveTaskToState, isProductionVisitTask, getProductionVisitProgress, STATUSES, sesion: { usuario: admin },
     onUpdate: (...args) => { writes.push(args); return Promise.resolve(); },
     onApprove: dto => { approvals.push(dto); return Promise.resolve(); }, onError: message => errors.push(message),
     openTask: (id, review) => { openings.push([id, review]); return Promise.resolve(); } };
@@ -146,6 +146,11 @@ test("actual move callback keeps historical approval display out of generic busi
   assert.deepEqual(openings, [[editing.id, true]]);
   assert.deepEqual(approvals, [dto]); assert.deepEqual(writes, []);
   assert.equal(editing.estado, 'en_revision', 'Opening a delivery review does not approve the work');
+  const shared = Object.freeze({...task,estado:'pendiente',propiedades_extra:Object.freeze({workspace:'render_os'})});
+  assert.equal(move(shared,'finalizada'),'move','Shared ordinary completion has no approval prerequisite');
+  assert.deepEqual(writes.at(-1).slice(0,2),[shared.id,{estado:'finalizada'}]);
+  assert.deepEqual(approvals,[dto],'Generic completion cannot fabricate an approval decision');
+  assert.equal(shared.estado,'pendiente','The callback does not mutate its observed task');
 });
 
 test("source wiring covers all views, effective state filter, generic approval PATCH and safe creation defaults", () => {
