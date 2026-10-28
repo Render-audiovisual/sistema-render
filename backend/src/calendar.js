@@ -24,7 +24,7 @@ function day(value) {
 }
 
 export function normalizeCalendarQuery(query = {}) {
-  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id', 'limit', 'offset', 'expected_snapshot', 'dia', 'vista'];
+  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id', 'limit', 'offset', 'expected_snapshot', 'dia', 'vista', 'formato'];
   if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).some(k => !keys.includes(k))
     || Object.values(query).some(v => typeof v !== 'string')) throw fail('Filtros de calendario inválidos.');
   const desde = day(query.desde), hasta = day(query.hasta);
@@ -33,6 +33,7 @@ export function normalizeCalendarQuery(query = {}) {
   if (query.vista !== undefined && query.vista !== 'publicaciones') throw fail('Vista de calendario inválida.');
   // Explicit editorial view cannot inherit personal/type filters from old URLs.
   const editorial = query.vista === 'publicaciones';
+  if(query.formato !== undefined && (!editorial || !['reel','carrusel'].includes(query.formato))) throw fail('Formato de calendario inválido.');
   const scope = editorial ? 'team' : query.scope ?? 'mine', kind = editorial ? 'all' : query.kind ?? 'all';
   if (!['mine', 'team'].includes(scope) || !KINDS.includes(kind)) throw fail('Ámbito o tipo de calendario inválido.');
   let cliente_id = null;
@@ -53,7 +54,7 @@ export function normalizeCalendarQuery(query = {}) {
     }
     pagination = Object.freeze({ limit, offset, expected_snapshot, dia });
   }
-  return Object.freeze({ desde, hasta, scope, kind, cliente_id, ...(editorial ? { vista: 'publicaciones' } : {}), ...(pagination ? { pagination } : {}) });
+  return Object.freeze({ desde, hasta, scope, kind, cliente_id, ...(editorial ? { vista: 'publicaciones' } : {}), ...(query.formato ? {formato:query.formato}:{}), ...(pagination ? { pagination } : {}) });
 }
 
 const visibleTask = alias => `${alias}.propiedades_extra->>'workspace'='render_os'
@@ -97,8 +98,9 @@ export const CALENDAR_MILESTONE_SQL = `SELECT h.id,h.proyecto_id,h.titulo,h.esta
    OR EXISTS(SELECT 1 FROM proyecto_miembros m WHERE m.proyecto_id=p.id AND m.usuario_id=$4))
  ORDER BY h.fecha,h.id LIMIT 2001`;
 
-export function calendarEditorialSql(domain, kind, vista) {
+export function calendarEditorialSql(domain, kind, vista, formato) {
   if (!['historia', 'publicacion'].includes(domain) || !KINDS.includes(kind)) throw new TypeError('Dominio/tipo inválido.');
+  if(formato !== undefined && !['reel','carrusel'].includes(formato)) throw new TypeError('Formato inválido.');
   const table = domain === 'historia' ? 'historias' : 'publicaciones';
   const fk = domain === 'historia' ? 'historia_id' : 'publicacion_id';
   const linked = `t.${fk}=p.id AND t.cliente_id=p.cliente_id AND ${visibleTask('t')}`;
@@ -114,6 +116,7 @@ export function calendarEditorialSql(domain, kind, vista) {
     FROM ${table} p JOIN clientes c ON c.id=p.cliente_id
     WHERE c.activo IS DISTINCT FROM FALSE AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
     ${vista === 'publicaciones' ? "AND p.tipo IN ('video','reel','carrusel')" : ''}
+    ${formato === 'reel' ? "AND p.tipo IN ('video','reel')" : formato === 'carrusel' ? "AND p.tipo='carrusel'" : ''}
     AND ($3::int IS NULL OR p.cliente_id=$3)
     AND ($5::boolean OR EXISTS(SELECT 1 FROM tareas t WHERE ${linked} AND ${assigned('t')}))
     AND ${kind === 'programacion' ? scheduled : kind === 'publicacion' ? actual : `(${scheduled} OR ${actual})`}
@@ -164,6 +167,7 @@ export function buildCalendarEvents({ tasks = [], visits = [], historias = [], p
   for (const [source, rows] of [['historia', historias], ['publicacion', publicaciones]]) {
     for (const row of rows) {
       if (filters.vista === 'publicaciones' && (source !== 'publicacion' || !['video', 'reel', 'carrusel'].includes(row.tipo))) continue;
+      if (filters.formato && !(filters.formato === 'reel' ? ['video','reel'].includes(row.tipo) : row.tipo === 'carrusel')) continue;
       const proof = closedEvidence(row), actual = proof ? actualDate(proof.confirmation.occurred_at) : null;
       const planned = day(row.fecha_programada), month = (planned ?? actual)?.slice(0, 7);
       const context = source === 'historia' ? `/planificacion-historias?vista=checklist&cliente=${row.cliente_id}&mes=${month}`
@@ -212,11 +216,11 @@ export async function readCalendar(pool, auth, query) {
       return rows.slice(0, LIMIT + 1);
     };
     if (!filters.vista && ['all', 'tarea'].includes(filters.kind)) data.tasks = await fetch(CALENDAR_TASK_SQL);
-    if (['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
+    if (!filters.formato && ['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
     if (!filters.vista && ['all', 'hito'].includes(filters.kind)) data.hitos = await fetch(CALENDAR_MILESTONE_SQL);
     if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
       for (const domain of filters.vista ? ['publicacion'] : ['historia', 'publicacion']) {
-        const rows = await fetch(calendarEditorialSql(domain, filters.kind, filters.vista));
+        const rows = await fetch(calendarEditorialSql(domain, filters.kind, filters.vista, filters.formato));
         // A scheduled-only view does not award publication credit or need proof.
         data[domain === 'historia' ? 'historias' : 'publicaciones'] = filters.kind === 'programacion' ? rows : await annotateEditorialEvidence(db, domain, rows);
       }

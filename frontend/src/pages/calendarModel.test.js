@@ -243,9 +243,9 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   assert.match(jsx, /toLocaleUpperCase\('es-AR'\) \+ label.slice\(1\)/);
   assert.match(jsx, /count === 1 \? 'evento' : 'eventos'/);
   assert.match(jsx, /calendarEventTitle\(item\).*<\/h3>/);
-  assert.match(jsx, /Reels, carruseles y visitas/);
+  assert.match(jsx, /label="Contenido"/);
   assert.match(jsx, /readPublicationCalendarSelection as readCalendarSelection/);
   assert.doesNotMatch(jsx, /calendarTaskState|calendarMilestoneState|Abrir proyecto/);
-  assert.match(jsx, /Finalizar una tarea no la marca como publicada/);
+  assert.match(jsx, /item.kind === 'publicacion'\?' · Publicado'/);
   assert.equal((jsx.match(/<main\b/g) || []).length, 1);
 });

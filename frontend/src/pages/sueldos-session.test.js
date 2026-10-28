@@ -64,9 +64,9 @@ test('administration is outside every finance/loading/error gate, so summary fai
   assert.deepEqual(conditions,['contractsReady']);
   const saved=nodes(owner('SueldosContent'),n=>ts.isVariableDeclaration(n)&&text(n.name)==='onSaved')[0];
   assert.doesNotMatch(text(saved),/setContractsReady|loadContracts|setLoading/);
-  const administration=source.indexOf('<h2>Contratos financieros</h2>');
+  const administration=source.indexOf('<summary>Administrar contratos</summary>');
   assert.ok(administration>source.indexOf('<h2>Ingresos por contrato</h2>'));
-  assert.ok(administration<source.indexOf('<h2>¿De dónde sale cada número?</h2>'));
+  assert.ok(administration<source.indexOf('<summary>Detalle de sueldos y gastos</summary>'));
 });
 
 test('strict contract projection binds revision to positive PG ID and drops unknown bags',()=>{

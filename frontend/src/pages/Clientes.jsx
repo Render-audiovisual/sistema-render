@@ -50,28 +50,21 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
 }
 function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
-  const percent = known ? Math.min(100, count / quota * 100) : 0;
-  const historicalPercent = known ? Math.min(100, historicalCount / quota * 100) : 0;
-  return <div className="client-monthly-format"><div><span>{label}</span><strong>{known ? `${count} de ${quota} confirmadas` : `${count} confirmadas · sin cuota configurada`}</strong></div>
-    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: publicaciones confirmadas`:undefined}
-      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(count,quota):undefined}
-      aria-valuetext={known?`${count} publicaciones confirmadas de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div>
-    <div className="client-monthly-history-label"><span>Registradas en historial</span><strong>{historicalCount}</strong></div>
-    <div className="client-monthly-track client-monthly-history-track" role={known?'progressbar':undefined}
-      aria-label={known?`${label}: registradas en historial, sin confirmación manual verificable`:undefined}
-      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(historicalCount,quota):undefined}
-      aria-valuetext={known?`${historicalCount} registradas en historial; cuota ${quota}; sin confirmación manual verificable`:undefined}>
-      <span style={{width:`${historicalPercent}%`}} /></div></div>;
+  const total = count + historicalCount;
+  const percent = known ? Math.min(100, total / quota * 100) : 0;
+  return <div className="client-monthly-format" title={`${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
+    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: contenido registrado`:undefined}
+      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
+      aria-valuetext={known?`${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
 }
 export function ClientMonthlyProgressList({clients,publicaciones,period}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
-      <div className="client-monthly-name"><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}
-        {row.noActivity&&<small>Sin actividad registrada</small>}</div>
+      <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
       <ClientMonthlyFormatBar label="Reels" {...row.reels}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles}/>
     </li>)}</ul>}
-    <p className="client-monthly-evidence">Mes planificado: azul, confirmadas; gris tramado, registradas en historial sin confirmación manual verificable. Son conteos separados, no una confirmación conjunta de cumplimiento. Finalizar tareas no confirma publicaciones; la falta de registros no demuestra falta de trabajo.</p>
+    <p className="client-monthly-evidence">Contenido registrado del mes, incluido el historial. No implica publicación confirmada.</p>
   </section>;
 }
 

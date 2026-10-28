@@ -9,8 +9,6 @@ import postcss from 'postcss';
 // Pre-142 native contracts captured explicitly during review, never fetched
 // from git at runtime. CSS/AST/SSR only, not mounted/native select acceptance.
 const filters = [
-  ['Orden', `aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}`,
-    `<option value="date">Fecha</option><option value="manual" disabled={Boolean(reviewScope)}>Manual</option>`],
   ['Estado', `aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => changeTaskStatus(event.target.value)}`,
     `{taskStatus !== "all" && !STATUSES.some(item=>item.id===taskStatus) && <option value={taskStatus} disabled>Estado no válido</option>}<option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}`],
   ['Área', `aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}`,
@@ -98,18 +96,8 @@ test('actual shared JSX retains invalid historical state/responsible placeholder
   assert.deepEqual(calls,[['state','pendiente'],['responsible','id:91003']]);
 });
 
-test('actual order control remains busy-disabled and disables manual specifically in review scope',()=>{
-  const calls=[];
-  for(const busy of [false,true])for(const reviewScope of ['', 'personal', 'team']){
-    const order=rendered('Orden',{sort:'date',orderState:{busy},reviewScope,setSort:value=>calls.push(value)});
-    assert.equal(order.props.disabled,busy);
-    const native=FilterSelect(order.props),select=React.Children.toArray(native.props.children).find(node=>node.type==='select');
-    assert.equal(select.props.disabled,busy);assert.equal(select.props['aria-label'],'Orden de tareas');
-    const options=React.Children.toArray(select.props.children);
-    assert.equal(options.find(node=>node.props.value==='manual').props.disabled,Boolean(reviewScope));
-  }
-  rendered('Orden',{sort:'date',orderState:{busy:false},reviewScope:'',setSort:value=>calls.push(value)}).props.onChange({target:{value:'manual'}});
-  assert.deepEqual(calls,['manual']);
+test('retired order selector does not reappear among task filters',()=>{
+  assert.equal(shared.filter(node=>attr(node,'label')?.initializer?.text==='Orden').length,0);
 });
 
 test('task filter/order CSS delegates shared paint/type/focus/height and label text while retaining container layout',()=>{

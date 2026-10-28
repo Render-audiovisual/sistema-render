@@ -87,7 +87,7 @@ function fixture(transport){
  let session={token:'synthetic',usuario:{id:7,rol:'admin',activo:true}},live=session,active=true;
  const observation={},state={tasks:[task(1)],total:2,effects:[],requests:[]};
  const captureRequest=()=>createCapturedRequest({session,readSession:()=>live,isActive:()=>active,request:async()=>{throw Error('No direct request expected')}});
- const deps={captureRequest,isSessionFailure,queryNotice:'',taskQueryGenerationRef:{current:2},tasks:state.tasks,tasksRef:{current:state.tasks},responsibleSelection:{ready:true,value:'all',status:'ready'},loadingMore:false,pagingBlocked:false,orderState:{busy:false},orderModel:{snapshot:{busy:false}},totalTasks:2,
+ const deps={detailOnlyTaskId:null,captureRequest,isSessionFailure,queryNotice:'',taskQueryGenerationRef:{current:2},tasks:state.tasks,tasksRef:{current:state.tasks},responsibleSelection:{ready:true,value:'all',status:'ready'},loadingMore:false,pagingBlocked:false,orderState:{busy:false},orderModel:{snapshot:{busy:false}},totalTasks:2,
   taskStatus:'en_revision',reviewScope:'personal',effectiveSort:'date',orderPageRef:{current:null},reviewPageRef:{current:{snapshot,total:2,observation}},orderObservation:observation,orderContextRef:{current:observation},query:'',area:'all',client:'all',sector:'all',priority:'all',archiveMode:'active',orderContext:'queue',
   apiTaskPage:async options=>{state.requests.push(options);return transport(options)},notify:()=>state.effects.push('notify'),
   window:{location:{href:'https://render.test/workspace/tareas?view=list&review_scope=personal',search:'?view=list&review_scope=personal'},dispatchEvent:()=>true,setTimeout:fn=>{state.timer=fn;return 1},clearTimeout:()=>{}},CustomEvent:class{constructor(type,options){this.type=type;Object.assign(this,options)}}};
@@ -138,7 +138,7 @@ test('actual queue JSX renders scope and explicit recovery; manual option is dis
  for(const reviewScope of ['team','personal']){const deps={React,reviewScope,visible:[task(1),task(2)],totalTasks:13,view:'list',setView:()=>{},orderMessage:'La cola cambió',loadingMore:false,orderState:{busy:false},queryNotice:'',onRefreshReview:()=>{},exitReviewQueue:()=>{}};
   const html=renderToStaticMarkup(Function(...Object.keys(deps),`${compiled};return React.createElement(Banner);`)(...Object.values(deps)));assert.match(html,new RegExp(reviewScope==='team'?'Revisión del equipo':'Tu trabajo en revisión'));assert.match(html,/Mostrando 2 de 13/);assert.match(html,/Actualizar cola desde el principio/);assert.match(html,/Salir de la cola/);
  }
- assert.match(source,/<option value="manual" disabled=\{Boolean\(reviewScope\)\}>/);
+ assert.doesNotMatch(source,/aria-label="Orden de tareas"/);assert.match(source,/!reviewScope && sort === 'manual'/);
  const home=readFileSync(new URL('./QuickHome.jsx',import.meta.url),'utf8');assert.match(home,/href=\{homeReviewTaskHref\(data.review.scope\)\}/);assert.match(home,/Ver toda la cola de revisión/);
  const css=readFileSync(new URL('./TaskHeader.css',import.meta.url),'utf8');assert.match(css,/\.render-workspace \.ros-review-queue \{[^}]*flex-wrap: wrap;/);assert.match(css,/\.ros-review-queue button \{[^}]*min-height: 44px;/);assert.match(css,/\.ros-review-queue button:focus-visible/);
 });

@@ -1,0 +1,20 @@
+.render-workspace .ros-organized-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px;align-items:start}
+.render-workspace .ros-organized-groups .ros-project-card{min-width:0;border:1px solid var(--render-line,#e5e7eb);border-radius:16px;overflow:hidden;background:var(--render-surface,#fff);box-shadow:0 2px 8px #00000004}
+.render-workspace .ros-organized-groups .ros-project-card>header{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:20px;border-bottom:1px solid var(--render-line,#e5e7eb);background:var(--render-surface-soft,#f8f9fb)}
+.render-workspace .ros-organized-groups .ros-project-card>header>div{display:flex;align-items:center;gap:12px;min-width:0}
+.render-workspace .ros-organized-groups .ros-project-card>header strong{font-size:16px;line-height:1.4;overflow-wrap:anywhere;color:var(--render-ink,#242424)}
+.render-workspace .ros-organized-groups .ros-group-avatar{display:grid;place-items:center;flex:0 0 40px;height:40px;border-radius:10px;background:#eaf0f8;color:#42658d;font-size:14px;font-weight:650}
+.render-workspace .ros-organized-groups .ros-project-card>header small{font-size:12px;line-height:1.5;color:var(--render-muted,#666)}
+.render-workspace .ros-organized-groups .ros-group-tasks{display:grid;gap:0;padding:0 16px}
+.render-workspace .ros-organized-groups .ros-group-tasks>button{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0;margin:0;padding:16px 4px;border:0;border-bottom:1px solid var(--render-line,#e5e7eb);border-radius:0;background:transparent;text-align:left;color:var(--render-ink,#242424);cursor:pointer}
+.render-workspace .ros-organized-groups .ros-group-tasks>button:last-child{border-bottom:0}
+.render-workspace .ros-organized-groups .ros-group-tasks>button:hover{background:var(--render-surface-soft,#f8f9fb)}
+.render-workspace .ros-organized-groups .ros-group-tasks>button:focus-visible{outline:2px solid var(--render-accent,#0068d4);outline-offset:-2px;border-radius:6px}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>span{font-size:14px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>b{justify-self:start;padding:3px 8px;border-radius:6px;background:#eef2f6;color:#526174;font-size:11px;font-weight:600;line-height:1.5}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>b[data-state="en_progreso"]{background:#eaf2ff;color:#245f9c}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>b[data-state="en_revision"]{background:#fff4df;color:#805b16}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>b[data-state="finalizada"]{background:#eaf5ef;color:#2c714b}
+.render-workspace .ros-organized-groups .ros-group-tasks>button>small{grid-column:auto;font-size:12px;line-height:1.5;color:var(--render-muted,#666);overflow-wrap:anywhere}
+.render-workspace .ros-organized-groups .ros-group-date{font-variant-numeric:tabular-nums}
+@media(max-width:640px){.render-workspace .ros-organized-groups{grid-template-columns:minmax(0,1fr);gap:16px}.render-workspace .ros-organized-groups .ros-project-card>header{padding:16px}}

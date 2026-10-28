@@ -4,8 +4,11 @@
 .client-monthly-page .client-monthly-header label{display:grid;gap:5px;font-size:12px;color:var(--render-muted,#666)}
 .client-monthly-page .client-monthly-header input{min-height:44px;padding:8px 10px;border:1px solid var(--render-line,#ddd);border-radius:8px;background:var(--render-surface,#fff);color:var(--render-ink,#242424)}
 .client-monthly-list{color:var(--render-ink,#242424);font-family:var(--render-font,system-ui);min-width:0}
-.client-monthly-list ul{list-style:none;margin:0;padding:0}
-.client-monthly-list li{display:grid;grid-template-columns:minmax(180px,1.4fr) repeat(2,minmax(140px,1fr));align-items:center;gap:28px;padding:20px 0;border-top:1px solid var(--render-line,#e5e5e5)}
+.client-monthly-list ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px}
+.client-monthly-list li{display:grid;grid-template-columns:1fr;align-content:start;gap:24px;padding:24px;border:1px solid var(--render-line,#e5e5e5);border-radius:16px;background:var(--render-surface,#fff);box-shadow:0 2px 8px #00000004;min-width:0}
+.client-monthly-list .client-monthly-name{display:grid;grid-template-columns:48px 1fr;align-items:center;gap:12px;min-height:48px}
+.client-monthly-list .client-monthly-name small{grid-column:1/-1}
+.client-monthly-avatar{display:grid;place-items:center;width:48px;height:48px;border-radius:12px;background:#eef3f9;color:#48688d;font-size:16px;font-weight:650;border:1px solid #e1e8f0}
 .client-monthly-list .client-monthly-name h2{font:600 16px/1.4 var(--render-font,system-ui);margin:0;overflow-wrap:anywhere}
 .client-monthly-list .client-monthly-name small{display:block;font-size:12px;line-height:1.5;color:var(--render-muted,#666);margin-top:4px;overflow-wrap:anywhere}
 .client-monthly-list .client-monthly-format{min-width:0}
@@ -20,5 +23,5 @@
 .client-monthly-page .client-monthly-management>summary{cursor:pointer;min-height:44px;align-content:center;font-size:13px;font-weight:600;color:var(--render-muted,#666)}
 .client-monthly-page .client-monthly-management>summary:focus-visible,.client-monthly-page .client-monthly-header input:focus-visible{outline:2px solid var(--render-accent,#0068d4);outline-offset:3px}
 .client-monthly-page .client-monthly-management .client-goals .cg-content{padding:20px 0;border:0;border-radius:0}
-@media(max-width:760px){.client-monthly-page .cg-content{padding:18px}.client-monthly-list li{grid-template-columns:1fr 1fr;gap:16px;padding:18px 0}.client-monthly-list .client-monthly-name{grid-column:1/-1}.client-monthly-page .client-monthly-header h1{font-size:24px}}
+@media(max-width:760px){.client-monthly-page .cg-content{padding:18px}.client-monthly-list li{gap:20px;padding:20px}.client-monthly-page .client-monthly-header h1{font-size:24px}}
 @media(max-width:420px){.client-monthly-list li{grid-template-columns:1fr}.client-monthly-list .client-monthly-name{grid-column:auto}.client-monthly-page .client-monthly-header{align-items:flex-start;gap:12px}.client-monthly-list .client-monthly-format>div:first-child{font-size:12px}}

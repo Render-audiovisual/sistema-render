@@ -28,11 +28,18 @@ function render(value,overrides={}){
 }
 test('actual page render visibly separates calculation/expected amounts from real collection or payment evidence',()=>{
  assert.equal(file.parseDiagnostics.length,0);const value=dto(),before=structuredClone(value),{html}=render(value);assert.deepEqual(value,before);
- assert.match(html,/INGRESOS ESPERADOS/);assert.match(html,/Mes vencido · estimado/);assert.match(html,/Resultado proyectado/);assert.match(html,/Sueldos calculados/);assert.match(html,/Gastos fijos previstos/);
- assert.match(html,/role="note"[^>]*>Los importes son una proyección calculada\. No acreditan cobros ni pagos realizados\. Los pagos manuales se registran por separado\./);
- assert.match(html,/Estimación del período; no acredita pagos/);assert.match(html,/no confirma facturas emitidas ni cobros/);assert.match(html,/Monto estimado/);assert.match(html,/Cálculo de sueldo variable pendiente/);
- assert.match(html,/Proyección mes a mes/);assert.match(html,/Evolución mensual de ingresos proyectados/);assert.doesNotMatch(html,/FACTURACIÓN A COBRAR|Contratos facturados|Total pagado|Marcar pagado|Registrar pago/);
+ assert.match(html,/Ingresos por contratos/);assert.match(html,/trabajo de Septiembre de 2026/);assert.match(html,/Saldo estimado/);assert.match(html,/Sueldos calculados/);assert.match(html,/Gastos fijos/);
+ assert.match(html,/role="note"[^>]*>Proyección por contratos, no confirma facturas emitidas\. No acreditan cobros ni pagos realizados\./);
+ assert.match(html,/No acredita pagos/);assert.match(html,/Monto estimado/);assert.match(html,/Cálculo de sueldo variable pendiente/);
+ assert.match(html,/Evolución mensual/);assert.match(html,/Evolución mensual de ingresos proyectados/);assert.doesNotMatch(html,/FACTURACIÓN A COBRAR|Contratos facturados|Total pagado|Marcar pagado|Registrar pago/);
  assert.match(html,/Contrato &lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+});
+test('simple finance keeps four metrics and mounted administration/payment tools in closed disclosures',()=>{
+ const {html}=render(dto());
+ assert.equal((html.match(/class="finance-metric-value/g)||[]).length,4);
+ for(const label of ['Administrar contratos','Pagos al equipo','Detalle de sueldos y gastos','Evolución mensual'])assert.ok(html.includes(`<summary>${label}</summary>`));
+ assert.doesNotMatch(html,/<details[^>]*\sopen(?:[\s=>])|finance-billing-hero|% del total/);
+ assert.match(html,/Ingresos por contrato/);assert.match(html,/data-contract-panel="retained"/);
 });
 test('actual totals/detail/chart render cents exactly to two visible decimals and pass same formatter to contracts without mutating payroll formulas',()=>{
  const {html,panels}=render(dto());assert.match(html,/125\.000,50/);assert.doesNotMatch(html,/125\.001/);assert.match(html,/35\.000,25/);assert.match(html,/5\.000,10/);assert.match(html,/85\.000,15/);

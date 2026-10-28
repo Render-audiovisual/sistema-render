@@ -34,6 +34,7 @@ export function readCalendarSelection(search, today = cordobaToday()) {
 export function calendarHref(selection) {
   const params = new URLSearchParams({ mes: selection.mes, dia: selection.dia, scope: selection.scope, tipo: selection.tipo });
   if (selection.vista === 'publicaciones') { params.delete('scope'); params.delete('tipo'); }
+  if (selection.formato) params.set('formato',selection.formato);
   if (selection.cliente) params.set('cliente', selection.cliente);
   params.set('pagina', String(Number.isSafeInteger(selection.pagina) && selection.pagina >= 0 && selection.pagina <= MAX_CALENDAR_PAGE ? selection.pagina : 0));
   return `/calendario?${params}`;
@@ -58,6 +59,7 @@ export function calendarQuery(selection, { offset = (selection.pagina || 0) * CA
   if (!Number.isSafeInteger(offset) || offset < 0 || !calendarDay(selection.dia) || selection.dia < grid.desde || selection.dia >= grid.hasta) throw new Error('Página o día de calendario inválido.');
   const params = new URLSearchParams({ desde: grid.desde, hasta: grid.hasta, scope: selection.scope, kind: selection.tipo });
   if (selection.vista === 'publicaciones') { params.delete('scope'); params.delete('kind'); params.set('vista', 'publicaciones'); }
+  if (selection.formato) params.set('formato',selection.formato);
   if (selection.cliente) params.set('cliente_id', selection.cliente);
   params.set('dia', selection.dia); params.set('limit', String(CALENDAR_PAGE_LIMIT)); params.set('offset', String(offset));
   if (snapshot !== undefined) {
@@ -69,7 +71,8 @@ export function calendarQuery(selection, { offset = (selection.pagina || 0) * CA
 // Principal Calendar deliberately retires scope/type preferences. Keep legacy
 // helpers compatible for existing API consumers, not as hidden UI filters.
 export function readPublicationCalendarSelection(search, today = cordobaToday()) {
-  return { ...readCalendarSelection(search, today), scope: 'team', tipo: 'all', vista: 'publicaciones' };
+  const formato=new URLSearchParams(search).get('formato');
+  return { ...readCalendarSelection(search, today), scope: 'team', tipo: 'all', vista: 'publicaciones', ...(['reel','carrusel'].includes(formato)?{formato}: {}) };
 }
 export function publicationPlanningHref(selection, create = false) {
   const params = new URLSearchParams({ tab: create ? 'planilla' : 'calendario', mes: selection.mes });

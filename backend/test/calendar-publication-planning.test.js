@@ -4,6 +4,22 @@ import { normalizeCalendarQuery, buildCalendarEvents, calendarEditorialSql, CALE
 import { readCalendarPage } from '../src/calendar-pagination.js';
 
 const query = { desde: '2027-01-01', hasta: '2027-02-01', vista: 'publicaciones' };
+test('format filtering is validated and applied in SQL before full month counts/pagination',async()=>{
+  assert.throws(()=>normalizeCalendarQuery({...query,formato:'unknown'}),{status:400});
+  assert.throws(()=>normalizeCalendarQuery({desde:query.desde,hasta:query.hasta,formato:'reel'}),{status:400});
+  const snapshots=[];
+  for(const formato of ['reel','carrusel']){
+    const filters=normalizeCalendarQuery({...query,formato});
+    let sql;
+    const db={async query(value){sql=value;return {rows:[{total:'0',range_total:'0',fingerprint:'a'.repeat(64),events:[],days:[]}]};}};
+    const result=await readCalendarPage(db,{filters,page:{limit:200,offset:0},clients:[],user:{id:3,rol:'edicion',session_version:1}},
+      {taskSql:CALENDAR_TASK_SQL,visitSql:CALENDAR_VISIT_SQL,milestoneSql:CALENDAR_MILESTONE_SQL,editorialSql:calendarEditorialSql,buildEvents:buildCalendarEvents});
+    assert.doesNotMatch(sql,/FROM produccion_visitas/);
+    assert.match(sql,formato==='reel'?/p.tipo IN \('video','reel'\)/:/p.tipo='carrusel'/);
+    snapshots.push(result.pagination.snapshot);
+  }
+  assert.notEqual(snapshots[0],snapshots[1]);
+});
 test('explicit editorial view ignores retired scope/type filters, preserves legacy API defaults and validates the view', () => {
   const filters = normalizeCalendarQuery({ ...query, scope: 'mine', kind: 'tarea', cliente_id: '14' });
   assert.equal(filters.scope, 'team'); assert.equal(filters.kind, 'all'); assert.equal(filters.cliente_id, 14);

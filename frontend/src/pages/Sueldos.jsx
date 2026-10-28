@@ -4,6 +4,7 @@ import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { FinanceContractsPanel } from '../components/FinanceContractsPanel.jsx';
 import { TeamPaymentsPanel } from '../components/TeamPaymentsPanel.jsx';
+import './FinanceSimple.css';
 
 const ars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -193,66 +194,54 @@ function SueldosContent({ sesion }) {
   const resultadoVariation = finance && previousFinance ? formatVariation(finance.resultadoARS, previousFinance.resultadoARS) : null;
   const margen = finance && finance.facturacion > 0 ? ((finance.resultadoARS / finance.facturacion) * 100).toFixed(1) : 0;
 
-  return <main className="page-shell salary-page finance-dashboard">
+  return <main className="page-shell salary-page finance-dashboard finance-simple">
     <section className="salary-hero">
-      <div><span className="section-label">Finanzas · Sólo administración</span><h1>Finanzas de Render</h1><p>Proyección mensual de ingresos, sueldos y gastos.</p></div>
+      <div><h1>Finanzas</h1></div>
       <label className="finance-period-select"><span>Mes de cobro previsto</span><input type="month" value={period} min="2026-09" disabled={contractActive} onChange={(event) => { if (active.current) return; try { const next = salaryPeriod(`?periodo=${encodeURIComponent(event.target.value)}`); setPeriod(next); setPeriodError(''); } catch (reason) { setError(reason.message); } }} /></label>
     </section>
-    <p className="finance-disclaimer" role="note">Los importes son una proyección calculada. No acreditan cobros ni pagos realizados. Los pagos manuales se registran por separado.</p>
-    <TeamPaymentsPanel sesion={view.session} disabled={contractActive && !paymentActive} onActivityChange={onPaymentActivityChange}/>
+    <p className="finance-disclaimer" role="note">Proyección por contratos, no confirma facturas emitidas. No acreditan cobros ni pagos realizados.</p>
 
     {loading && <div className="salary-state">Calculando el mes…</div>}
     {deferredNotice && <div className="salary-state" role="status">{deferredNotice}</div>}
     {error && <div className="salary-state is-error"><strong>No se pudo calcular Finanzas.</strong><span>{error}</span><button type="button" className="btn" disabled={contractActive} onClick={() => setRefreshVersion(version => version + 1)}>Reintentar resumen</button></div>}
     {finance && <>
-      <section className="finance-billing-hero"><div><span>INGRESOS ESPERADOS</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Estimación por contratos a mes vencido; no confirma facturas emitidas ni cobros.{facturacionVariation ? ` Variación contra el mes anterior: ${facturacionVariation.percent}%.` : ""}</p></div><b>Mes vencido · estimado</b></section>
+      <p className="finance-period-context">Cobro previsto en {labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</p>
 
       <section className="finance-metrics" aria-label="Proyección financiera mensual">
         <article className="is-result">
-          <span>📊 Resultado proyectado</span>
+          <span>Saldo estimado</span>
           <strong className={`finance-metric-value ${finance.resultadoARS >= 0 ? 'is-positive' : 'is-negative'}`}>{ars.format(finance.resultadoARS)}</strong>
-          <small className="finance-metric-note">Margen: <strong>{margen}%</strong></small>
-          {resultadoVariation && <small className={resultadoVariation.isNegative ? 'is-negative' : 'is-positive'}>{resultadoVariation.isNegative ? '↓' : '↑'} {resultadoVariation.percent}%</small>}
+          <small className="finance-metric-note">Ingresos menos sueldos y gastos</small>
         </article>
         <article>
-          <span>💵 Ingresos esperados</span>
+          <span>Ingresos por contratos</span>
           <strong className="finance-metric-value is-expected">{ars.format(finance.facturacion)}</strong>
           <small className="finance-metric-note">Contratos incluidos: <strong>{finance.ingresos.length}</strong></small>
-          {facturacionVariation && <small className={facturacionVariation.isNegative ? 'is-negative' : 'is-positive'}>{facturacionVariation.isNegative ? '↓' : '↑'} {facturacionVariation.percent}%</small>}
         </article>
         <article>
-          <span>👥 Sueldos calculados</span>
+          <span>Sueldos calculados</span>
           <strong className="finance-metric-value">{ars.format(finance.sueldos)}</strong>
-          <small className="finance-metric-note">Estimación del período; no acredita pagos</small>
-          {sueldosVariation && <small className={sueldosVariation.isNegative ? 'is-positive' : 'is-negative'}>{sueldosVariation.isNegative ? '↓' : '↑'} {sueldosVariation.percent}%</small>}
+          <small className="finance-metric-note">No acredita pagos</small>
         </article>
         <article>
-          <span>📋 Gastos fijos previstos</span>
+          <span>Gastos fijos</span>
           <strong className="finance-metric-value">{ars.format(finance.gastosFijosARS)}</strong>
           <small className="finance-metric-note">Impuestos + herramientas</small>
-          {gastosVariation && <small className={gastosVariation.isNegative ? 'is-positive' : 'is-negative'}>{gastosVariation.isNegative ? '↓' : '↑'} {gastosVariation.percent}%</small>}
         </article>
       </section>
-      <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}>
-        <span>Dólar usado para ChatGPT y Contabo</span>
-        <strong>{ars.format(exchangeRate?.rounded || 0)} por USD</strong>
-        <small>Cotización tarjeta vendedor: {ars.format(exchangeRate?.original || 0)}, redondeada hacia arriba · {exchangeRate?.source}</small>
-      </div>
       {data.payrollPending?.length > 0 && <div className="salary-banner"><strong>Cálculo de sueldo variable pendiente:</strong> falta clasificar las piezas de {data.payrollPending.join(", ")} para completar ese importe automáticamente.</div>}
 
       <section className="finance-panel">
-        <header><div><span className="section-label">CONTRATOS FINANCIEROS</span><h2>Ingresos por contrato</h2></div></header>
+        <header><h2>Ingresos por contrato</h2></header>
         <div className="finance-client-table">
           <div className="finance-client-row is-heading">
             <div>Contrato</div>
             <div>Monto estimado</div>
-            <div style={{textAlign: 'right'}}>% del total</div>
           </div>
           {[...finance.ingresos].sort((a, b) => b.importe - a.importe).map((cliente) => (
             <div key={cliente.nombre} className="finance-client-row">
               <div>{cliente.nombre}</div>
               <div><strong>{ars.format(cliente.importe)}</strong></div>
-              <div style={{textAlign: 'right'}}><strong>{finance.facturacion > 0 ? ((cliente.importe / finance.facturacion) * 100).toFixed(1) : "0.0"}%</strong></div>
             </div>
           ))}
         </div>
@@ -261,25 +250,28 @@ function SueldosContent({ sesion }) {
 
     </>}
 
-      <section className="finance-panel">
-        <header><div><span className="section-label">ADMINISTRACIÓN</span><h2>Contratos financieros</h2></div><small>Registros financieros independientes; sus nombres no identifican clientes operativos.</small></header>
+      <details className="finance-panel finance-simple-disclosure" open={contractActive || undefined}>
+        <summary>Administrar contratos</summary>
         {contractsError && <div className="salary-state is-error" role="alert">{contractsError}</div>}
         <button type="button" className="btn" disabled={contractActive} onClick={() => loadContracts()}>Recargar contratos</button>
         {contractsReady ? <FinanceContractsPanel contracts={contracts} sesion={view.session} ars={ars} onSaved={onSaved} onActivityChange={onActivityChange} disabled={paymentActive} onBeforeEdit={requestContractEdit} /> : <div className="salary-state">Los contratos financieros aún no están disponibles.</div>}
-      </section>
+      </details>
+
+      <details className="finance-panel finance-simple-disclosure" open={paymentActive || undefined}><summary>Pagos al equipo</summary>
+        <TeamPaymentsPanel sesion={view.session} disabled={contractActive && !paymentActive} onActivityChange={onPaymentActivityChange}/>
+      </details>
 
     {finance && <>
-      <section className="finance-panel finance-auto-details">
-        <header><div><span className="section-label">DETALLE DEL CÁLCULO</span><h2>¿De dónde sale cada número?</h2></div><small>No son movimientos de dinero registrados</small></header>
+      <details className="finance-panel finance-auto-details finance-simple-disclosure">
+        <summary>Detalle de sueldos y gastos</summary>
         <div className="finance-detail-columns">
-          <details open><summary>Contratos · proyección {ars.format(finance.facturacion)}</summary>{finance.ingresos.map((item) => <p key={item.nombre}><span>{item.nombre}{item.prorrateado ? ` · ${item.diasActivos}/${item.diasDelMes} días` : ""}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
           <details><summary>Equipo · cálculo {ars.format(finance.sueldos)}</summary>{(data.payroll || []).map((item) => <p key={item.name}><span>{item.name}</span><strong>{ars.format(item.total)}</strong></p>)}{salaryExpenses.map((item) => <p key={item.nombre}><span>{item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
           <details><summary>Gastos fijos · previstos {ars.format(finance.gastosFijosARS)}</summary>{taxExpenses.map((item) => <p key={item.nombre}><span>Día previsto {item.diaPago} · {item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}{toolExpenses.map((item) => <p key={item.nombre}><span>Día previsto {item.diaPago} · {item.nombre}{item.moneda === "USD" ? ` · USD ${item.importe}` : ""}</span><strong>{ars.format(item.moneda === "USD" ? item.importe * (exchangeRate?.rounded || 0) : item.importe)}</strong></p>)}</details>
         </div>
-      </section>
+        <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}><span>Dólar para gastos en USD</span><strong>{ars.format(exchangeRate?.rounded || 0)}</strong><small>Original: {ars.format(exchangeRate?.original || 0)} · {exchangeRate?.source}{exchangeRate?.fallback ? ' · Cotización de respaldo' : ''}</small></div>
+      </details>
 
-      <section className="finance-panel"><header><div><span className="section-label">EVOLUCIÓN CALCULADA</span><h2>Proyección mes a mes</h2></div><small>Según el trabajo del mes anterior; no acredita cobros</small></header><BillingChart items={data.billingHistory} selectedPeriod={period} /></section>
-      <p className="finance-disclaimer">Los consumos en USD se convierten con dólar tarjeta vendedor y se redondean hacia arriba al próximo múltiplo de $100.</p>
+      <details className="finance-panel finance-simple-disclosure"><summary>Evolución mensual</summary><BillingChart items={data.billingHistory} selectedPeriod={period} /><p className="finance-disclaimer">Según contratos; no acredita cobros. Gastos en USD convertidos con dólar tarjeta y redondeados al próximo múltiplo de $100.</p></details>
     </>}
   </main>;
 }

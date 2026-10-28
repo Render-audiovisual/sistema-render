@@ -45,7 +45,9 @@ test('actual parent callbacks mutually admit one editor synchronously and old co
  const f=financeFixture(),d=f.deps;assert.equal(d.requestContractEdit(),true);assert.equal(d.contractActivity.current,true);assert.equal(d.onPaymentActivityChange(true),false);assert.equal(d.paymentActivity.current,false);
  d.onActivityChange(false);assert.equal(d.onPaymentActivityChange(true),true);assert.equal(d.requestContractEdit(),false);assert.equal(d.active.current,true);d.onActivityChange(false);assert.equal(d.active.current,true);assert.equal(d.paymentActivity.current,true);
  d.onPaymentActivityChange(false);assert.equal(d.active.current,false);f.stale();const count=f.effects.length;assert.equal(d.requestContractEdit(),false);assert.equal(d.onPaymentActivityChange(true),false);assert.equal(f.effects.length,count);
- const text=page.text;assert.ok(text.indexOf('<TeamPaymentsPanel')>text.indexOf('role="note"'));assert.ok(text.indexOf('<TeamPaymentsPanel')<text.indexOf('{loading &&'));assert.match(text,/onBeforeEdit=\{requestContractEdit\}/);assert.match(text,/disabled=\{paymentActive\}/);assert.match(text,/disabled=\{contractActive && !paymentActive\}/);
+ const text=page.text;assert.ok(text.indexOf('<TeamPaymentsPanel')>text.indexOf('role="note"'));assert.match(text,/<summary>Pagos al equipo<\/summary>/);assert.match(text,/onBeforeEdit=\{requestContractEdit\}/);assert.match(text,/disabled=\{paymentActive\}/);assert.match(text,/disabled=\{contractActive && !paymentActive\}/);
+ const mounted=nodes(page,n=>ts.isJsxSelfClosingElement(n)&&n.tagName.getText(page)==='TeamPaymentsPanel')[0];
+ for(let parent=mounted.parent;parent;parent=parent.parent)if(ts.isBinaryExpression(parent)&&parent.operatorToken.kind===ts.SyntaxKind.AmpersandAmpersandToken)assert.doesNotMatch(parent.left.getText(page),/finance|loading|error/);
 });
 test('actual contract admission blocks writes/field edits while payment editor owns the fence, and cent step is preserved',()=>{
  const f=financeFixture();f.deps.onPaymentActivityChange(true);let updated=0;

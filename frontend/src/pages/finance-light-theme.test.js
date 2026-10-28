@@ -170,10 +170,10 @@ test('actual page JSX renders unchanged cents and semantic metric classes, with 
     const data = fixtureData(amount), before = structuredClone(data), { html } = render(data);
     assert.deepEqual(data, before);
     for (const value of ['125.000,50', '35.000,25', '5.000,10', '85.000,15']) assert.ok(html.includes(value), value);
-    assert.match(html, /class="[^"]*finance-/); assert.match(html, /is-negative/);
+    assert.match(html, /class="[^"]*finance-/);
     assert.ok(html.includes(`class="finance-metric-value ${amount >= 0 ? 'is-positive' : 'is-negative'}"`));
-    assert.match(html, /Los importes son una proyección calculada/); assert.match(html, /No acreditan cobros ni pagos realizados/);
-    assert.match(html, /Estimación del período; no acredita pagos/); assert.match(html, /no confirma facturas emitidas ni cobros/);
+    assert.match(html, /Proyección por contratos/); assert.match(html, /No acreditan cobros ni pagos realizados/);
+    assert.match(html, /No acredita pagos/); assert.match(html, /no confirma facturas emitidas/);
     assert.match(html, /Cotización de respaldo/); assert.match(html, /is-fallback/); assert.match(html, /2\.100,00/);
     assert.match(html, /Cálculo de sueldo variable pendiente/); assert.match(html, /Variable QA112/);
     assert.match(html, /Contrato &lt;script&gt;QA112&lt;\/script&gt;/); assert.doesNotMatch(html, /<script>/);

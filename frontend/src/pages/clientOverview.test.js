@@ -50,16 +50,16 @@ test('shared feed quota and historical progress appear once, with no task-derive
   assert.equal(empty.noActivity, true); assert.equal(empty.reels.count + empty.reels.historicalCount, 0);
 });
 
-test('actual monthly JSX labels separate tracks, preserves true counts above quota and avoids fabricated ranges without quota', () => {
+test('client cards show only two registered-content bars without claiming confirmed publication', () => {
   const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,
     { clients: [monthClient], publicaciones: [monthPiece(1)], period: '2026-10' }));
-  assert.match(html, /Registradas en historial/); assert.match(html, /0 de 4 confirmadas/);
-  assert.match(html, /sin confirmación manual verificable/); assert.match(html, /Mes planificado/);
-  assert.match(html, /client-monthly-history-track/); assert.doesNotMatch(html, /Sin actividad registrada/);
+  assert.doesNotMatch(html, /Registradas en historial|client-monthly-history-track/); assert.match(html, /1 \/ 4/);
+  assert.match(html, /No implica publicación confirmada/); assert.match(html, /client-monthly-avatar/);
+  assert.equal((html.match(/role="progressbar"/g)||[]).length,2);
   const over = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
     { label: 'Reels', count: 5, historicalCount: 7, quota: 4 }));
-  assert.match(over, /5 de 4 confirmadas/); assert.match(over, /7 registradas en historial/);
-  assert.equal((over.match(/width:100%/g) || []).length, 2);
+  assert.match(over, /12 \/ 4/); assert.match(over, /5 confirmadas/); assert.match(over, /7 históricas/);
+  assert.equal((over.match(/width:100%/g) || []).length, 1);
   const noQuota = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
     { label: 'Reels', count: 0, historicalCount: 7, quota: 0 }));
   assert.match(noQuota, /sin cuota configurada/); assert.doesNotMatch(noQuota, /role="progressbar"|aria-valuemax/);

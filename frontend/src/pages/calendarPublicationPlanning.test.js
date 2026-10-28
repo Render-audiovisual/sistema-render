@@ -22,13 +22,24 @@ test('empty months retain explicit creation through the real server-backed edito
   assert.equal(publicationPlanningHref(selection, true), '/planificacion-publicaciones?tab=planilla&mes=2027-02&cliente=14');
   assert.equal(publicationPlanningHref({ ...selection, cliente: '' }, true), '/planificacion-publicaciones?tab=planilla&mes=2027-02');
   const source = readFileSync(new URL('./Calendar.jsx', import.meta.url), 'utf8');
-  assert.equal((source.match(/<FilterSelect /g) || []).length, 1);
+  assert.equal((source.match(/<FilterSelect /g) || []).length, 2);
   assert.match(source, /label="Cliente"/); assert.doesNotMatch(source, /Lo mío|label="Tipo"|label="Ámbito"/);
-  assert.match(source, /\+ Agregar reel o carrusel/); assert.match(source, /publicationPlanningHref\(selection, true\)/);
+  assert.match(source, /\+ Agregar contenido/); assert.match(source, /publicationPlanningHref\(selection, true\)/);
+  assert.match(source, /label="Contenido"/);
   assert.doesNotMatch(source, /localStorage|method: ['"](?:POST|PATCH)/);
   const editor = readFileSync(new URL('./Publicaciones.jsx', import.meta.url), 'utf8');
   assert.match(editor, /editorialPatchBody\(publicacion, \{ fecha_programada: fecha \}\)/);
   assert.match(editor, /model.submit\(\{[\s\S]*?fecha_programada: iso/);
+});
+
+test('format filters survive reload and share links and reach the server before pagination',()=>{
+  for(const formato of ['reel','carrusel']){
+    const selection=readPublicationCalendarSelection(`?mes=2026-10&dia=2026-10-12&cliente=14&formato=${formato}`);
+    assert.equal(selection.formato,formato);
+    assert.equal(new URL(calendarQuery(selection),'https://render.test').searchParams.get('formato'),formato);
+    assert.deepEqual(readPublicationCalendarSelection(new URL(calendarHref(selection),'https://render.test').search),selection);
+  }
+  assert.equal(readPublicationCalendarSelection('?formato=private').formato,undefined);
 });
 
 test('principal calendar refuses due dates, project milestones and stories even in a well-formed legacy response', () => {

@@ -112,7 +112,6 @@ function ClientMonthlyOverviewPage({sesion}) {
     catch (reason) { initial.current={period:currentMonth(),advanced:false,error:reason.message}; }
   }
   const [period,setPeriod]=useState(initial.current.period),[locationError,setLocationError]=useState(initial.current.error),[error,setError]=useState(''),[result,setResult]=useState(null),[loading,setLoading]=useState(true);
-  const [advanced,setAdvanced]=useState(initial.current.advanced),[opened,setOpened]=useState(initial.current.advanced);
   const {view,capture}=useGoalSession(sesion,period);
   const reader=useRef(null),generation=useRef(0);
   const load=useCallback(async()=>{
@@ -132,20 +131,15 @@ function ClientMonthlyOverviewPage({sesion}) {
     window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);
   },[]);
   const changePeriod=value=>{
-    if(advanced||!capture().current()||!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value))return;
+    if(!capture().current()||!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value))return;
     const href=goalClientLocationUrl(window.location.href,{clientId:null,period:value});
     if(!requestAppNavigation(window,href))return;
     window.history.pushState(window.history.state,'',href);notifyViewPreferenceChange(window);
     setPeriod(value);window.dispatchEvent(new PopStateEvent('popstate',{state:window.history.state}));
   };
   return <main className="client-goals client-monthly-page" aria-label="Clientes"><div className="frame"><div className="content cg-content">
-    <header className="client-monthly-header"><h1>Clientes</h1><label>Mes<input aria-label="Mes de clientes" type="month" value={period} disabled={advanced} onChange={event=>changePeriod(event.target.value)}/></label></header>
+    <header className="client-monthly-header"><h1>Clientes</h1><label>Mes<input aria-label="Mes de clientes" type="month" value={period} onChange={event=>changePeriod(event.target.value)}/></label></header>
     {loading?<PageState title="Cargando clientes…"/>:locationError||error?<PageState type="error" title={locationError||error} onRetry={load}/>:result?.period===period&&<ClientMonthlyProgressList clients={result.clientes} publicaciones={result.publicaciones} period={period}/>}
-    <details className="client-monthly-management" open={initial.current.advanced} onToggle={event=>{setAdvanced(event.currentTarget.open);if(event.currentTarget.open)setOpened(true);}}>
-      <summary>Ver objetivos y gestión</summary>
-      {view.role==='admin'&&<a className="cg-button" href={`/clientes?gestion=1&periodo=${period}`}>Administrar clientes y cuotas</a>}
-      {opened&&<GoalPage sesion={view.session} embedded/>}
-    </details>
   </div></div></main>;
 }
 

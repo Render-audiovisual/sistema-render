@@ -25,13 +25,13 @@ function querySql(filters, dependencies) {
       AND (r.cliente_id IS NULL OR r.cliente_id BETWEEN 1 AND 2147483647) ${extra}`);
   };
   if (!filters.vista && ['all', 'tarea'].includes(filters.kind)) add('task_rows', 'tarea', 'tarea', dependencies.taskSql, 'AND r.id BETWEEN 1 AND 2147483647');
-  if (['all', 'visita'].includes(filters.kind)) add('visit_rows', 'visita', 'visita', dependencies.visitSql);
+  if (!filters.formato && ['all', 'visita'].includes(filters.kind)) add('visit_rows', 'visita', 'visita', dependencies.visitSql);
   if (!filters.vista && ['all', 'hito'].includes(filters.kind)) add('milestone_rows', 'hito', 'hito', dependencies.milestoneSql,
     "AND r.estado IN ('pendiente','completado','cancelado')");
   if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
     for (const [index, domain] of (filters.vista ? ['publicacion'] : ['historia', 'publicacion']).entries()) {
       const name = `editorial_${index}`;
-      bases.push(`${name}_base AS MATERIALIZED (${uncapped(dependencies.editorialSql(domain, filters.kind, filters.vista))})`);
+      bases.push(`${name}_base AS MATERIALIZED (${uncapped(dependencies.editorialSql(domain, filters.kind, filters.vista, filters.formato))})`);
       // Same proof tuple used by annotateEditorialEvidence. Its authoritative
       // projector still rechecks every selected/preview row in this RR snapshot.
       // Include even non-current evidence in the fingerprint, not in the DTO.
@@ -100,6 +100,7 @@ function day(value) {
 export async function readCalendarPage(db, { filters, page, clients, user }, dependencies) {
   const base = { desde: filters.desde, hasta: filters.hasta, scope: filters.scope, kind: filters.kind, cliente_id: filters.cliente_id };
   if (filters.vista === 'publicaciones') base.vista = filters.vista;
+  if (filters.formato) base.formato = filters.formato;
   const { limit, offset } = page;
   const expected_snapshot = page.expected_snapshot ?? undefined;
   const dia = page.dia ?? null;

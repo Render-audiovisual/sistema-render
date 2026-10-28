@@ -65,11 +65,11 @@ function optionRows(element) {
 }
 const row = (value, text, disabled = false) => ({ value, text, disabled });
 
-test('client-only Calendar and other list/form selects adopt the real shared import without nested labels', () => {
-  for (const [name, labels] of Object.entries({ Projects: ['Cliente', 'Estado'], Productions: ['Cliente'], Calendar: ['Cliente'] })) {
+test('Calendar and other list/form selects adopt the real shared import without nested labels', () => {
+  for (const [name, labels] of Object.entries({ Projects: ['Cliente', 'Estado'], Productions: ['Cliente'], Calendar: ['Cliente','Contenido'] })) {
     const tree = routes[name];
     assert.deepEqual(filterControls(tree).map(label), labels);
-    assert.equal(adopted(tree).length, { Projects: 10, Productions: 6, Calendar: 1 }[name]);
+    assert.equal(adopted(tree).length, { Projects: 10, Productions: 6, Calendar: 2 }[name]);
     const imports = tree.statements.filter(node => ts.isImportDeclaration(node) && node.moduleSpecifier.text === '../components/FilterSelect.jsx');
     assert.equal(imports.length, 1);
     assert.ok(imports[0].importClause.namedBindings.elements.some(node => node.name.text === 'FilterSelect' && !node.propertyName));
@@ -122,12 +122,12 @@ test('Productions preserves client IDs, inactive aliases and the selected tab in
   assert.equal(optionRows(element('Productions', 'Cliente', { ...bindings, clientId: '11' })).length, 2, 'Known ID has no duplicate fallback');
 });
 
-test('Calendar has only the client picker, missing client fallback and exact client navigation', () => {
+test('Calendar has client/content pickers, missing client fallback and exact client navigation', () => {
   const calls = [];
   const bindings = { selection: { scope: 'team', tipo: 'visita', cliente: '73' }, data: { clients: [{ id: 11, nombre: 'Cuenta' }] }, change: value => calls.push(value) };
   const client = element('Calendar', 'Cliente', bindings);
   assert.equal(client.props.value, '73');
-  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente']);
+  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente','Contenido']);
   assert.deepEqual(optionRows(client), [row('', 'Todos los clientes'), row('73', 'Cliente #73'), row(11, 'Cuenta')]);
   client.props.onChange({ target: { value: '' } });
   assert.deepEqual(calls, [{ cliente: '' }]);
@@ -172,7 +172,7 @@ test('all three route sheets exclude shared control paint/type/focus while retai
   }
 });
 
-test('calendar mobile filters stack full-width without the desktop 240px cap', () => {
+test('calendar mobile filters use two shrinkable columns without a desktop width cap', () => {
   const root = postcss.parse(read('../pages/Calendar.css'));
   const declarations = (selector, media) => {
     const found = [];
@@ -182,13 +182,11 @@ test('calendar mobile filters stack full-width without the desktop 240px cap', (
   };
   const mobile = '(max-width:600px)';
   const group = declarations('.principal-calendar-filters', mobile);
-  assert.equal(group.display, 'grid'); assert.equal(group['grid-template-columns'], 'minmax(0,1fr)');
-  assert.equal(group.width, '100%'); assert.equal(group['min-width'], '0');
-  assert.equal(declarations('.principal-calendar-filters label', mobile).width, '100%');
-  assert.deepEqual(declarations('.principal-calendar-filters select', mobile), { width: '100%', 'max-width': 'none' });
-  assert.equal(declarations('.principal-calendar-filters select')['max-width'], '240px');
+  assert.equal(group.display, 'grid'); assert.equal(group['grid-template-columns'], 'repeat(2,minmax(0,1fr))');
+  assert.equal(declarations('.principal-calendar-filters>label', mobile)['min-width'], '0');
+  assert.deepEqual(declarations('.principal-calendar-filters select', mobile), { 'max-width': '100%' });
   const bindings = { selection: { scope: 'team', tipo: 'publicacion', cliente: '11' }, data: { clients: [{ id: 11, nombre: 'Estudio de comunicación audiovisual' }] }, change: () => {} };
-  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente']);
+  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente','Contenido']);
   assert.match(renderToStaticMarkup(element('Calendar', 'Cliente', bindings)), /Estudio de comunicación audiovisual/);
 });
 

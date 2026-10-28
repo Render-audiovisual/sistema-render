@@ -50,6 +50,7 @@ import "./RenderApplePolish.css";
 import "./TaskHeader.css";
 import "./TaskBoardMotion.css";
 import "./TaskDetailNotion.css";
+import "./TaskGroups.css";
 
 function useWorkspaceCapture(sesion) {
   const view = useSessionView(sesion);
@@ -1100,7 +1101,7 @@ const TasksByResponsible = React.memo(function TasksByResponsible({ tasks, users
 });
 
 function TaskGroups({ groups, users, onOpen }) {
-  return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.key}><header><div><span>{initials(group.label)}</span><strong>{group.label}</strong></div><small>{group.tasks.length} {group.tasks.length === 1 ? "tarea cargada" : "tareas cargadas"}</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === effectiveTaskFilterState(task))?.label || task.estado}</b><small>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
+  return <div className="ros-project-grid ros-organized-groups">{groups.map((group) => <section className="ros-project-card" key={group.key} aria-label={group.label}><header><div><span className="ros-group-avatar" aria-hidden="true">{initials(group.label)}</span><strong>{group.label}</strong></div><small>{group.tasks.length} {group.tasks.length === 1 ? "tarea cargada" : "tareas cargadas"}</small></header><div className="ros-group-tasks">{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b data-state={effectiveTaskFilterState(task)}>{STATUSES.find((item) => item.id === effectiveTaskFilterState(task))?.label || task.estado}</b><small className="ros-group-context">{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)}</small><small className="ros-group-date">Entrega: {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
 function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sort, setSort, taskStatus, setTaskStatus, reviewScope, setReviewScope, queryNotice, onRefreshReview, manualReady, orderState, orderMessage, onReorder, onVerifyOrder, onRefreshOrder, pagingBlocked, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onBulkAction, onError }) {
@@ -1310,7 +1311,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       <div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div></div><div className="ros-controls-meta"><span>{pagingBlocked?`Cargadas ${visible.length} · total por actualizar`:`Cargadas ${visible.length} de ${totalTasks}`}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
     {reviewScope && <section className="ros-warning-banner ros-review-queue" aria-label="Cola de revisión"><strong>{reviewScope === 'team' ? 'Revisión del equipo' : reviewScope === 'personal' ? 'Tu trabajo en revisión' : 'Cola de revisión no válida'}</strong><p>Mostrando {visible.length} de {totalTasks}. Tareas que esperan revisión; las aprobadas no se incluyen. Los demás filtros también se aplican. Al recargar se vuelve al principio.</p>{orderMessage && <p role="status">{orderMessage}</p>}<button type="button" disabled={loadingMore || orderState.busy || Boolean(queryNotice)} onClick={onRefreshReview}>Actualizar cola desde el principio</button>{view !== "list" && <button type="button" onClick={() => setView("list")}>Ver toda la cola en lista</button>}<button type="button" disabled={orderState.busy} onClick={exitReviewQueue}>Salir de la cola</button></section>}
     {queryNotice && <p className="ros-warning-banner" role="alert">{queryNotice}</p>}
-    <div className="ros-order-toolbar"><FilterSelect label="Orden" aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}><option value="date">Fecha</option><option value="manual" disabled={Boolean(reviewScope)}>Manual</option></FilterSelect>{sort === 'manual' && view === 'board' && archiveMode === 'active' && <details className="ros-order-help"><summary>Orden compartido</summary><p>Soltá sobre una tarjeta para ubicar antes, o sobre la columna para mover al final. Las flechas usan tareas cargadas; «Al final» usa la columna completa.</p></details>}</div>
     {!reviewScope && (orderMessage || orderState.locked || pagingBlocked) && <div className="ros-warning-banner" role="status"><p>{orderMessage || 'Movimiento pendiente de confirmación.'}</p>{orderState.status === 'uncertain' && <button type="button" disabled={orderState.busy} onClick={onVerifyOrder}>Verificar movimiento</button>}<button type="button" disabled={orderState.busy} onClick={onRefreshOrder}>{orderState.locked ? 'Descartar intento y recargar primera página' : 'Recargar primera página'}</button></div>}
     {responsibleNotice && <p className="ros-warning-banner" role="status">{responsibleNotice}</p>}
     <button className="ros-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>Filtros{activeFilterCount ? <b>{activeFilterCount}</b> : null}<span>{filtersOpen ? "Ocultar" : "Mostrar"}</span></button>
@@ -1346,7 +1346,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   {creatingStatus && <NewTaskModal users={users} clients={clients} sesion={sesion} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={onCreate} onCreated={created => { setCreatingStatus(null); void openTask(created.id); }}/>}</>;
 }
 
-export function WorkspaceReadOnlyPage({ sesion }) {
+export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onCloseDetail, onSelectDetailTask }) {
   const captureRequest = useWorkspaceCapture(sesion);
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const [tasks, setTasks] = useState([]);
@@ -1437,6 +1437,15 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     setLoadingMore(false);
     orderPageRef.current = null; setOrderPage(null); setPagingBlocked(false);
     reviewPageRef.current = null;
+    if(detailOnlyTaskId !== null){
+      setLoading(true);setError('');setTasks([]);
+      void guard.request(`/api/tareas/${detailOnlyTaskId}?workspace=render_os`).then(task=>{
+        if(!active||!guard.current()||generation!==taskQueryGenerationRef.current)return;
+        tasksRef.current=[task];setTasks([task]);setTotalTasks(1);
+      }).catch(reason=>{if(active&&guard.current()&&!isSessionFailure(reason))setError(reason.message||'No se pudo abrir la tarea.');})
+        .finally(()=>{if(active&&guard.current())setLoading(false);});
+      return ()=>{active=false;};
+    }
     if (!responsibleSelection.ready || queryNotice) {
       if (queryNotice || responsibleSelection.status !== 'pending' && responsibleSelection.status !== 'resolved') {
         const contextId = Number(new URLSearchParams(window.location.search).get('task')) || null;
@@ -1499,7 +1508,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         .finally(() => { if (active && guard.current() && generation === taskQueryGenerationRef.current && orderContextRef.current === orderObservation) setLoading(false); });
     }, query ? 250 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, taskStatus, reviewScope, queryNotice, effectiveSort, orderContext, orderObservation, orderReload, reloadKey, captureRequest]);
+  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, taskStatus, reviewScope, queryNotice, effectiveSort, orderContext, orderObservation, orderReload, reloadKey, captureRequest, detailOnlyTaskId]);
 
   useEffect(() => {
     const guard = captureRequest();
@@ -1865,5 +1874,21 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   };
 
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
+  const loadDetailSubtasks=useCallback(async(id,options)=>{
+    const guard=captureRequest((_url,requestOptions)=>apiSubtasks(id,requestOptions));
+    const items=await guard.request(`/api/tareas/${id}/subtareas?workspace=render_os`,options);guard.assertCurrent();
+    if(!options?.signal?.aborted)setTasks(current=>mergeRelatedTasks(current,items));
+    return items;
+  },[captureRequest]);
+  if(detailOnlyTaskId !== null){
+    const task=tasks.find(item=>item.id===detailOnlyTaskId);
+    const open=id=>{
+      const url=new URL(window.location.href);url.searchParams.set('task',String(id));
+      if(requestAppNavigation(window,url.href))onSelectDetailTask?.(id);
+    };
+    return <div className="render-workspace ros-calendar-task-host"><Toast toast={toast} onClose={()=>setToast(null)}/>{loading||error||!task||!catalogReady
+      ? <Modal native title="Tarea del calendario" onClose={onCloseDetail}><LoadingState error={error} onRetry={retry}/><button type="button" onClick={onCloseDetail}>Cerrar</button></Modal>
+      : <TaskDetail key={task.id} task={task} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={onCloseDetail} onOpen={open} onLoadSubtasks={loadDetailSubtasks} onUpdate={updateTask} onRegisterProduction={registerProduction} onCorrectProduction={correctProduction} onConfirmProduction={confirmProduction} onApprove={approveTask} onTrashAction={async(task,action)=>{const guard=captureRequest();await bulkTaskAction([task.id],action);guard.assertCurrent();onCloseDetail();}}/>}</div>;
+  }
   return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sort={sort} setSort={setSort} taskStatus={taskStatus} setTaskStatus={setTaskStatus} reviewScope={reviewScope} setReviewScope={setReviewScope} queryNotice={queryNotice} onRefreshReview={refreshReviewQueue} manualReady={manualReady} orderState={orderState} orderMessage={orderMessage} onReorder={reorderTask} onVerifyOrder={()=>void reorderTask(null,null,true)} onRefreshOrder={refreshTaskOrder} pagingBlocked={pagingBlocked} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onCorrectProduction={correctProduction} onConfirmProduction={confirmProduction} onApprove={approveTask} onBulkAction={bulkTaskAction} onError={(message) => notify(message, "error")}/>}</main></div>;
 }
