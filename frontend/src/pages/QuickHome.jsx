@@ -13,11 +13,10 @@ import "./QuickHome.css";
 
 const WORK_AREAS = [
   { href: "/workspace/tareas", title: "Tareas" },
-  { href: "/proyectos", title: "Proyectos" },
   { href: "/lista", title: "Mi lista" },
   { href: "/producciones", title: "Producciones" },
   { href: "/feedback", title: "Feedback" },
-  { href: "/planificacion-publicaciones", title: "Publicaciones" },
+  { href: "/calendario", title: "Calendario" },
 ];
 const SUMMARY = [
   ["open", "Abiertas"], ["overdue", "Vencidas"], ["today", "Para hoy"],
@@ -150,16 +149,6 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
 
           <aside className="qh-secondary-column" aria-label="Contexto de tu trabajo">
             <HomeMonthlyProgress data={data.monthly_progress} sesion={sesion} request={request}/>
-            {data.capabilities.projects && <section className="qh-section" aria-labelledby="qh-projects-title">
-              <header className="qh-section-heading"><h2 id="qh-projects-title">Mis proyectos</h2><ListCount shown={data.projects.length} total={data.list_totals.projects}/></header>
-              {data.projects.length ? <ul className="qh-compact-list">{data.projects.map(project => <li key={project.id}>
-                <HomeLink href={project.href} onNavigate={onNavigate} className="qh-compact-row">
-                  <span><strong>{project.titulo}</strong><small>{project.cliente.nombre} · {({planificado:'Planificado',en_curso:'En curso',en_revision:'En revisión',pausado:'Pausado'})[project.estado] || project.estado}</small></span>
-                  <span aria-hidden="true">↗</span>
-                </HomeLink>
-              </li>)}</ul> : <p className="qh-empty">No tenés proyectos activos asignados.</p>}
-              <HomeLink href="/proyectos" onNavigate={onNavigate} className="qh-section-link">Ver proyectos <span aria-hidden="true">→</span></HomeLink>
-            </section>}
             <section className="qh-section" aria-labelledby="qh-visits-title">
               <header className="qh-section-heading"><h2 id="qh-visits-title">Próximas visitas</h2><ListCount shown={data.visits.length} total={data.list_totals.visits}/></header>
               <p className="qh-section-description">Hoy y los próximos 7 días.</p>

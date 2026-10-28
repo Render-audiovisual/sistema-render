@@ -5,7 +5,7 @@ import { getSesion } from '../utils.jsx';
 import { sessionViewKey } from '../shared/session/session-view.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
-import { CALENDAR_KINDS, CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
+import { CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, cordobaToday, createCalendarLoader, readPublicationCalendarSelection as readCalendarSelection, publicationPlanningHref, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 
 const dateLabel = (day, options) => {
@@ -54,7 +54,7 @@ function CalendarContent({ sesion, onNavigate }) {
     return () => { generation.current++; loader.current?.cancel(); };
   }, [requestKey, retry]);
   function change(fields) {
-    const changesContext = ['mes', 'dia', 'scope', 'tipo', 'cliente'].some(key => Object.hasOwn(fields, key));
+    const changesContext = ['mes', 'dia', 'cliente'].some(key => Object.hasOwn(fields, key));
     const next = readCalendarSelection(new URL(calendarHref({ ...selection, ...fields, ...(changesContext ? { pagina: 0 } : {}) }), window.location.origin).search, today);
     if (navigateWithinApp(window, calendarHref(next))) notifyViewPreferenceChange(window);
   }
@@ -67,19 +67,20 @@ function CalendarContent({ sesion, onNavigate }) {
   const byDay = new Map((data?.pagination.days || []).map(day => [day.date, day]));
   const agenda = data?.events || [];
   return <main className="principal-calendar" aria-label="Calendario"><div className="principal-calendar-shell">
-    <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Entregas, visitas, hitos y contenido · Córdoba</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
+    <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Reels, carruseles y visitas · Córdoba</p><p>La fecha planificada no confirma una publicación. Las publicaciones reales se muestran sólo con confirmación registrada.</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
     <div className="principal-calendar-toolbar"><div className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button><button type="button" onClick={() => change({ mes: today.slice(0, 7), dia: today })}>Hoy</button></div>
-      <div className="principal-calendar-filters"><FilterSelect label="Ámbito" value={selection.scope} onChange={event => change({ scope: event.target.value })}><option value="mine">Lo mío</option><option value="team">Equipo</option></FilterSelect>
-        <FilterSelect label="Tipo" value={selection.tipo} onChange={event => change({ tipo: event.target.value })}>{Object.entries(CALENDAR_KINDS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</FilterSelect>
+      <div className="principal-calendar-filters">
         <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !data?.clients.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{data?.clients.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect></div>
     </div>
+    <p><a href={publicationPlanningHref(selection)} onClick={event => follow(event, publicationPlanningHref(selection))}>Planificar publicaciones ↗</a> · Elegí una pieza en el editor para guardar su fecha planificada. Finalizar una tarea no la marca como publicada.</p>
+    <p><a href={publicationPlanningHref(selection, true)} onClick={event => follow(event, publicationPlanningHref(selection, true))}>+ Agregar reel o carrusel ↗</a> · En la planilla, elegí responsable, formato y fecha. Si estás viendo todos los clientes, elegí uno en el editor.</p>
     {status === 'loading' && <p role="status">Cargando calendario…</p>}
     {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button>{selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}</div>}
     {data?.truncated && <p className="principal-calendar-notice" role="status">Agenda paginada: se muestran {agenda.length} de {data.pagination.total} eventos del día. Los recuentos del calendario incluyen todos los eventos.</p>}
     <div className="principal-calendar-layout"><section className="principal-calendar-month-view" aria-label="Selector de día"><div className="principal-calendar-weekdays" aria-hidden="true">{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, index) => <span key={index}>{day}</span>)}</div>
       <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; return <button type="button" key={day} className={`${day.startsWith(selection.mes) ? '' : 'outside'} ${day === selection.dia ? 'selected' : ''}`} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
         <span>{Number(day.slice(-2))}</span>{data && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
-        <div className="principal-calendar-day-preview" aria-hidden="true">{events.map(item => <span key={item.key}>{calendarEventTitle(item)}</span>)}</div>
+        <div className="principal-calendar-day-preview" aria-hidden="true">{events.map(item => <span key={item.key} title={`${calendarEventLabel(item)} · ${calendarEventTitle(item)}`}>{item.kind === 'programacion' ? 'Planificado' : item.kind === 'publicacion' ? 'Publicado' : 'Visita'} · {calendarEventTitle(item)}</span>)}</div>
       </button>; })}</div></section>
       <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)} en el día · mostrando {agenda.length} de {data.pagination.total}</p>}</header>
         {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'Sin eventos para este día con estos filtros.'}</p>}
@@ -89,10 +90,8 @@ function CalendarContent({ sesion, onNavigate }) {
           <button type="button" disabled={!data.pagination.has_more || selection.pagina >= MAX_CALENDAR_PAGE} onClick={() => change({ pagina: selection.pagina + 1 })}>Siguiente</button>
           {selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}
         </nav>}
-        {data && <ol>{agenda.map(item => <li key={item.key}><small>{calendarEventLabel(item)}</small><h3>{calendarEventTitle(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
-          {item.kind === 'tarea' && <span className="principal-calendar-state">{calendarTaskState(item.estado)}</span>}
-          {item.kind === 'hito' && <span className="principal-calendar-state">{calendarMilestoneState(item.estado)}</span>}
-          <a href={item.href} onClick={event => follow(event, item.href)}>{['historia', 'publicacion'].includes(item.source) ? 'Abrir contexto editorial' : item.kind === 'visita' ? 'Abrir visita' : item.kind === 'hito' ? 'Abrir proyecto' : 'Abrir tarea'} ↗</a>
+        {data && <ol>{agenda.map(item => <li key={item.key}><small>{item.kind === 'programacion' ? 'Fecha planificada' : calendarEventLabel(item)}</small><h3>{calendarEventTitle(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
+          <a href={item.href} onClick={event => follow(event, item.href)}>{item.source === 'publicacion' ? 'Editar fecha y pieza' : 'Abrir visita'} ↗</a>
         </li>)}</ol>}
       </section></div>
   </div></main>;

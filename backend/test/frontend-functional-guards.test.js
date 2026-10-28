@@ -250,7 +250,7 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
+  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/planificacion-historias", "/reportes-historias", "/perfil"];
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());

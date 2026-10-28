@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { saveRememberedView, readRememberedView } from './rememberedViews.js';
 import { getTaskViewState } from '../../features/render-os/utils/task-view-state.js';
 import { productionLocation } from '../../pages/productionRouteContext.js';
-import { readCalendarSelection } from '../../pages/calendarModel.js';
+import { readPublicationCalendarSelection } from '../../pages/calendarModel.js';
 import { projectListLocation } from '../../pages/projectsModel.js';
 import {readPublicationCalendarContext} from '../../pages/publicationCalendarContext.js';
 import {readPublicationTrackingContext} from '../../pages/publicationTrackingContext.js';
@@ -19,7 +19,7 @@ function inject(s, path, query, extra = {}) { s.records.set(key(path), JSON.stri
 const cases = [
   ['/workspace/tareas', 'view=list&mode=trash&month=2026-10&estado=aprobada&responsible=id%3A7&client=9&sector=edicion&priority=alta&area=edicion&sort=manual&board_column=finalizadas'],
   ['/producciones', 'mes=2024-02&dia=2024-02-29&cliente=9&tab=pending'],
-  ['/calendario', 'mes=2024-02&dia=2024-02-29&scope=team&tipo=visita&cliente=9'],
+  ['/calendario', 'mes=2024-02&dia=2024-02-29&cliente=9'],
   ['/proyectos', 'cliente=9&estado=en_curso&archivados=true'],
   ['/clientes', 'cliente=9&periodo=2026-10'],
   ['/reportes-historias', 'periodo=mes_pasado'],
@@ -27,6 +27,15 @@ const cases = [
   ['/planificacion-publicaciones', 'tab=lista&mes=2026-10&cliente=9&cal_vista=semana&cal_tipo=video&seg_cliente=7&seg_mes=2026-09&seg_estado=en_revision&seg_tipo=carrusel'],
   ['/feedback', 'section=team&mode=trash&categoria=reunion'],
 ];
+test('calendar drops retired scope/type on write and restoration without discarding client/month; deep editors unchanged', () => {
+  const s = storage(), path = '/calendario';
+  for (const query of ['mes=2027-01&cliente=14&scope=mine&tipo=tarea', 'mes=2027-01&cliente=14&scope=mine&scope=team&tipo=secret']) {
+    inject(s, path, query);
+    assert.equal(readRememberedView(s, 7, path), '/calendario?cliente=14&mes=2027-01');
+    saveRememberedView(s, 7, path + '?' + query);
+    assert.equal(readRememberedView(s, 7, path), '/calendario?cliente=14&mes=2027-01');
+  }
+});
 test('Historias retains explicit all independently of the creation client and user identity',()=>{
   const s=storage(),path='/planificacion-historias';
   assert.equal(saveRememberedView(s,7,path+'?vista=planilla&cliente=2&filtro=all&mes=2026-10'),true);
@@ -57,8 +66,8 @@ test('round trips agree with actual page parsers, including numeric task client 
   assert.equal(tasks.responsible, 'id:7'); assert.equal(tasks.client, '9'); assert.equal(tasks.boardColumn, 'finalizadas');
   const production = productionLocation(`https://render.test${readRememberedView(s, 7, '/producciones')}`);
   assert.equal(production.tab, 'pending'); assert.equal(production.day, '2024-02-29'); assert.equal(production.clientId, '9');
-  const calendar = readCalendarSelection(new URL(readRememberedView(s, 7, '/calendario'), 'https://render.test').search);
-  assert.equal(calendar.scope, 'team'); assert.equal(calendar.tipo, 'visita'); assert.equal(calendar.dia, '2024-02-29');
+  const calendar = readPublicationCalendarSelection(new URL(readRememberedView(s, 7, '/calendario'), 'https://render.test').search);
+  assert.equal(calendar.scope, 'team'); assert.equal(calendar.tipo, 'all'); assert.equal(calendar.dia, '2024-02-29');
   const project = projectListLocation(readRememberedView(s, 7, '/proyectos'));
   assert.equal(project.invalid, false); assert.equal(project.clientId, 9); assert.equal(project.archivados, true);
 });

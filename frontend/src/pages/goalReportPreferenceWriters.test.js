@@ -14,7 +14,10 @@ function find(root, predicate) {
   walk(root); assert.equal(result.length, 1); return result[0];
 }
 const fn = (root, name) => find(root, n => ts.isFunctionDeclaration(n) && n.name?.text === name);
-const variable = name => find(goals, n => ts.isVariableDeclaration(n) && n.name.getText(goals) === name).initializer;
+// These callbacks belong to the goal editor, not the surrounding monthly overview.
+// Keep uniqueness enforced within that owner so an unrelated popstate reader cannot
+// replace the dirty-modal restoration behavior exercised below.
+const variable = name => find(fn(goals, 'GoalPage'), n => ts.isVariableDeclaration(n) && n.name.getText(goals) === name).initializer;
 function evaluate(node, file, deps) {
   const text = node.getText(file).replace(/^export\s+/, '');
   return Function(...Object.keys(deps), `return (${text});`)(...Object.values(deps));

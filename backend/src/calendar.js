@@ -24,13 +24,16 @@ function day(value) {
 }
 
 export function normalizeCalendarQuery(query = {}) {
-  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id', 'limit', 'offset', 'expected_snapshot', 'dia'];
+  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id', 'limit', 'offset', 'expected_snapshot', 'dia', 'vista'];
   if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).some(k => !keys.includes(k))
     || Object.values(query).some(v => typeof v !== 'string')) throw fail('Filtros de calendario inválidos.');
   const desde = day(query.desde), hasta = day(query.hasta);
   const days = desde && hasta ? (Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000 : 0;
   if (!desde || !hasta || days < 1 || days > 62) throw fail('Elegí un rango de 1 a 62 días, con hasta exclusivo.');
-  const scope = query.scope ?? 'mine', kind = query.kind ?? 'all';
+  if (query.vista !== undefined && query.vista !== 'publicaciones') throw fail('Vista de calendario inválida.');
+  // Explicit editorial view cannot inherit personal/type filters from old URLs.
+  const editorial = query.vista === 'publicaciones';
+  const scope = editorial ? 'team' : query.scope ?? 'mine', kind = editorial ? 'all' : query.kind ?? 'all';
   if (!['mine', 'team'].includes(scope) || !KINDS.includes(kind)) throw fail('Ámbito o tipo de calendario inválido.');
   let cliente_id = null;
   if (query.cliente_id !== undefined) {
@@ -50,7 +53,7 @@ export function normalizeCalendarQuery(query = {}) {
     }
     pagination = Object.freeze({ limit, offset, expected_snapshot, dia });
   }
-  return Object.freeze({ desde, hasta, scope, kind, cliente_id, ...(pagination ? { pagination } : {}) });
+  return Object.freeze({ desde, hasta, scope, kind, cliente_id, ...(editorial ? { vista: 'publicaciones' } : {}), ...(pagination ? { pagination } : {}) });
 }
 
 const visibleTask = alias => `${alias}.propiedades_extra->>'workspace'='render_os'
@@ -94,7 +97,7 @@ export const CALENDAR_MILESTONE_SQL = `SELECT h.id,h.proyecto_id,h.titulo,h.esta
    OR EXISTS(SELECT 1 FROM proyecto_miembros m WHERE m.proyecto_id=p.id AND m.usuario_id=$4))
  ORDER BY h.fecha,h.id LIMIT 2001`;
 
-export function calendarEditorialSql(domain, kind) {
+export function calendarEditorialSql(domain, kind, vista) {
   if (!['historia', 'publicacion'].includes(domain) || !KINDS.includes(kind)) throw new TypeError('Dominio/tipo inválido.');
   const table = domain === 'historia' ? 'historias' : 'publicaciones';
   const fk = domain === 'historia' ? 'historia_id' : 'publicacion_id';
@@ -110,6 +113,7 @@ export function calendarEditorialSql(domain, kind) {
       WHERE ${linked} ORDER BY a.usuario_id) AS responsable_ids
     FROM ${table} p JOIN clientes c ON c.id=p.cliente_id
     WHERE c.activo IS DISTINCT FROM FALSE AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+    ${vista === 'publicaciones' ? "AND p.tipo IN ('video','reel','carrusel')" : ''}
     AND ($3::int IS NULL OR p.cliente_id=$3)
     AND ($5::boolean OR EXISTS(SELECT 1 FROM tareas t WHERE ${linked} AND ${assigned('t')}))
     AND ${kind === 'programacion' ? scheduled : kind === 'publicacion' ? actual : `(${scheduled} OR ${actual})`}
@@ -141,6 +145,7 @@ function closedEvidence(row) {
 export function buildCalendarEvents({ tasks = [], visits = [], historias = [], publicaciones = [], hitos = [] }, filters) {
   const result = new Map();
   const add = (row, kind, source, date, href, label, evidence = null) => {
+    if (filters.vista === 'publicaciones' && !['visita', 'publicacion'].includes(source)) return;
     if (!day(date) || date < filters.desde || date >= filters.hasta || (filters.kind !== 'all' && filters.kind !== kind)) return;
     if (['visita', 'hito'].includes(source) ? typeof row.id !== 'string' || !UUID.test(row.id) : !id(row.id)) return;
     if (row.cliente_id !== null && !id(row.cliente_id)) return;
@@ -158,11 +163,12 @@ export function buildCalendarEvents({ tasks = [], visits = [], historias = [], p
   }
   for (const [source, rows] of [['historia', historias], ['publicacion', publicaciones]]) {
     for (const row of rows) {
+      if (filters.vista === 'publicaciones' && (source !== 'publicacion' || !['video', 'reel', 'carrusel'].includes(row.tipo))) continue;
       const proof = closedEvidence(row), actual = proof ? actualDate(proof.confirmation.occurred_at) : null;
       const planned = day(row.fecha_programada), month = (planned ?? actual)?.slice(0, 7);
       const context = source === 'historia' ? `/planificacion-historias?vista=checklist&cliente=${row.cliente_id}&mes=${month}`
         : `/planificacion-publicaciones?tab=calendario&cliente=${row.cliente_id}&mes=${month}`;
-      const type = source === 'historia' ? 'Historia' : ({ video: 'Video', reel: 'Reel', carrusel: 'Carrusel', flyer: 'Flyer' }[row.tipo] ?? 'Publicación');
+      const type = source === 'historia' ? 'Historia' : ({ video: filters.vista === 'publicaciones' ? 'Reel' : 'Video', reel: 'Reel', carrusel: 'Carrusel', flyer: 'Flyer' }[row.tipo] ?? 'Publicación');
       const title = text(row.titulo, 160);
       const pieceLabel = title ? `${type} · ${title}` : `${type} #${row.id}`;
       if (planned) add(row, 'programacion', source, planned, context, `Programación editorial · ${pieceLabel}`);
@@ -205,12 +211,12 @@ export async function readCalendar(pool, auth, query) {
       if (rows.length > LIMIT) truncated = true;
       return rows.slice(0, LIMIT + 1);
     };
-    if (['all', 'tarea'].includes(filters.kind)) data.tasks = await fetch(CALENDAR_TASK_SQL);
+    if (!filters.vista && ['all', 'tarea'].includes(filters.kind)) data.tasks = await fetch(CALENDAR_TASK_SQL);
     if (['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
-    if (['all', 'hito'].includes(filters.kind)) data.hitos = await fetch(CALENDAR_MILESTONE_SQL);
+    if (!filters.vista && ['all', 'hito'].includes(filters.kind)) data.hitos = await fetch(CALENDAR_MILESTONE_SQL);
     if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
-      for (const domain of ['historia', 'publicacion']) {
-        const rows = await fetch(calendarEditorialSql(domain, filters.kind));
+      for (const domain of filters.vista ? ['publicacion'] : ['historia', 'publicacion']) {
+        const rows = await fetch(calendarEditorialSql(domain, filters.kind, filters.vista));
         // A scheduled-only view does not award publication credit or need proof.
         data[domain === 'historia' ? 'historias' : 'publicaciones'] = filters.kind === 'programacion' ? rows : await annotateEditorialEvidence(db, domain, rows);
       }

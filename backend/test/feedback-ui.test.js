@@ -14,7 +14,7 @@ test("Feedback separa las notas del equipo de las notas de clientes", () => {
   assert.match(feedbackSource, /resolved_client/);
   assert.match(feedbackSource, /aria-label="Tipo de feedback"/);
   assert.match(feedbackSource, />Equipo</);
-  assert.match(feedbackSource, />Clientes</);
+  assert.match(feedbackSource, />Cliente</);
   assert.match(feedbackSource, /const visible = notes/);
   assert.match(notesReadSource, /context.section!=='all'&&item.section!==context.section/);
   assert.match(feedbackClientSource, /shared\/feedback-client\.mjs/);
@@ -30,8 +30,8 @@ test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
   assert.equal(resolveFeedbackClient({ titulo: "Nota general", feedback: { cliente: "Moketa" } }, clients), "Moketa");
 });
 
-test("Feedback distingue notas compartidas del inventario real de revisión de edición", () => {
-  assert.match(feedbackSource, /<FeedbackTaskInventory request=\{transport\} sesion=\{sesion\} clients=\{clients\}/);
+test("Feedback conserva solo notas compartidas sin montar inventario ni filtros de edición", () => {
+  assert.doesNotMatch(feedbackSource, /<FeedbackTaskInventory/);
   assert.doesNotMatch(feedbackSource, /q=feedback|source: "task"|setTaskFeedbacks/);
   assert.match(feedbackSource, /const visible = notes/);
   assert.match(feedbackSource, /createFeedbackNotesReader/);
@@ -45,7 +45,7 @@ test("Feedback presenta resúmenes compactos y abre el contenido en un panel", (
   const modalSource = readFileSync(new URL('../../frontend/src/components/Modal.jsx', import.meta.url), 'utf8');
   assert.match(modalSource, /role="dialog"/);
   assert.match(modalSource, /aria-modal="true"/);
-  assert.match(feedbackSource, /aria-label="Buscar feedback"/);
+  assert.doesNotMatch(feedbackSource, /aria-label="Buscar feedback"|Filtrar categoría de notas|className="rf-toolbar"/);
   assert.doesNotMatch(feedbackSource, /Filtrar por cliente|rf-client-filter/);
 });
 

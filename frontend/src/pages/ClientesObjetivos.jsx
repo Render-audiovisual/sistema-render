@@ -14,6 +14,8 @@ import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { parseGoalClientId, goalClientLocationUrl, resolveGoalClient } from './clientGoalLocation.js';
 import { useGoalDraftMemory } from '../components/GoalDraftMemoryProvider.jsx';
 import { resolveGoalDraftPiece } from '../shared/navigation/goalDraftMemory.js';
+import { createClientOverviewLoader } from './clientOverview.js';
+import { ClientMonthlyProgressList } from './Clientes.jsx';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
@@ -100,10 +102,55 @@ export function ClientesObjetivosPage({ sesion }) {
   const view = useSessionView(sesion || getSesion());
   const identity = useRef({ view, epoch: 0 });
   if (identity.current.view !== view) identity.current = { view, epoch: identity.current.epoch + 1 };
-  return <GoalPage key={identity.current.epoch} sesion={view.session} />;
+  return <ClientMonthlyOverviewPage key={identity.current.epoch} sesion={view.session} />;
 }
 
-function GoalPage({ sesion }) {
+function ClientMonthlyOverviewPage({sesion}) {
+  const initial = useRef(null);
+  if (!initial.current) {
+    try { initial.current={period:goalPeriod(window.location.search),advanced:parseGoalClientId(window.location.search)!==null||new URLSearchParams(window.location.search).has('borrador'),error:''}; }
+    catch (reason) { initial.current={period:currentMonth(),advanced:false,error:reason.message}; }
+  }
+  const [period,setPeriod]=useState(initial.current.period),[locationError,setLocationError]=useState(initial.current.error),[error,setError]=useState(''),[result,setResult]=useState(null),[loading,setLoading]=useState(true);
+  const [advanced,setAdvanced]=useState(initial.current.advanced),[opened,setOpened]=useState(initial.current.advanced);
+  const {view,capture}=useGoalSession(sesion,period);
+  const reader=useRef(null),generation=useRef(0);
+  const load=useCallback(async()=>{
+    const scope=capture(),held=++generation.current;
+    if(!scope.current()||locationError)return;
+    setLoading(true);setError('');setResult(null);
+    try {
+      const loader=createClientOverviewLoader(capture);reader.current?.cancel();reader.current=loader;
+      const value=await loader.load(period);
+      if(value&&scope.current()&&generation.current===held)setResult({period,...value});
+    } catch(reason){if(scope.current()&&generation.current===held&&!isSessionFailure(reason))setError('No se pudo cargar el avance de clientes. Los datos no se modificaron.');}
+    finally{if(scope.current()&&generation.current===held)setLoading(false);}
+  },[capture,period,locationError]);
+  useEffect(()=>{if(locationError){setLoading(false);setResult(null);return;}void load();return()=>{generation.current++;reader.current?.cancel();};},[load,locationError]);
+  useEffect(()=>{
+    const pop=()=>{try{setPeriod(goalPeriod(window.location.search));setLocationError('');setError('');}catch(reason){setLocationError(reason.message);setResult(null);}};
+    window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);
+  },[]);
+  const changePeriod=value=>{
+    if(advanced||!capture().current()||!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value))return;
+    const href=goalClientLocationUrl(window.location.href,{clientId:null,period:value});
+    if(!requestAppNavigation(window,href))return;
+    window.history.pushState(window.history.state,'',href);notifyViewPreferenceChange(window);
+    setPeriod(value);window.dispatchEvent(new PopStateEvent('popstate',{state:window.history.state}));
+  };
+  return <main className="client-goals client-monthly-page" aria-label="Clientes"><div className="frame"><div className="content cg-content">
+    <header className="client-monthly-header"><h1>Clientes</h1><label>Mes<input aria-label="Mes de clientes" type="month" value={period} disabled={advanced} onChange={event=>changePeriod(event.target.value)}/></label></header>
+    {loading?<PageState title="Cargando clientes…"/>:locationError||error?<PageState type="error" title={locationError||error} onRetry={load}/>:result?.period===period&&<ClientMonthlyProgressList clients={result.clientes} publicaciones={result.publicaciones} period={period}/>}
+    <details className="client-monthly-management" open={initial.current.advanced} onToggle={event=>{setAdvanced(event.currentTarget.open);if(event.currentTarget.open)setOpened(true);}}>
+      <summary>Ver objetivos y gestión</summary>
+      {view.role==='admin'&&<a className="cg-button" href={`/clientes?gestion=1&periodo=${period}`}>Administrar clientes y cuotas</a>}
+      {opened&&<GoalPage sesion={view.session} embedded/>}
+    </details>
+  </div></div></main>;
+}
+
+function GoalPage({ sesion, embedded=false }) {
+  const Container=embedded?'section':'main';
   const draftMemory = useGoalDraftMemory(), restoredHref = useRef(null);
   const initial = useRef(null);
   if (!initial.current) { try { initial.current = { period: goalPeriod(window.location.search), clientId:parseGoalClientId(window.location.search), error: '' }; } catch (reason) { initial.current = { period: currentMonth(), clientId:null, error: reason.message }; } }
@@ -234,7 +281,7 @@ function GoalPage({ sesion }) {
     modalOpen.current=true;setPreparing(true);
   };
 
-  return <main className="client-goals" aria-label="Objetivos mensuales de clientes"><div className="frame"><div className="content cg-content">
+  return <Container className="client-goals" aria-label="Objetivos mensuales de clientes"><div className="frame"><div className="content cg-content">
     <header className="cg-header"><div className="cg-heading-group"><span className="cg-page-icon"><GoalIcon name="clients" /></span><div><span className="cg-eyebrow">Seguimiento del equipo</span><h1>Clientes</h1><p>Todo el contenido del mes, en un mismo lugar.</p></div></div>
       <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} disabled={Boolean(preparing || selectedPiece)} onChange={event => { if (/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) changeGoalContext({period:event.target.value}); }} /></label>
       </div></header>
@@ -278,7 +325,7 @@ function GoalPage({ sesion }) {
     </div>}
     {preparing && client && <PrepareGoal key={`${epoch}:${period}:${client.clave}:${preparing === 'reconcile' ? 'reconcile' : 'prepare'}`} sesion={view.session} client={client} period={period} mode={preparing === 'reconcile' ? 'reconcile' : 'prepare'} close={closeModal} saved={result => { closeModal(); setNotice(`${result.vinculadas} tareas vinculadas · ${result.creadas} tareas nuevas. ${preparing === 'reconcile' ? 'Cuota revisada; el contenido existente se conserva.' : 'El objetivo está preparado.'}`); refresh(); }} />}
     {selectedPiece && client && <PieceDetail key={`${epoch}:${period}:${client.clave}:${selectedPiece.id}:${selectedPiece.tarea_id}`} sesion={view.session} piece={selectedPiece} client={client} period={period} draftClientId={selectedClientId || client.cliente_id || client.cuentas[0]?.id} canManage={canManage} close={closeModal} saved={() => { closeModal(); refresh(); }} />}
-  </div></div></main>;
+  </div></div></Container>;
 }
 
 function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved }) {

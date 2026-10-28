@@ -15,12 +15,13 @@ test('all preserved full-array readers use the bounded all-pages adapter before 
   assert.equal((leader.match(/fetchAllTaskPages\(/g) || []).length, 2, 'Both current and historical leader readers are migrated');
 });
 
-test('principal task board stays page-based; feedback separates its dedicated paginated inventory', () => {
+test('principal task board stays page-based; simplified feedback uses notes without embedding a task inventory', () => {
   const source = read('../features/render-os/services/render-os-api.js');
   assert.match(source, /const limit = settings.limit === undefined \? 50 : settings.limit/);
   assert.match(source, /limit > 500/);
   assert.match(source, /offset > 1000000/);
   assert.doesNotMatch(source, /fetchAllTaskPages/);
-  assert.match(read('./Feedback.jsx'), /<FeedbackTaskInventory/);
+  assert.doesNotMatch(read('./Feedback.jsx'), /<FeedbackTaskInventory/);
+  assert.match(read('./Feedback.jsx'), /createFeedbackNotesReader/);
   assert.doesNotMatch(read('./Feedback.jsx'), /q=feedback/);
 });

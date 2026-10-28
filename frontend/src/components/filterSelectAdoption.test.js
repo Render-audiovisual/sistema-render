@@ -65,11 +65,11 @@ function optionRows(element) {
 }
 const row = (value, text, disabled = false) => ({ value, text, disabled });
 
-test('six list filters and unified form selects adopt the real shared import without nested labels', () => {
-  for (const [name, labels] of Object.entries({ Projects: ['Cliente', 'Estado'], Productions: ['Cliente'], Calendar: ['Ámbito', 'Tipo', 'Cliente'] })) {
+test('client-only Calendar and other list/form selects adopt the real shared import without nested labels', () => {
+  for (const [name, labels] of Object.entries({ Projects: ['Cliente', 'Estado'], Productions: ['Cliente'], Calendar: ['Cliente'] })) {
     const tree = routes[name];
     assert.deepEqual(filterControls(tree).map(label), labels);
-    assert.equal(adopted(tree).length, { Projects: 10, Productions: 6, Calendar: 3 }[name]);
+    assert.equal(adopted(tree).length, { Projects: 10, Productions: 6, Calendar: 1 }[name]);
     const imports = tree.statements.filter(node => ts.isImportDeclaration(node) && node.moduleSpecifier.text === '../components/FilterSelect.jsx');
     assert.equal(imports.length, 1);
     assert.ok(imports[0].importClause.namedBindings.elements.some(node => node.name.text === 'FilterSelect' && !node.propertyName));
@@ -122,16 +122,15 @@ test('Productions preserves client IDs, inactive aliases and the selected tab in
   assert.equal(optionRows(element('Productions', 'Cliente', { ...bindings, clientId: '11' })).length, 2, 'Known ID has no duplicate fallback');
 });
 
-test('Calendar keeps scope/type catalogs, missing client option and field-specific navigation', () => {
+test('Calendar has only the client picker, missing client fallback and exact client navigation', () => {
   const calls = [];
   const bindings = { selection: { scope: 'team', tipo: 'visita', cliente: '73' }, data: { clients: [{ id: 11, nombre: 'Cuenta' }] }, change: value => calls.push(value) };
-  const scope = element('Calendar', 'Ámbito', bindings), type = element('Calendar', 'Tipo', bindings), client = element('Calendar', 'Cliente', bindings);
-  assert.equal(scope.props.value, 'team'); assert.equal(type.props.value, 'visita'); assert.equal(client.props.value, '73');
-  assert.deepEqual(optionRows(scope), [row('mine', 'Lo mío'), row('team', 'Equipo')]);
-  assert.deepEqual(optionRows(type), Object.entries(CALENDAR_KINDS).map(([id, text]) => row(id, text)));
+  const client = element('Calendar', 'Cliente', bindings);
+  assert.equal(client.props.value, '73');
+  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente']);
   assert.deepEqual(optionRows(client), [row('', 'Todos los clientes'), row('73', 'Cliente #73'), row(11, 'Cuenta')]);
-  scope.props.onChange({ target: { value: 'mine' } }); type.props.onChange({ target: { value: 'hito' } }); client.props.onChange({ target: { value: '' } });
-  assert.deepEqual(calls, [{ scope: 'mine' }, { tipo: 'hito' }, { cliente: '' }]);
+  client.props.onChange({ target: { value: '' } });
+  assert.deepEqual(calls, [{ cliente: '' }]);
   assert.deepEqual(optionRows(element('Calendar', 'Cliente', { ...bindings, data: null })), [row('', 'Todos los clientes'), row('73', 'Cliente #73')]);
 });
 
@@ -189,11 +188,7 @@ test('calendar mobile filters stack full-width without the desktop 240px cap', (
   assert.deepEqual(declarations('.principal-calendar-filters select', mobile), { width: '100%', 'max-width': 'none' });
   assert.equal(declarations('.principal-calendar-filters select')['max-width'], '240px');
   const bindings = { selection: { scope: 'team', tipo: 'publicacion', cliente: '11' }, data: { clients: [{ id: 11, nombre: 'Estudio de comunicación audiovisual' }] }, change: () => {} };
-  for (const tipo of ['publicacion', 'programacion']) {
-    const type = element('Calendar', 'Tipo', { ...bindings, selection: { ...bindings.selection, tipo } });
-    assert.match(renderToStaticMarkup(type), new RegExp(`value="${tipo}" selected=""`));
-    assert.ok(optionRows(type).some(row => row.value === tipo && row.text === CALENDAR_KINDS[tipo]));
-  }
+  assert.deepEqual(filterControls(routes.Calendar).map(label), ['Cliente']);
   assert.match(renderToStaticMarkup(element('Calendar', 'Cliente', bindings)), /Estudio de comunicación audiovisual/);
 });
 

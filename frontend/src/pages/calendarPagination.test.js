@@ -146,7 +146,7 @@ const text = n => n.getText(ast);
 const evaluate = (n, deps) => new Function(...Object.keys(deps), `return (${text(n)});`)(...Object.values(deps));
 test('actual UI callback resets page on filter/day/month changes but preserves context on page navigation', () => {
   const change = nodes(owner, n => ts.isFunctionDeclaration(n) && n.name?.text === 'change')[0];
-  for (const fields of [{ mes: '2026-11', dia: '2026-11-01' }, { dia: '2026-10-20' }, { dia: selection.dia }, { scope: 'mine' }, { cliente: '4' }, { tipo: 'visita' }, { pagina: 3 }]) {
+  for (const fields of [{ mes: '2026-11', dia: '2026-11-01' }, { dia: '2026-10-20' }, { dia: selection.dia }, { cliente: '4' }, { pagina: 3 }]) {
     const calls = [], current = { ...selection, pagina: 2 };
     evaluate(change, { notifyViewPreferenceChange, selection: current, today: selection.dia, readCalendarSelection, calendarHref, window: { location: { origin: 'https://render.test' } }, navigateWithinApp: (win, href) => calls.push(href) })(fields);
     const next = readCalendarSelection(params(calls[0]).toString()); assert.equal(next.pagina, Object.hasOwn(fields, 'pagina') ? 3 : 0);

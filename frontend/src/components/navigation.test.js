@@ -8,13 +8,11 @@ const shared = new Map([
   ["/inicio", ["Inicio"]],
   ["/calendario", ["Calendario"]],
   ["/workspace/tareas", ["Tareas"]],
-  ["/proyectos", ["Proyectos"]],
   ["/producciones", ["Producciones"]],
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
   ["/feedback", ["Feedback"]],
   ["/planificacion-historias", ["Historias"]],
-  ["/planificacion-publicaciones", ["Publicaciones"]],
   ["/reportes-historias", ["Reportes"]],
   ["/perfil", ["Perfil"]],
 ]);
@@ -25,6 +23,16 @@ const adminOnly = new Map([
 ]);
 const linksFor = role => getNavigationGroups(role).flatMap(group => group.links);
 const sortedHrefs = links => links.map(link => link.href).sort();
+
+test('simplified navigation removes Projects and Publications without changing server privileges', () => {
+  for (const role of ['admin', ...employeeRoles]) {
+    const hrefs = sortedHrefs(linksFor(role));
+    assert.ok(!hrefs.includes('/proyectos'));
+    assert.ok(!hrefs.includes('/planificacion-publicaciones'));
+    assert.ok(hrefs.includes('/calendario'));
+    assert.ok(hrefs.includes('/producciones'));
+  }
+});
 
 test('client operation highlights only the shared client parent, never management', () => {
   for (const href of [...shared.keys(), ...adminOnly.keys()]) {

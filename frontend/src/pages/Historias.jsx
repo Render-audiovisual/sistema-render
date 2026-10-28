@@ -18,6 +18,8 @@ import { EditorialArchiveControl } from '../components/EditorialArchiveControl.j
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { createStoryCellDraft } from './storyCellDraft.js';
 import { readStoryPlanillaFilter, storyPlanillaFilterQuery } from './storyPlanillaContext.js';
+import { storyWorkStateLabel } from './storyWorkStateLabel.js';
+import { StoryWorkPanel } from './StoryWorkPanel.jsx';
 
 function pushUrlContext(changes) {
   const result = pushRawUrlContext(changes);
@@ -88,6 +90,8 @@ export function HistoriasPlanillaTab({
   const observedStories = useRef(historias);
   observedStories.current = historias;
   const [error, setError] = useState(null);
+  const [openedStoryId, setOpenedStoryId] = useState(null);
+  const openedStory = historias.find(story => story.id === openedStoryId);
   const gridRef = useRef(null);
   const lastFocusedStory = useRef(null);
 
@@ -481,13 +485,14 @@ export function HistoriasPlanillaTab({
                         style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
                       >
                         {ESTADOS_HISTORIA.map((e) => (
-                          <option key={e.id} value={e.id} disabled={e.id === 'publicada'}>{e.label}</option>
+                          <option key={e.id} value={e.id} disabled={e.id === 'publicada'}>{storyWorkStateLabel(e)}</option>
                         ))}
                       </select>
                       <EditorialPublicationControl dominio="historia" pieza={h} sesion={view.session} onSaved={dto => publicationSaved(h, dto)} />
                     </td>
                     <td data-label="Acciones">
                       <div className="sheet-row-actions">
+                        <button type="button" className="sheet-icon-btn" onClick={() => setOpenedStoryId(h.id)} aria-label={`Abrir historia #${h.id}`} title="Abrir historia">↗</button>
                         <button
                           type="button"
                           className="sheet-icon-btn"
@@ -518,6 +523,9 @@ export function HistoriasPlanillaTab({
         </div>
       )}
 
+      {openedStory && <StoryWorkPanel story={openedStory} clientName={clientesPorId[openedStory.cliente_id]} states={ESTADOS_HISTORIA}
+        disabled={view.role !== 'admin' || isConfirmedPublication(openedStory)} onClose={() => setOpenedStoryId(null)}
+        onChange={(id, fields) => { actualizarLocal(id, fields); guardarEnServidor(id, fields); }} />}
     </>
   );
 }

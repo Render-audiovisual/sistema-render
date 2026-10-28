@@ -47,6 +47,9 @@
 .prod-agenda-item>span:first-of-type{flex:1;min-width:0}
 .prod-agenda-item strong,.prod-agenda-item small{display:block}
 .prod-agenda-item[aria-pressed=true] strong{color:var(--prod-accent)}
+.prod-agenda-context{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 16px;margin:0 0 12px;font-size:12px}
+.prod-agenda-context dt{color:var(--prod-muted)}
+.prod-agenda-context dd{margin:2px 0 0;overflow-wrap:anywhere}
 .prod-agenda-item time{font-size:18px;font-variant-numeric:tabular-nums;color:var(--prod-muted)}
 .prod-empty{padding:24px;color:var(--prod-muted);font-size:14px}
 .prod-empty h2{font-size:16px;color:var(--prod-text)}

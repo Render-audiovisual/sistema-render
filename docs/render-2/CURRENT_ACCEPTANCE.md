@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Simplificación operativa y clientes locales — 2026-10-27
+
+Se retiran Proyectos/Publicaciones del menú y los accesos de Inicio, sin borrar tablas ni registros. Los editores internos compatibles permanecen disponibles: Calendario ofrece acceso al escritor existente de piezas con mes/cliente. Reportes no se rediseña en este corte.
+
+Clientes abre una lista mensual de nombres y barras Reels/Carruseles basadas en publicaciones confirmadas, no tareas terminadas. La cuota compartida de Lavalle se cuenta una vez. Objetivos/gestión continúan en una expansión opcional. Calendario muestra reels/carruseles y visitas, con un único filtro cliente; los parámetros personales/tipo anteriores no restringen silenciosamente la vista. Producciones conserva fecha, cliente y participantes y renombra el banco a Videos pendientes. Historias incorpora un panel lateral con estados existentes: Bloqueado=bloqueada y En proceso=en_diseño. Feedback queda con Cliente/Equipo, sin filtros ni inventario de tareas embebido, manteniendo enlaces directos de notas.
+
+Se cargaron14 clientes activos desde el respaldo local verificado del26/10/2026 en la revisión52922/PG55991. Se conservaron IDs/nombres/fechas/cuotas no financieras y agrupación del feed; no se importaron importes, usuarios, tareas, asignaciones ni publicaciones. Comparación por hash confirmó tareas/asignaciones/usuarios intactos. Es una instantánea, no una sincronización vigente ni evidencia de que el trabajo real tenga avance cero. La UI señala falta de actividad registrada en esta copia. Importador guardado fuera de Git en `/private/tmp/render-load-active-clients-local.mjs`, con identidad exacta de la base local, transacción corta y rechazo si ya existen clientes.
+
+Revisión visual: lista con14 cuentas (13 filas por feed compartido), Calendario limpia scope/tipo de URL anterior, Producciones ofrece Nueva visita con cliente/fecha/participantes, Feedback muestra sólo Cliente/Equipo. Capturas `/private/tmp/render-clientes-simple-bars.png`, `/private/tmp/render-calendar-client-only.png`, `/private/tmp/render-productions-simple.png`, `/private/tmp/render-feedback-simple-tabs.png`. Sin conexión ni modificaciones a producción.
+
 ### Arrastre de tarjeta y movimiento compartido — 2026-10-27
 
 Las tarjetas permiten arrastrar desde título y cuerpo, sin depender del tirador. Los controles internos mantienen su uso; el clic posterior al arrastre no abre el detalle y la activación por teclado sigue disponible.

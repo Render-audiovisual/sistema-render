@@ -28,7 +28,7 @@ const validators = {
   '/producciones': { mes: month, dia: day, cliente: numericId, tab: oneOf('calendar', 'pending') },
   '/calendario': {
     mes: value => month(value) && value !== '9999-12', dia: day,
-    scope: oneOf('mine', 'team'), tipo: oneOf('all', 'tarea', 'visita', 'hito', 'programacion', 'publicacion'), cliente: numericId,
+    cliente: numericId,
   },
   '/proyectos': {
     cliente: numericId, estado: oneOf('planificado', 'en_curso', 'en_revision', 'pausado', 'finalizado', 'cancelado'),
@@ -71,6 +71,8 @@ function parseHref(href) {
 function sanitize(path, query, strict) {
   const params = new URLSearchParams(query), allowed = validators[path], result = new URLSearchParams();
   for (const key of params.keys()) {
+    // Retire only Calendar's old filters even from previously stored records.
+    if (path === '/calendario' && ['scope', 'tipo'].includes(key)) continue;
     if (!owns(allowed, key)) { if (strict) return null; continue; }
     if (params.getAll(key).length !== 1) return null;
     const value = params.get(key);

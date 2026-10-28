@@ -12,7 +12,6 @@ import { createCapturedRequest } from "../shared/session/captured-request.js";
 import { createFeedbackNotesMutation } from "./feedbackNotesMutation.js";
 import {feedbackResponsibleCatalog,feedbackResponsibleIds,feedbackResponsibleLabel,feedbackResponsibleDisplay,feedbackLegacyResponsibleLabels,toggleFeedbackResponsibleId} from './feedbackResponsibleSelection.js';
 import "./Feedback.css";
-import { FeedbackTaskInventory } from './FeedbackTaskInventory.jsx';
 import { Modal } from '../components/Modal.jsx';
 
 const EDITABLE_CATEGORIES = CATEGORIAS_NOTA.filter((category) => category.id !== "todas");
@@ -64,7 +63,13 @@ function Reference({ text }) {
 }
 
 function feedbackNotesLocation() {
-  try { return {selection:readFeedbackNotesLocation(window.location.search),error:""}; }
+  try {
+    const observed = readFeedbackNotesLocation(window.location.search);
+    // Retired filters must not silently hide notes reached through an old link.
+    const reset = observed.q !== '' || observed.categoria !== null || observed.section === 'all';
+    return { selection: { ...observed, section: observed.section === 'team' ? 'team' : 'clients', q: '', categoria: null,
+      ...(reset ? { offset: 0, expected_snapshot: null } : {}) }, error: '' };
+  }
   catch { return {selection:null,error:"Los filtros o la página de notas no son válidos. Reiniciá el listado."}; }
 }
 export function FeedbackPage({ request = apiRequest, sesion = null }) {
@@ -86,7 +91,6 @@ function FeedbackContent({transport,view,sesion}) {
   const [users, setUsers] = useState([]);
   const [usersStatus,setUsersStatus]=useState('loading');
   const [catalogErrors,setCatalogErrors]=useState({clients:'',users:''});
-  const [query, setQuery] = useState(selection?.q ?? "");
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(null);
   const [baseline, setBaseline] = useState("");
@@ -129,7 +133,7 @@ function FeedbackContent({transport,view,sesion}) {
     const next = feedbackNotesLocation();
     contextEpoch.current++;panelEpoch.current++;readerRef.current?.invalidate();
     linkedNoteId.current = next.selection?.note ?? null;
-    setLocation(next);setQuery(next.selection?.q ?? "");setNotes([]);setPage(null);
+    setLocation(next);setNotes([]);setPage(null);
     setSelected(null);setDraft(null);setBaseline("");setConflict(false);setDuplicates([]);
   };
   useEffect(() => {
@@ -156,7 +160,12 @@ function FeedbackContent({transport,view,sesion}) {
     if(confirmed){setPage({status:"ready",data:confirmed,error:""});setNotes(confirmed.items);setLoading(false);}else void reader.load(selection);
     const noteId=linkedNoteId.current??selection.note, observedPanel=panelEpoch.current;
     if(noteId&&!confirmed)void reader.detail(noteId,trash).then(item=>{
-      if(readerRef.current===reader&&observedPanel===panelEpoch.current){linkedNoteId.current=null;setSelected(item);}
+      if(readerRef.current===reader&&observedPanel===panelEpoch.current){
+        linkedNoteId.current=null;
+        // Detail is authoritative: an old all/client link may identify a team note.
+        if(item.section!==selection.section) restartNotes(item);
+        setSelected(item);
+      }
     }).catch(reason=>{if(reason.code!=="session_binding_obsolete"&&readerRef.current===reader&&observedPanel===panelEpoch.current)setError(reason.message||"No pudimos abrir la nota.");});
     return ()=>{reader.dispose();if(readerRef.current===reader)readerRef.current=null;};
   }, [request, location]);
@@ -193,7 +202,8 @@ function FeedbackContent({transport,view,sesion}) {
   }
   function restartNotes(item = null, confirmed = null) {
     contextEpoch.current++;panelEpoch.current++;readerRef.current?.invalidate();
-    const next={...(selection ?? {section:"clients",papelera:false,categoria:null,q:"",limit:50}),offset:0,expected_snapshot:null,note:item?.id??null};
+    const next={...(selection ?? {section:"clients",papelera:false,categoria:null,q:"",limit:50}),
+      section:item?.section ?? selection?.section ?? 'clients',q:'',categoria:null,offset:0,expected_snapshot:null,note:item?.id??null};
     window.history.replaceState(window.history.state,"",feedbackNotesLocationUrl(window.location.href,next,next.note));
     notifyViewPreferenceChange(window);
     linkedNoteId.current=next.note;
@@ -411,21 +421,14 @@ function FeedbackContent({transport,view,sesion}) {
       <div className="rf-header-actions"><button className="rf-back-tasks" type="button" onClick={backToTasks}>← Volver a tareas</button><button className="rf-primary" disabled={busy || trash} onClick={createNote}>+ Nuevo feedback</button></div>
     </header>
 
-    {!trash && <FeedbackTaskInventory request={transport} sesion={sesion} clients={clients}/>}
-
     <nav className="rf-section-switch" aria-label="Tipo de feedback">
+      <button type="button" aria-pressed={section === "clients"} className={section === "clients" ? "active" : ""} onClick={() => changeSection("clients")}><span>◎</span><b>Cliente</b></button>
       <button type="button" aria-pressed={section === "team"} className={section === "team" ? "active" : ""} onClick={() => changeSection("team")}><span>♙</span><b>Equipo</b></button>
-      <button type="button" aria-pressed={section === "clients"} className={section === "clients" ? "active" : ""} onClick={() => changeSection("clients")}><span>◎</span><b>Clientes</b></button>
     </nav>
 
     <section className="rf-intro"><div><h2>{trash ? `Papelera · ${sectionTitle}` : sectionTitle}</h2><p>{sectionCopy}</p></div><button className="rf-trash-toggle" disabled={busy} onClick={() => moveNotes({papelera:!trash,q:"",offset:0,expected_snapshot:null})}>{trash ? "← Volver" : "Papelera"}</button></section>
 
-    <form className="rf-toolbar" onSubmit={event=>{event.preventDefault();moveNotes({q:query,offset:0,expected_snapshot:null});}}>
-      <label className="rf-search"><span aria-hidden="true">⌕</span><input aria-label="Buscar feedback" type="search" placeholder="Buscar por título, contenido o responsable…" value={query} onChange={(event) => setQuery(event.target.value)}/></label>
-      <button type="submit" disabled={busy}>Buscar</button>
-      <label>Categoría<select aria-label="Filtrar categoría de notas" value={selection?.categoria??""} disabled={busy} onChange={event=>moveNotes({categoria:event.target.value||null,offset:0,expected_snapshot:null})}><option value="">Todas</option>{EDITABLE_CATEGORIES.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-      <small role="status">{page?.data ? `${page.data.total} notas en total` : "Notas"}</small>
-    </form>
+    <p className="rf-note-count" role="status">{page?.data ? `${page.data.total} notas en total` : "Notas"}</p>
 
     {(location.error || page?.error) && <div className="rf-error" role="alert">{location.error || page.error}<button type="button" disabled={busy} onClick={()=>{if(canLeave())restartNotes(selected)}}>{page?.status==="stale"?"El listado cambió · Reiniciar desde la primera página":"Reiniciar listado"}</button></div>}
     {error && <div className="rf-error" role="alert">{error}{!panelOpen && <button disabled={busy||mutation.locked} onClick={() => restartNotes(selected)}>Reintentar</button>}</div>}

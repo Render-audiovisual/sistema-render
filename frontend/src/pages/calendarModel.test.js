@@ -234,7 +234,7 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   const jsx = readFileSync(new URL('./Calendar.jsx', import.meta.url), 'utf8');
   assert.match(jsx, /\[requestKey, retry\]/); assert.match(jsx, /requestKey = calendarQuery\(selection\)/);
   assert.match(jsx, /removeEventListener\('popstate'/); assert.match(jsx, /history.replaceState/); assert.match(jsx, /navigateWithinApp/);
-  assert.match(jsx, /Agenda paginada/); assert.match(jsx, /recuentos del calendario incluyen todos/); assert.match(jsx, /data\?\.pagination.days/); assert.match(jsx, /item.kind === 'tarea'.*calendarTaskState/);
+  assert.match(jsx, /Agenda paginada/); assert.match(jsx, /recuentos del calendario incluyen todos/); assert.match(jsx, /data\?\.pagination.days/);
   assert.doesNotMatch(jsx, /localStorage|sessionStorage|method: 'POST'|method: 'PATCH'/);
   const css = readFileSync(new URL('./Calendar.css', import.meta.url), 'utf8');
   assert.match(css, /margin-left:var\(--render-sidebar-width,236px\)/); assert.match(css, /max-width:980px.*margin-left:0/);
@@ -243,8 +243,9 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   assert.match(jsx, /toLocaleUpperCase\('es-AR'\) \+ label.slice\(1\)/);
   assert.match(jsx, /count === 1 \? 'evento' : 'eventos'/);
   assert.match(jsx, /calendarEventTitle\(item\).*<\/h3>/);
-  assert.match(jsx, /Entregas, visitas, hitos y contenido/);
-  assert.match(jsx, /item.kind === 'hito'.*calendarMilestoneState\(item.estado\)/);
-  assert.match(jsx, /item.kind === 'hito' \? 'Abrir proyecto'/);
+  assert.match(jsx, /Reels, carruseles y visitas/);
+  assert.match(jsx, /readPublicationCalendarSelection as readCalendarSelection/);
+  assert.doesNotMatch(jsx, /calendarTaskState|calendarMilestoneState|Abrir proyecto/);
+  assert.match(jsx, /Finalizar una tarea no la marca como publicada/);
   assert.equal((jsx.match(/<main\b/g) || []).length, 1);
 });

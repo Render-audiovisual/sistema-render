@@ -13,13 +13,11 @@ export function getNavigationGroups(role) {
       ...(canUseSharedCalendarRole(role) ? [{ href: "/calendario", label: "Calendario", icon: "calendar" }] : []),
     ] },
     { id: "operation", label: "Operación", links: [
-      { href: "/clientes", label: "Clientes y objetivos", icon: "clients" },
-      { href: "/proyectos", label: "Proyectos", icon: "projects" },
+      { href: "/clientes", label: "Clientes", icon: "clients" },
       { href: "/producciones", label: "Producciones", icon: "video" },
     ] },
     { id: "content", label: "Contenido", links: [
       { href: "/planificacion-historias", label: "Historias", icon: "content" },
-      { href: "/planificacion-publicaciones", label: "Publicaciones", icon: "content" },
       { href: "/feedback", label: "Feedback", icon: "feedback" },
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [

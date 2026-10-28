@@ -22,6 +22,51 @@ import { createClientOverviewLoader } from "./clientOverview.js";
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { CLIENT_CREATE_MODES, createClientCreation, hasNoConfiguredMonthlyAgreement } from './clientCreate.js';
 import './ClientesCreate.css';
+import './ClientesProgress.css';
+
+// Publication evidence only. Shared-feed quotas and progress appear once;
+// member names remain recognizable without multiplying the agreement.
+export function clientMonthlyProgressRows(clients, publicaciones, period) {
+  const unique = [...new Map((Array.isArray(clients) ? clients : []).filter(client =>
+    Number.isSafeInteger(client?.id) && client.id > 0 && typeof client.nombre === 'string').map(client => [client.id, client])).values()];
+  const summary = getResumenClientes(unique, [], Array.isArray(publicaciones) ? publicaciones : [], {mes:period,avanceDelMes:0});
+  const groups = new Map();
+  for (const client of summary.filter(item => item.activo)) {
+    const key = client.grupo_feed_id ? `grupo-${client.grupo_feed_id}` : `cliente-${client.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(client);
+  }
+  const rows = [...groups].map(([key, members]) => {
+    const first = members[0], grouped = Boolean(first.grupo_feed_id);
+    const quota = read => { const quantities = members.map(read); return quantities.every(n => Number.isSafeInteger(n) && n >= 0 && n === quantities[0]) ? quantities[0] : null; };
+    const publications = getPublicacionesDelMismoFeed(first, unique, Array.isArray(publicaciones) ? publicaciones : [])
+      .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
+    return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
+      memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
+      reels:{count:first.reelsPublicados,quota:quota(getCuotaReelsMensual)},
+      carruseles:{count:first.carruselesPublicados,quota:quota(getCuotaCarruselesMensual)}, noActivity:publications.length===0};
+  });
+  return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
+}
+function ClientMonthlyFormatBar({label,count,quota}) {
+  const known = Number.isSafeInteger(quota) && quota > 0;
+  const percent = known ? Math.min(100, count / quota * 100) : 0;
+  return <div className="client-monthly-format"><div><span>{label}</span><strong>{known ? `${count} de ${quota}` : `${count} · sin cuota configurada`}</strong></div>
+    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: publicaciones confirmadas`:undefined}
+      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(count,quota):undefined}
+      aria-valuetext={known?`${count} publicaciones confirmadas de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
+}
+export function ClientMonthlyProgressList({clients,publicaciones,period}) {
+  const rows = clientMonthlyProgressRows(clients,publicaciones,period);
+  return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
+    {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
+      <div className="client-monthly-name"><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}
+        {row.noActivity&&<small>Sin actividad registrada</small>}</div>
+      <ClientMonthlyFormatBar label="Reels" {...row.reels}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles}/>
+    </li>)}</ul>}
+    <p className="client-monthly-evidence">Publicaciones confirmadas del mes planificado. Finalizar tareas no confirma publicaciones; la falta de registros no demuestra falta de trabajo.</p>
+  </section>;
+}
 
 const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
 const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automotor", "Comercio", "Salud", "Servicios"];

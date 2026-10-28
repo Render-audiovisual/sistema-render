@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import * as constants from '../constants.js';
 import { isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
+import { storyWorkStateLabel } from './storyWorkStateLabel.js';
 
 const configs=[
   {file:'Historias.jsx',owner:'HistoriasPlanillaTab',variable:'h',entity:'historia',fields:{cliente:'Cliente',fecha:'Fecha programada',hora:'Hora',tipo:'Tema / formato',copy:'Texto / copy',material:'Enlace de material',aclaraciones:'Notas',responsable:'Responsable',estado:'Estado'}},
@@ -36,7 +37,7 @@ function fixture(config,id=41,role='admin'){
     responsable:'Persona QA',responsable_diseño:'Persona QA',metadata:{hora:'10:00',tipo:'Testimonio'}};
   const record=name=>(...args)=>calls.push([name,...args]);
   return {calls,piece,deps:{...constants,[config.variable]:piece,rowIndex:2,view:{role},est:{bg:'white',fg:'black'},
-    clientes:[{id:7,nombre:'Cliente QA'}],responsables:[{id:8,nombre:'Persona QA'}],isConfirmedPublication,
+    clientes:[{id:7,nombre:'Cliente QA'}],responsables:[{id:8,nombre:'Persona QA'}],isConfirmedPublication,storyWorkStateLabel,
     actualizarLocal:record('local'),guardarEnServidor:record('save'),confirmarCampoTexto:record('text'),
     ajustarAltura:record('height'),manejarEnterOTab:record('keyboard'),manejarPaste:record('paste')}};
 }

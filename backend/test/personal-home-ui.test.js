@@ -221,8 +221,9 @@ test('principal UI binds state to session identity, keeps honest totals and oper
   assert.match(source, /href=\{visit\.href\}/);
   assert.match(source, /role="alert"/); assert.match(source, /role="status"/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|Math\.random|\/sueldos|\/finanzas|dangerouslySetInnerHTML/);
-  assert.match(source, /data\.capabilities\.projects &&/);
-  assert.match(source, /href=\{project.href\}/);
+  assert.doesNotMatch(source, /Mis proyectos|href=\{project.href\}/);
+  assert.doesNotMatch(source, /title: "(?:Proyectos|Publicaciones)"/);
+  assert.match(source, /href: "\/calendario", title: "Calendario"/);
   assert.match(css, /min-height:44px/); assert.match(css, /focus-visible/); assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /max-width:1440px/); assert.match(css, /@media\(max-width:440px\)/);
 });

@@ -127,6 +127,25 @@ test('cookie calendar pagination: complete inventory, closed previews and observ
   const snapshot = async () => createHash('sha256').update(JSON.stringify(await f.query(`SELECT * FROM (${names.map(n =>
     `SELECT '${n}' name,COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb) rows FROM "${n}" r`).join(' UNION ALL ')}) s ORDER BY name`))).digest('hex');
 
+  await t.test('editorial Calendar includes all planned reels and canonical visits, excludes deadlines/stories, never awards historical publication', async () => {
+    const before = await snapshot();
+    const dto = await read({ vista: 'publicaciones', scope: 'mine', kind: 'tarea', cliente_id: String(client.id) }, outsider);
+    assert.equal(dto.scope, 'team'); assert.equal(dto.kind, 'all');
+    const piece = pieces.find(row => row.domain === 'publicacion');
+    assert.deepEqual(dto.events.map(row => row.key).sort(), [
+      `programacion:publicacion:${piece.id}`, `programacion:publicacion:${historical.id}`, `visita:visita:${visit.id}`,
+    ].sort());
+    assert.equal(dto.pagination.total, 3);
+    assert.equal(dto.pagination.days.reduce((sum, row) => sum + row.total, 0), 3);
+    assert.equal(dto.events.some(row => row.kind === 'publicacion'), false);
+    assert.equal(dto.events.every(row => row.evidence === null), true);
+    assert.equal(JSON.stringify(dto).includes(marker), false);
+    const actual = await read({ vista: 'publicaciones', desde: '2026-08-01', hasta: '2026-08-02', cliente_id: String(client.id) });
+    assert.deepEqual(actual.events.map(row => row.key), [`publicacion:publicacion:${piece.id}`]);
+    assert.equal(actual.events[0].evidence.confirmation.id, piece.receipt.operation.id);
+    assert.deepEqual(await snapshot(), before);
+  });
+
   await t.test('all >2000 events traverse once, page sizes may change, full day counts/previews are independent of page', async () => {
     const before = await snapshot(), first = await read(); validate(first);
     const all = [...first.events]; let offset = all.length;

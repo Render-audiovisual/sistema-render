@@ -33,6 +33,7 @@ export function readCalendarSelection(search, today = cordobaToday()) {
 }
 export function calendarHref(selection) {
   const params = new URLSearchParams({ mes: selection.mes, dia: selection.dia, scope: selection.scope, tipo: selection.tipo });
+  if (selection.vista === 'publicaciones') { params.delete('scope'); params.delete('tipo'); }
   if (selection.cliente) params.set('cliente', selection.cliente);
   params.set('pagina', String(Number.isSafeInteger(selection.pagina) && selection.pagina >= 0 && selection.pagina <= MAX_CALENDAR_PAGE ? selection.pagina : 0));
   return `/calendario?${params}`;
@@ -56,6 +57,7 @@ export function calendarQuery(selection, { offset = (selection.pagina || 0) * CA
   const grid = calendarGrid(selection.mes);
   if (!Number.isSafeInteger(offset) || offset < 0 || !calendarDay(selection.dia) || selection.dia < grid.desde || selection.dia >= grid.hasta) throw new Error('Página o día de calendario inválido.');
   const params = new URLSearchParams({ desde: grid.desde, hasta: grid.hasta, scope: selection.scope, kind: selection.tipo });
+  if (selection.vista === 'publicaciones') { params.delete('scope'); params.delete('kind'); params.set('vista', 'publicaciones'); }
   if (selection.cliente) params.set('cliente_id', selection.cliente);
   params.set('dia', selection.dia); params.set('limit', String(CALENDAR_PAGE_LIMIT)); params.set('offset', String(offset));
   if (snapshot !== undefined) {
@@ -63,6 +65,16 @@ export function calendarQuery(selection, { offset = (selection.pagina || 0) * CA
     params.set('expected_snapshot', snapshot);
   }
   return `/api/calendario?${params}`;
+}
+// Principal Calendar deliberately retires scope/type preferences. Keep legacy
+// helpers compatible for existing API consumers, not as hidden UI filters.
+export function readPublicationCalendarSelection(search, today = cordobaToday()) {
+  return { ...readCalendarSelection(search, today), scope: 'team', tipo: 'all', vista: 'publicaciones' };
+}
+export function publicationPlanningHref(selection, create = false) {
+  const params = new URLSearchParams({ tab: create ? 'planilla' : 'calendario', mes: selection.mes });
+  if (selection.cliente && positive(Number(selection.cliente))) params.set('cliente', selection.cliente);
+  return `/planificacion-publicaciones?${params}`;
 }
 function eventHref(row) {
   if (typeof row.href !== 'string' || !row.href.startsWith('/') || row.href.startsWith('//') || /[\s\\\u0000-\u001f\u007f]/.test(row.href)) throw new Error();
@@ -91,6 +103,8 @@ export function decodeCalendar(dto, selection) {
   if (new Set(clients.map(c => c.id)).size !== clients.length) invalid();
   const seen = new Set();
   const events = dto.events.map(row => {
+    if (selection.vista === 'publicaciones' && !(row?.source === 'visita' && row.kind === 'visita'
+      || row?.source === 'publicacion' && ['programacion', 'publicacion'].includes(row.kind))) invalid();
     if (!row || !['tarea', 'visita', 'hito', 'programacion', 'publicacion'].includes(row.kind) ||
         (selection.tipo !== 'all' && row.kind !== selection.tipo) || !calendarDay(row.date) || row.date < grid.desde || row.date >= grid.hasta ||
         !((row.kind === 'tarea' && row.source === 'tarea' && positive(row.source_id)) || (row.kind === 'visita' && row.source === 'visita' && uuid(row.source_id)) ||
