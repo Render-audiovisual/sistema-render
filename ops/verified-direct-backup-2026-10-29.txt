@@ -1,0 +1,38 @@
+RESPALDO ACTUALIZADO VERIFICADO — 29/10/2026
+
+La conexión directa IPv6 al proyecto fehsetsugaoncjmmfvek permitió completar
+la captura que no se había conseguido con la ruta anterior. No se certifica
+una causa única de esos fallos ni se cambió DATABASE_URL de Hostinger.
+El modo directo solo se aplicó al capturador local: destino y usuario cerrados
+al proyecto autorizado, puerto5432, TLS con verificación de CA y hostname,
+sesiones de origen en solo lectura y archivos privados. Credencial transmitida
+solo mediante el formulario local previamente autorizado, no en argumentos.
+
+Ubicación duradera privada:
+/Users/agustinobregon/Documents/Render-Backups/2026-10-29-direct-native-mvGFWu
+Captura finalizada: 2026-10-29 06:20:46 UTC (03:20:46 Córdoba).
+Archivo completo y archivo operativo comparten la misma instantánea exportada.
+No confundir la hora de finalización con la hora exacta de inicio de instantánea.
+
+Validación de restauración operativa:
+- 64 tablas, 8132 filas: todos los conteos y hashes de filas coinciden con origen.
+- 244 restricciones originales coinciden.
+- 46 estados de secuencias coinciden.
+- 343 tareas, 17 clientes, 520 publicaciones y 9 usuarios.
+- Restauración únicamente local, sin listener TCP y sin salida de red.
+- Cluster de prueba detenido y comprobado al terminar.
+- Copia duradera comparada byte a byte y archivos de respaldo verificados SHA256.
+- Permisos0700 de carpeta y0600 de archivos conservados.
+
+Límites y controles siguientes:
+No se restauraron todos los servicios internos de Supabase; la restauración
+certificada cubre el esquema operativo public. El archivo lógico completo se
+conservó, pero no es prueba de recuperación completa de Auth/Storage/roles/ACL.
+El respaldo no incluye bytes de archivos externos Drive/Storage ni contraseñas
+globales de roles. No reemplazar producción con esta copia.
+Las automatizaciones publicadas siguieron activas: la instantánea es consistente,
+pero puede haber cambios posteriores. Revalidar el estado y tomar el respaldo
+final de la ventana real con escritores detenidos antes de ejecutar migraciones.
+No reutilizar una aprobación anterior ni dar por vigentes las asignaciones viejas.
+
+No se detuvo la web, no hubo migraciones, publicación ni cambio de contraseña.

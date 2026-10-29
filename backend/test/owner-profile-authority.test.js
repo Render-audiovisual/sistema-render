@@ -16,6 +16,10 @@ const origin = 'https://render.example.test';
 const mapping = { accountId: 1, francoUserId: 31, agustinUserId: 32 };
 const config = { NODE_ENV:'test',RENDER_DB_ENVIRONMENT:'test',DATABASE_URL:'postgresql://fixture@127.0.0.1:55989/render2_local_test',
   RENDER_OWNER_PROFILES:JSON.stringify(mapping),JWT_SECRET:secret,RENDER_BROWSER_SESSIONS:'true',RENDER_BROWSER_ORIGIN:origin };
+const productionConfig={NODE_ENV:'production',RENDER_DB_ENVIRONMENT:'production',
+  DATABASE_URL:'postgresql://fixture:synthetic@db.example.invalid:5432/render',
+  RENDER_OWNER_PROFILE_MODE:'shared-v1',RENDER_BROWSER_SESSIONS:'true',RENDER_BROWSER_ALLOW_LOCAL_HTTP:'false',
+  APP_URL:'https://sistema.rendercorrientes.com',RENDER_BROWSER_ORIGIN:'https://sistema.rendercorrientes.com'};
 const user = (id,nombre) => ({id,usuario:`synthetic-${id}`,nombre,rol:'admin',activo:true,session_version:1,foto_perfil:null});
 const response = () => ({headers:{},statusCode:200,set(k,v){this.headers[k.toLowerCase()]=v;return this;},
   status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}});
@@ -32,7 +36,7 @@ function fixture(env={}) {
   const issued=(target=rows[0],options) => {const res=response(),context=transport.establishSession(target,res,options);
     const cookie=res.headers['set-cookie'].split(';')[0];return {res,context,cookie,claims:jwt.verify(cookie.split('=')[1],secret)};};
   const authenticate=async(current,{method='POST',headers={}}={})=>{
-    const req={method,headers:{cookie:current.cookie,origin,'x-render-session-context':current.context.session_context,
+    const req={method,headers:{cookie:current.cookie,origin:settings.RENDER_BROWSER_ORIGIN,'x-render-session-context':current.context.session_context,
       'x-render-csrf':current.context.csrf_token,...headers}},res=response();let continued=false,error;
     await transport.authenticate(req,res,e=>{error=e;continued=!e;});return {req,res,continued,error};
   };
@@ -56,6 +60,34 @@ for(const env of [{NODE_ENV:'production'},{RENDER_DB_ENVIRONMENT:'production'},
   {RENDER_DB_ENVIRONMENT:undefined}])test('configured delegation is rejected outside explicitly local runtime',()=>{
   assert.throws(()=>parseOwnerProfilePolicy({...config,...env}));
   assert.equal(parseOwnerProfilePolicy({...config,...env,RENDER_OWNER_PROFILES:undefined}),null);
+});
+
+test('production requires explicit shared-v1 HTTPS/TLS configuration and rejects known QA actors',()=>{
+  assert.equal(parseOwnerProfilePolicy({...config,...productionConfig}).accountId,1);
+  for(const patch of [{RENDER_OWNER_PROFILE_MODE:undefined},{RENDER_OWNER_PROFILE_MODE:'local'},
+    {RENDER_BROWSER_SESSIONS:'false'},{RENDER_BROWSER_ALLOW_LOCAL_HTTP:'true'},
+    {APP_URL:'http://sistema.rendercorrientes.com'},{RENDER_BROWSER_ORIGIN:origin},
+    {PGSSLMODE:'disable'},{NODE_TLS_REJECT_UNAUTHORIZED:'0'},
+    {RENDER_OWNER_PROFILES:JSON.stringify({...mapping,accountId:91001})},
+    {RENDER_OWNER_PROFILES:JSON.stringify({...mapping,francoUserId:91005})}]){
+    assert.throws(()=>parseOwnerProfilePolicy({...config,...productionConfig,...patch}));
+  }
+});
+
+test('production never treats ordinary admin accounts as owner profiles or creates/promotes users',async()=>{
+  const f=fixture(productionConfig),root=await f.authenticate(f.issued(),{method:'GET'});
+  assert.equal(root.continued,true);
+  await assert.rejects(f.transport.ownerProfiles.describe(root.req.auth),{status:403});
+  await assert.rejects(f.transport.ownerProfiles.switchProfile(root.req.auth,'franco'),{status:403});
+  for(const [key,id] of [['franco',31],['agustin',32]])Object.assign(f.rows.find(u=>u.id===id),{
+    usuario:`render.owner.${key}`,owner_profile_internal:true});
+  assert.equal((await f.transport.ownerProfiles.describe(root.req.auth)).profiles.length,2);
+  const material=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+  const delegated=await f.authenticate(f.issued(material.user,{delegation:material.delegation}),{method:'GET'});
+  assert.equal(delegated.continued,true);assert.equal(delegated.req.auth.id,31);
+  f.rows.find(u=>u.id===31).owner_profile_internal=false;
+  assert.equal((await f.authenticate(f.issued(material.user,{delegation:material.delegation}),{method:'GET'})).res.statusCode,401);
+  assert.equal(f.calls.some(c=>/\b(?:UPDATE|INSERT|DELETE)\b/.test(c.sql)),false);
 });
 
 test('root login keeps authenticated Leader ID and own identity until explicitly switching',async()=>{

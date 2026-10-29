@@ -1,0 +1,45 @@
+RENDER — VALIDACIÓN DEL CANDIDATO LOCAL, 29/10/2026
+
+NO desplegado. NO habilita cambios automáticos en producción.
+Paquete: /private/tmp/render-final-release-orZT7d/app
+release-manifest.json SHA256:
+1612974fda4c7184804d4345404e2075728ab418f2cde4c01a72765186154c01
+Node24.18.0; 342 archivos de origen y 121 dependencias instaladas.
+El empaquetador verifica inventario, recursos frontend y exclusión de artefactos
+privados. Esto no constituye una auditoría de vulnerabilidades de dependencias.
+
+Resultados reproducidos
+- Compilación Vite: aprobada.
+- Backend completo: 3359 aprobadas, 0 fallos, 194 omitidas.
+- Frontend completo: 3387 aprobadas, 0 fallos, 0 omitidas.
+- HTTP/PostgreSQL aislados de perfiles y autoridad: 25 aprobadas, sin omisiones.
+- Seguridad del empaquetador: 15 aprobadas.
+- Configuración Hostinger, incluido modo shared-v1 explícito: 31 aprobadas.
+Las pruebas adicionales de configuración se agregaron después del inicio de la
+batería general; su ejecución separada pasó. Los conteos no deben sumarse como
+si fueran pruebas únicas. No se verificó toda integración externa omitida.
+El primer intento restringido falló por EPERM al abrir HTTP local; la batería
+completa autorizada para HTTP local terminó con 0 fallos. No se modificó código
+para ocultar ese fallo.
+
+Preservación ensayada previamente
+Respaldo 28/10 20:06 UTC, 64 tablas; 41 migraciones; 343 tareas, 520 publicaciones.
+Se agregaron únicamente dos perfiles y se comprobó replay sin duplicación.
+Usuarios originales y asignaciones preservados. Esta evidencia NO es un
+respaldo actualizado al 29/10. Ya se observaron diferencias de producción.
+
+Puertas pendientes de publicación
+1. Ventana real de mantenimiento con escritores y automatizaciones controlados.
+2. Respaldo nuevo verificado, alcance y asignaciones por IDs del estado vigente.
+3. Comprobación privada de configuración vigente, TLS, cookies/proxy y proveedores.
+4. Ejecución autorizada de migraciones y provisión separada de perfiles; obtener
+   los IDs productivos, nunca copiar IDs locales. Sin restauración sobre la base.
+5. Rotación de contraseña por el usuario coordinada con DATABASE_URL de Hostinger
+   y demás consumidores; verificar conexiones nuevas antes de abrir escrituras.
+6. Despliegue controlado del artefacto aprobado y pruebas reales de salud, login,
+   tareas, perfiles, reportes y exclusión financiera de empleados.
+Autodeploy está encendido según la inspección anterior: NO hacer push como si
+fuera una acción local. No se certifica la configuración actual sin reinspección.
+
+Guía operativa: ops/owner-profiles-and-credential-release.txt
+No hubo cambio de contraseña, despliegue, push ni escritura productiva.

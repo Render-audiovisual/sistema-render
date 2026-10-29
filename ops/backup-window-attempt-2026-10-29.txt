@@ -1,0 +1,40 @@
+VENTANA DE RESPALDO — 29/10/2026, sin publicación
+
+El usuario confirmó pausa humana y autorizó detener temporalmente únicamente la
+aplicación después de verificar el respaldo. Esa detención NO se ejecutó.
+
+Hostinger sigue en el commit 43f02707e299293c5b0c2bb6f12386bd4642746b.
+Se observó autodeploy activo y advertencia de uso 544K/600K inodos.
+No se borraron archivos ni se cambió configuración.
+La página Cron mostró formulario de creación, sin lista visible de trabajos.
+Esto no certifica ausencia de automatizaciones externas.
+Se verificó con autorización el único indicador MIA_SUPERVISOR_ENABLED=true.
+Fue ocultado de nuevo. No se revelaron otros indicadores ni secretos en salida.
+
+Revisión del código exacto publicado:
+- Inicialización ejecuta migraciones automáticamente.
+- Calendario editorial y objetivos: ejecución inicial y cada hora.
+- Wilson: ejecución inicial y cada hora; puede escribir aun sin edición humana.
+- Supervisor Mía: activado, revisa cada 5 minutos.
+- Limpieza de tareas: condicionada a TASK_AUTOMATIC_DELETION_ENABLED=true;
+  no se encontró ese nombre entre las variables visibles revisadas, sin
+  certificar los valores efectivos del proceso.
+- Rutas entrantes de WhatsApp pueden modificar datos mientras el servicio esté activo.
+
+Intentos de respaldo autorizados, conexión secreta usada solo en formulario
+privado 127.0.0.1:56509. No guardada en archivos ni mostrada en los registros.
+1. /private/tmp/render-production-snapshot-20261028/2026-10-28-render-7cMa4u
+   Captura de archivo completo agotó tiempo de 300 segundos. Archivo parcial
+   de cero bytes; NO es respaldo aceptado. No se ejecutó restauración.
+2. /private/tmp/render-production-snapshot-20261028/2026-10-28-render-t0Uj2S
+   Intento con diagnóstico mínimo y límites SQL/subproceso más cortos.
+   Falló en conectando_tls; NO es respaldo aceptado. No se ejecutó restauración.
+Los nombres de carpeta provienen del capturador anterior; los archivos y
+marcas temporales corresponden al 29/10. Conservar evidencia, no tratarla como dump válido.
+
+Supabase inicialmente presentó sesión expirada. Tras Sign in again volvió al
+proyecto correcto Render paginas / RENDER - AGUS, sin ingresar credenciales.
+No se pulsó Reset password. No se detuvo ni reconfiguró el sistema.
+Bloqueo vigente: acceso de respaldo estable y restauración de captura nueva.
+No publicar ni rotar contraseña hasta resolverlo. La copia del 28/10 no
+reemplaza este requisito y jamás debe restaurarse sobre producción.

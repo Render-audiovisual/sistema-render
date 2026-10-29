@@ -21,6 +21,18 @@ test('release checklist cannot call a production-blocked owner profile mapping r
   assert.equal(check(result,'OWNER_PROFILE_CONFIGURATION').status,'invalid');
 });
 
+test('explicit shared production mode accepts configuration only, never certifies profile records or release',()=>{
+  const env={...base(),RENDER_OWNER_PROFILE_MODE:'shared-v1',
+    RENDER_OWNER_PROFILES:JSON.stringify({accountId:1,francoUserId:31,agustinUserId:32})};
+  const result=validateHostingerReleaseConfig(env,options);
+  assert.equal(result.configurationValid,true);
+  assert.equal(result.releaseApproved,false);
+  for(const mapping of [{accountId:1,francoUserId:14,agustinUserId:32},
+    {accountId:1,francoUserId:91005,agustinUserId:91006}]){
+    assert.equal(validateHostingerReleaseConfig({...env,RENDER_OWNER_PROFILES:JSON.stringify(mapping)},options).configurationValid,false);
+  }
+});
+
 test('pure checklist accepts explicit safe configuration, never approves release or mutates inputs', () => {
   const env = Object.freeze(base()), before = { ...env };
   const result = validateHostingerReleaseConfig(env, Object.freeze(options));

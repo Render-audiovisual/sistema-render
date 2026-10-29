@@ -1,9 +1,10 @@
 import { readDatabaseTarget, isLoopbackAddress } from './startup-policy.js';
 import { databaseAuthorityPool, bindDatabaseAuthorityClient } from './database-authority-context.js';
+import { buildDatabasePoolConfig } from './database-transport.js';
 
-// LOCAL ONLY. These are delegated real actor IDs, never identity by a label.
-// Enabling production requires a separate audit/integration of principal locks
-// inside ALL business write transactions. Middleware alone cannot close races.
+// Delegation is opt-in and tied to persisted actors and one pool. Production
+// additionally requires the explicit shared-v1 mode and canonical internal
+// accounts provisioned separately; no user is created or promoted at startup.
 const keys = ['franco', 'agustin'];
 const labels = { franco: 'Franco', agustin: 'Agustín' };
 const positive = n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
@@ -14,6 +15,7 @@ const policies = new WeakSet(), authorities = new WeakMap(), materials = new Wea
 const writeAuthorities = new WeakMap();
 const capturedAuthorities = new WeakMap();
 const policyPools = new WeakMap();
+const productionPolicies = new WeakSet();
 function assertAuthorityContext(db, policy) {
   const expected=policyPools.get(policy);
   if (!expected || databaseAuthorityPool(db)!==expected) throw fail(401);
@@ -25,20 +27,34 @@ export function parseOwnerProfilePolicy(env = {}) {
   if (env.RENDER_OWNER_PROFILES === undefined || env.RENDER_OWNER_PROFILES === '') return null;
   let mapping, target;
   try { mapping = JSON.parse(env.RENDER_OWNER_PROFILES); target = readDatabaseTarget(env); } catch { throw fail(); }
-  if (!['development', 'test'].includes(env.NODE_ENV)
-    || !['development', 'test', 'sandbox'].includes(target.environment) || !isLoopbackAddress(target.hostname)
-    || !exact(mapping, ['accountId', 'francoUserId', 'agustinUserId'])
+  if (!exact(mapping, ['accountId', 'francoUserId', 'agustinUserId'])
     || !Object.values(mapping).every(positive) || new Set(Object.values(mapping)).size !== 3
-    || ![1, 91001, 91002].includes(mapping.accountId)
-    || (mapping.accountId !== 1 && (env.NODE_ENV !== 'test' || !['test', 'sandbox'].includes(target.environment)))
     || Object.values(mapping).includes(14)) throw fail();
-  const policy = Object.freeze({ ...mapping }); policies.add(policy); return policy;
+  const local=['development','test'].includes(env.NODE_ENV)
+    && ['development','test','sandbox'].includes(target.environment) && isLoopbackAddress(target.hostname)
+    && [1,91001,91002].includes(mapping.accountId)
+    && (mapping.accountId===1 || (env.NODE_ENV==='test' && ['test','sandbox'].includes(target.environment)))
+    && [undefined,'','shared-v1'].includes(env.RENDER_OWNER_PROFILE_MODE);
+  const production=env.NODE_ENV==='production' && target.environment==='production'
+    && !isLoopbackAddress(target.hostname) && mapping.accountId===1
+    && !Object.values(mapping).some(id=>[91001,91002,91003,91004,91005,91006].includes(id))
+    && env.RENDER_OWNER_PROFILE_MODE==='shared-v1'
+    && env.RENDER_BROWSER_SESSIONS==='true' && env.RENDER_BROWSER_ALLOW_LOCAL_HTTP==='false'
+    && env.RENDER_BROWSER_ORIGIN==='https://sistema.rendercorrientes.com'
+    && env.APP_URL===env.RENDER_BROWSER_ORIGIN;
+  if(!local && !production)throw fail();
+  if(production){try{if(buildDatabasePoolConfig(env)?.ssl?.rejectUnauthorized!==true)throw fail();}catch{throw fail();}}
+  const policy = Object.freeze({ ...mapping }); policies.add(policy);
+  if(production)productionPolicies.add(policy);
+  return policy;
 }
 const validPolicy = policy => policy && policies.has(policy);
 const targetId = (policy, key) => key === 'franco' ? policy.francoUserId : policy.agustinUserId;
 const validUser = user => user && positive(user.id) && user.activo === true && user.rol === 'admin'
   && positive(Number(user.session_version));
 const version = user => Number(user.session_version);
+const validProfileUser=(user,key,policy)=>validUser(user) && (!productionPolicies.has(policy)
+  || (user.usuario===`render.owner.${key}` && user.owner_profile_internal===true));
 
 function validateDelegation(claims, policy) {
   if (!validPolicy(policy) || !keys.includes(claims.owner_profile)
@@ -51,7 +67,9 @@ function validateDelegation(claims, policy) {
 async function readUsers(db, policy, lock = false) {
   assertAuthorityContext(db,policy);
   const ids = [policy.accountId, policy.francoUserId, policy.agustinUserId].sort((a,b) => a-b);
-  return (await db.query(`SELECT id,usuario,nombre,rol,activo,session_version,foto_perfil
+  return (await db.query(`SELECT id,usuario,nombre,rol,activo,session_version,foto_perfil,
+    (password_hash='!RENDER_OWNER_PROFILE_V1_NO_LOGIN' AND google_id IS NULL
+      AND google_email IS NULL AND email_notificaciones IS NULL) AS owner_profile_internal
     FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id${lock === 'update' ? ' FOR UPDATE' : lock ? ' FOR SHARE' : ''}`, [ids])).rows;
 }
 function checkCurrent(auth, rows, policy) {
@@ -59,6 +77,7 @@ function checkCurrent(auth, rows, policy) {
   if (delegated) validateDelegation(auth, policy);
   const root = rows.find(u => u.id === policy.accountId), actor = rows.find(u => u.id === auth.id);
   if (!validUser(root) || !validUser(actor)
+    || (delegated && !validProfileUser(actor,auth.owner_profile,policy))
     || (delegated ? version(root) !== auth.root_session_version : auth.id !== policy.accountId)
     || version(actor) !== auth.session_version) throw fail(401);
   return { root, actor };
@@ -134,7 +153,7 @@ export async function retainOwnerProfileAuthority(db, auth, policy) {
 }
 
 export function assertOwnerProfileSessionMaterial(user, delegation, policy) {
-  if (!validPolicy(policy) || !materials.has(delegation) || !validUser(user)
+  if (!validPolicy(policy) || !materials.has(delegation) || !validProfileUser(user,delegation?.owner_profile,policy)
     || delegation.root_id !== policy.accountId || !positive(delegation.root_session_version)
     || user.id !== targetId(policy, delegation.owner_profile)
     || delegation.root_exp <= Math.floor(Date.now() / 1000)) throw fail(401);
@@ -155,7 +174,7 @@ export function configuredOwnerProfiles(env, pool) {
       checkCurrent(auth, rows, policy);
       // Both explicit target accounts must be active administrators. No auto
       // promotion, creation, assignment transfer or fallback to a namesake.
-      if (keys.some(key => !validUser(rows.find(u => u.id === targetId(policy, key))))) throw fail();
+      if (keys.some(key => !validProfileUser(rows.find(u => u.id === targetId(policy, key)),key,policy))) throw fail();
       return { principal_id: policy.accountId, active: auth.owner_profile ?? null,
         profiles: keys.map(key => ({ key, user_id: targetId(policy, key), name: labels[key] })) };
     },
@@ -172,7 +191,7 @@ export function configuredOwnerProfiles(env, pool) {
         await db.query("SET LOCAL statement_timeout TO '10s'");
         const rows = await readUsers(db, policy, true), { root } = checkCurrent(auth, rows, policy);
         const user = rows.find(u => u.id === targetId(policy, key));
-        if (!validUser(user)) throw fail();
+        if (!validProfileUser(user,key,policy)) throw fail();
         const delegation = Object.freeze({ root_id: root.id, root_session_version: version(root), root_exp: ceiling, owner_profile: key });
         discard = true; await db.query('COMMIT'); began = false; discard = false;
         materials.add(delegation);
