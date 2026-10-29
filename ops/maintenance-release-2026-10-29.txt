@@ -91,3 +91,26 @@ Decisión posterior del usuario y verificación local de automatizaciones:
 - Ensayo adicional de dominios PostgreSQL por agente:3 PASS,0 FAIL,0 SKIP,
   calendario/cuotas y cola del supervisor sin duplicados; cero llamadas externas.
 - Commit local de implementación: a9d8093. Sin push ni despliegue.
+
+Avance posterior: respaldo actualizado y ensayo sobre sus datos vigentes
+- Respaldo completado 2026-10-29T17:15:54.091Z, conservado privado en
+  /Users/agustinobregon/Documents/Render-Backups/2026-10-29-direct-native-lqh2D6
+-64 tablas,8187 filas,244 restricciones originales,46 secuencias coincidentes.
+  Archivo operativo SHA256:
+  ec77ecfce9e19755f32551fb6f8b8116724b5b7e86fa60633b1349b7b963cf83
+-343 tareas,17 clientes,520 publicaciones,9 usuarios originales.
+- Ensayo nuevo /private/tmp/render-owner-preparation-vgDCj1:41 migraciones,
+  343 asignaciones responsables y356 vínculos,2 perfiles internos provisionados,
+  replay sin cambios. Filas originales de64 tablas preservadas. Copia detenida.
+- Ruta observada: versión vigente contiene nodejs/backend. Configuración aún
+  apunta backend/src/server.js; debe cambiar a runtime-entrypoint.js únicamente
+  en el despliegue revisado. No basta cambiar un flag con el servidor antiguo.
+- Formulario de redeploy revela valores de secretos en texto sin ocultar.
+  Durante la inspección se emitieron involuntariamente valores de SMTP_PASS,
+  GOOGLE_DRIVE_CLIENT_SECRET y JWT_SECRET. NO copiar valores a este informe.
+  Usuario informado; formulario cerrado sin guardar. Requiere rotación
+  coordinada además de la contraseña DB ya identificada. No cambiar credenciales
+  automáticamente: intervención del usuario antes de introducir nuevos valores.
+- No pausa efectiva de producción, migración productiva, push ni despliegue.
+  Respaldo nuevo no sustituye instantánea bajo mantenimiento: jobs antiguos
+  siguen activos hasta comprobar reemplazo de proceso.
