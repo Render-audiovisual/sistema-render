@@ -114,3 +114,28 @@ Avance posterior: respaldo actualizado y ensayo sobre sus datos vigentes
 - No pausa efectiva de producción, migración productiva, push ni despliegue.
   Respaldo nuevo no sustituye instantánea bajo mantenimiento: jobs antiguos
   siguen activos hasta comprobar reemplazo de proceso.
+
+Publicación autorizada por nueva instrucción directa del usuario:
+- Rama de entrega separada codex/render-2-release-20261029 subida sin force-push;
+  rama hostinger-deploy anterior preservada. Commit inicial fcdac6c5496981ef3a42f4935ac40deaeea16edd.
+- Hostinger publicó mantenimiento build01a18942-0bab-73ce-860b-0e39ab1f40f8.
+  Salud pública200 maintenance/databaseReadyfalse y método inseguro desconocido503.
+- SSH existente autenticado con comprobación de host: Nodev24.22.1; solo2
+  procesos lsnode de Render, ambos cwd de la versión nueva,0 de versión anterior.
+-347 archivos de runtime comparados por hash con paquete verificado;0 diferencias.
+  Manifiesto real7ff01d0f0eeddda55d74fed87043ab1910e7586718235e15cc4318bcb2711284.
+- Respaldo final bajo mantenimiento conservado en
+  /Users/agustinobregon/Documents/Render-Backups/2026-10-29-direct-native-E2OjCM
+  Restauración:64 tablas,8187 filas,244 restricciones y46 secuencias coincidentes.
+  release-observation.private.json capturado dentro de la misma transacción
+  exportada que los dumps. No restaura ninguna copia sobre producción.
+- Ejecutor productivo autorizado en curso, alcance41 migraciones y356 vínculos
+  sobre343 tareas; recibo aún pendiente al escribir esta nota. No repetirlo.
+  Alcance/recibos: /private/tmp/render-production-evidence-iBx832/approved-scope
+- Configuración mantiene claves existentes. Rotación de secretos expuestos
+  continúa pendiente; no se realiza de forma automática ni se considera resuelta.
+- Compatibilidad Hostinger: el formulario rechaza valores vacíos y elimina
+  saltos de línea del PEM. Se permite omitir la lista vacía de jobs web y se
+  reconstruye únicamente un certificado público monolínea validado por X509.
+  TLS, CA y hostname continúan verificados;14 pruebas físicas TLS pasaron.
+  Regresión final3480 PASS,0 FAIL,197 SKIP. Código pendiente de reapertura.

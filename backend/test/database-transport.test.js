@@ -2,9 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import tls from 'node:tls';
 import pg from 'pg';
+import {X509Certificate} from 'node:crypto';
 import { buildDatabasePoolConfig, isLoopbackDatabaseUrl } from '../src/database-transport.js';
 
 const remote = 'postgresql://qa_user:qa_unused@db.example.invalid:5433/qa_database';
+test('single-line hosting PEM preserves the exact CA and strict TLS identity checks',()=>{
+  const root=tls.rootCertificates[0],flat=root.replace(/[\r\n]/g,'');
+  const config=buildDatabasePoolConfig({DATABASE_URL:remote,RENDER_DB_CA_PEM:flat});
+  assert.equal(new X509Certificate(config.ssl.ca).fingerprint256,new X509Certificate(root).fingerprint256);
+  assert.equal(config.ssl.rejectUnauthorized,true);assert.equal(config.ssl.minVersion,'TLSv1.2');
+  assert.equal(config.ssl.checkServerIdentity('ignored',{subjectaltname:'DNS:wrong.invalid',subject:{}}).code,'ERR_TLS_CERT_ALTNAME_INVALID');
+  for(const value of [flat+'extra',flat.replace('CERTIFICATE','PRIVATE KEY'),
+    '-----BEGIN CERTIFICATE-----aGVsbG8=-----END CERTIFICATE-----']){
+    assert.throws(()=>buildDatabasePoolConfig({DATABASE_URL:remote,RENDER_DB_CA_PEM:value}));
+  }
+});
 test('missing explicit URL returns no target and cannot resolve ambient PG targets', () => {
   for (const DATABASE_URL of [undefined, '']) assert.equal(buildDatabasePoolConfig({ DATABASE_URL, PGHOST: 'unknown.example.invalid', PGSSLMODE: 'no-verify' }), null);
 });

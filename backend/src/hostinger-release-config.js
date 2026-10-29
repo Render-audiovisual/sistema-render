@@ -22,7 +22,9 @@ export function validateHostingerReleaseConfig(env = {}, { nodeVersion, currentD
   exact('APP_URL', HOSTINGER_RELEASE_ORIGIN);
   exact('RENDER_DB_ENVIRONMENT', 'production');
   exact('SETUP_DEMO_DATA', 'false');
-  exact('RENDER_BACKGROUND_JOBS', '');
+  // Hostinger's form cannot store empty values. Absence has the same closed
+  // startup default as an explicit empty list; nonempty jobs still fail.
+  add('RENDER_BACKGROUND_JOBS', 'required', absent(env.RENDER_BACKGROUND_JOBS) ? 'pass' : 'invalid');
   exact('RENDER_ALLOW_BACKGROUND_WRITES', 'false');
   exact('RENDER_BROWSER_SESSIONS', 'true');
   exact('RENDER_BROWSER_ORIGIN', HOSTINGER_RELEASE_ORIGIN);

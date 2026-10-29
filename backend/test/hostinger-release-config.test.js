@@ -14,6 +14,17 @@ const base = () => ({ NODE_ENV: 'production', APP_URL: 'https://sistema.renderco
   DATABASE_URL: url, JWT_SECRET: secret, RENDER_DB_CA_PEM: rootCertificates[0] });
 const check = (result, name) => result.checks.find(c => c.name === name);
 
+test('Hostinger may omit the empty web-job list without enabling background writes',()=>{
+  const env=base();delete env.RENDER_BACKGROUND_JOBS;
+  const result=validateHostingerReleaseConfig(env,options);
+  assert.equal(result.configurationValid,true);
+  assert.equal(check(result,'RENDER_BACKGROUND_JOBS').status,'pass');
+  assert.equal(result.releaseApproved,false);
+  for(const value of ['editorial','wilson','supervisor','trash','false',' ']){
+    assert.equal(validateHostingerReleaseConfig({...env,RENDER_BACKGROUND_JOBS:value},options).configurationValid,false);
+  }
+});
+
 test('supervisor requires complete explicit scheduled contract; never enables web jobs',()=>{
   const env={...base(),MIA_SUPERVISOR_ENABLED:'true',RENDER_AUTOMATIONS_MODE:'scheduled-v1',
     RENDER_AUTOMATION_JOBS:'editorial,wilson,supervisor',RENDER_AUTOMATION_CONNECTION_MODE:'direct'};

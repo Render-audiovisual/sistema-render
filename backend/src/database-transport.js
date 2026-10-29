@@ -27,6 +27,13 @@ export function isLoopbackDatabaseUrl(value) {
 
 function certificateBundle(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 262144) throw invalid();
+  // A single-line hosting input can remove PEM line breaks. Reconstruct only
+  // one strictly bounded public certificate; X509 parsing and CA validation
+  // below still apply. This never accepts private keys, paths or trust bypasses.
+  if (!/[\r\n]/.test(value)) {
+    const flat = value.trim().match(/^-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=]+)-----END CERTIFICATE-----$/);
+    if (flat) value = `-----BEGIN CERTIFICATE-----\n${flat[1]}\n-----END CERTIFICATE-----`;
+  }
   const pattern = /-----BEGIN CERTIFICATE-----\r?\n[A-Za-z0-9+/=\r\n]+-----END CERTIFICATE-----/g;
   const certificates = value.match(pattern);
   if (!certificates?.length || certificates.length > 16 || value.replace(pattern, '').trim()) throw invalid();

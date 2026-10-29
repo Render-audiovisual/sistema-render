@@ -170,6 +170,12 @@ test('database transport verifies CA and original hostname with actual pg TLS, u
 
   await t.test('trusted explicit CA and matching original hostname complete actual pg TLS/Startup without SQL', () =>
     exercise({ ca: trustedCA, accepts: true }));
+  await t.test('hosting single-line public CA preserves real TLS chain validation', () =>
+    exercise({ ca: trustedCA.replace(/[\r\n]/g,''), accepts: true }));
+  await t.test('hosting single-line public CA does not trust another issuer', () =>
+    exercise({ ca: untrustedCA.replace(/[\r\n]/g,''), accepts: false }));
+  await t.test('hosting single-line public CA still rejects a wrong SAN', () =>
+    exercise({ certificate:'mismatch',ca:trustedCA.replace(/[\r\n]/g,''),accepts:false }));
   await t.test('valid CA bundle can contain another root without disabling identity verification', () =>
     exercise({ ca: `${untrustedCA}\n${trustedCA}`, accepts: true }));
   await t.test('untrusted CA rejects before PostgreSQL Startup', () =>
