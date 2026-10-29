@@ -1,0 +1,50 @@
+RENDER — Automatizaciones programadas (preparación local, no activación)
+
+Contrato
+- La web no inicia trabajos de fondo en producción.
+- Ejecutor: node backend/scripts/run-scheduled-automations.js run
+- El ejecutor debe recibir el mismo entorno privado revisado que la aplicación.
+  No colocar DATABASE_URL ni otros secretos en argumentos o en la línea de cron.
+- Frecuencia prevista: cada cinco minutos; editorial/Wilson se deduplican por
+  hora UTC; supervisor por intervalo de cinco minutos. Wilson conserva viernes
+  y/o día 28 a las 10 de Córdoba. Editorial prepara el próximo mes desde día 28.
+- Un lock de sesión comparte (728194,1) con el control del ejecutor de publicación.
+  Requiere conexión directa o session-pool verificada, nunca transaction-pool.
+- Mantenimiento=true devuelve PAUSED antes de crear conexiones.
+- No inicia migraciones, carga de demostración, limpieza de tareas ni llamadas
+  de razonamiento IA. El supervisor prepara la cola; el envío externo de
+  WhatsApp continúa dependiendo del consumidor y credenciales existentes.
+
+Persistencia y reintentos
+- Checkpoints append-only en integracion_auditoria; sin contenido de tareas,
+  nombres de destinatarios ni importes. No se añade una migración.
+- Solo se registra finalización cuando el adaptador termina correctamente.
+- Wilson registra claim y mensaje en una sola transacción por destinatario.
+- Una caída entre commit de dominio y checkpoint puede repetir el adaptador:
+  depende de la idempotencia de cada dominio, no es garantía exactly-once.
+- Error/BUSY no autoriza reintentos paralelos ni cambio de base.
+
+Puertas para activar en Hostinger
+1. Verificar mecanismo real de tareas programadas del plan y ruta Node24.
+2. Verificar cómo hereda el entorno privado; no asumir que cron recibe las
+   variables de la aplicación Node. Si no lo recibe, resolver antes de activar.
+3. Confirmar destino actual, TLS, esquema migrado y permisos; conservar datos.
+4. Detener/verificar trabajos del runtime antiguo durante mantenimiento;
+   bloquear scheduler nuevo mientras se ejecuta el procedimiento de publicación.
+5. Probar ejecución manual controlada, revisar solo recibos sin secretos y
+   comprobar consumidor de notificaciones sin enviar mensajes QA al equipo.
+6. Activar una sola programación; comprobar primera ejecución y siguiente
+   intervalo. Deshabilitarla antes de cualquier nueva ventana de mantenimiento.
+
+Esta guía no certifica que cron esté disponible, configurado o funcionando en
+Hostinger. La plantilla de entorno no es autorización ni prueba de despliegue.
+
+Inspección de interfaz Hostinger,29 octubre2026 (solo lectura):
+- Cron Jobs ofrece Node.js seleccionado y prefijo generado por el proveedor:
+  /opt/alt/alt-nodejs24/root/bin/node
+  --env-file=/home/u471562620/domains/sistema.rendercorrientes.com/hbuilds/config/.env
+  /home/u471562620/domains/sistema.rendercorrientes.com/hbuilds/current/nodejs/
+- Confirma soporte Node24 y carga explícita de entorno en el formulario.
+- NO confirma todavía existencia de backend/scripts bajo ese prefijo ni una
+  ejecución real: verificar layout de la versión candidata antes de guardar.
+- Formulario sin completar y sin Guardar; ninguna programación creada.

@@ -8,6 +8,7 @@
     "test": "node --test test/*.test.js",
     "qa:core:local": "node scripts/render2-core-acceptance.js",
     "start": "node src/runtime-entrypoint.js",
+    "jobs:run": "node scripts/run-scheduled-automations.js run",
     "db:check": "node src/db-check.js",
     "recover:admin": "node scripts/recover-admin-password.js",
     "migrate": "node scripts/migrate.js",

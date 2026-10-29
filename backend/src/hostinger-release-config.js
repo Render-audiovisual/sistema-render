@@ -1,5 +1,6 @@
 import { buildDatabasePoolConfig } from './database-transport.js';
 import { parseOwnerProfilePolicy } from './owner-profile-authority.js';
+import { resolveScheduledAutomationPolicy } from './scheduled-automation-policy.js';
 
 export const HOSTINGER_RELEASE_ORIGIN = 'https://sistema.rendercorrientes.com';
 const placeholder = /(?:REQUIRED|PRESERVE_EXISTING|REPLACE_ME|CHANGE_ME|PLACEHOLDER|<[^>]*>)/i;
@@ -61,7 +62,17 @@ export function validateHostingerReleaseConfig(env = {}, { nodeVersion, currentD
     || env.NODE_TLS_REJECT_UNAUTHORIZED === '1' ? 'pass' : 'invalid');
   add('PGSSLMODE', 'required', absent(env.PGSSLMODE) || env.PGSSLMODE === 'verify-full' ? 'pass' : 'invalid');
   add('PGSSLNEGOTIATION', 'required', absent(env.PGSSLNEGOTIATION) || env.PGSSLNEGOTIATION === 'postgres' ? 'pass' : 'invalid');
-  for (const name of ['MIA_SUPERVISOR_ENABLED', 'MIA_SUPERVISOR_REASONING_ENABLED', 'TASK_COMPLETED_CLEANUP_ENABLED']) {
+  const automationConfigured = ['RENDER_AUTOMATIONS_MODE','RENDER_AUTOMATION_JOBS','RENDER_AUTOMATION_CONNECTION_MODE']
+    .some(name => !absent(env[name]));
+  let automationPolicy;
+  if (automationConfigured) {
+    try { automationPolicy = resolveScheduledAutomationPolicy(env); } catch { /* Closed configuration only. */ }
+  }
+  add('SCHEDULED_AUTOMATION_CONFIGURATION','required', !automationConfigured ? 'deferred'
+    : automationPolicy && !automationPolicy.paused ? 'pass' : 'invalid');
+  add('MIA_SUPERVISOR_ENABLED','required', absent(env.MIA_SUPERVISOR_ENABLED) || env.MIA_SUPERVISOR_ENABLED === 'false'
+    || (env.MIA_SUPERVISOR_ENABLED === 'true' && automationPolicy?.jobs.includes('supervisor')) ? 'pass' : 'invalid');
+  for (const name of ['MIA_SUPERVISOR_REASONING_ENABLED', 'TASK_COMPLETED_CLEANUP_ENABLED', 'TASK_AUTOMATIC_DELETION_ENABLED']) {
     add(name, 'required', absent(env[name]) || env[name] === 'false' ? 'pass' : 'invalid');
   }
   // Personal email collection is deferred, NOT existing SMTP operation.

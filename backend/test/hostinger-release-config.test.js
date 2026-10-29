@@ -14,6 +14,17 @@ const base = () => ({ NODE_ENV: 'production', APP_URL: 'https://sistema.renderco
   DATABASE_URL: url, JWT_SECRET: secret, RENDER_DB_CA_PEM: rootCertificates[0] });
 const check = (result, name) => result.checks.find(c => c.name === name);
 
+test('supervisor requires complete explicit scheduled contract; never enables web jobs',()=>{
+  const env={...base(),MIA_SUPERVISOR_ENABLED:'true',RENDER_AUTOMATIONS_MODE:'scheduled-v1',
+    RENDER_AUTOMATION_JOBS:'editorial,wilson,supervisor',RENDER_AUTOMATION_CONNECTION_MODE:'direct'};
+  assert.equal(validateHostingerReleaseConfig(env,options).configurationValid,true);
+  for(const patch of [{RENDER_AUTOMATIONS_MODE:''},{RENDER_AUTOMATION_JOBS:'editorial'},
+    {RENDER_BACKGROUND_JOBS:'supervisor'},{RENDER_AUTOMATION_CONNECTION_MODE:'transaction'},
+    {TASK_AUTOMATIC_DELETION_ENABLED:'true'}]){
+    assert.equal(validateHostingerReleaseConfig({...env,...patch},options).configurationValid,false);
+  }
+});
+
 test('release checklist cannot call a production-blocked owner profile mapping ready',()=>{
   const env={...base(),RENDER_OWNER_PROFILES:JSON.stringify({accountId:1,francoUserId:31,agustinUserId:32})};
   const result=validateHostingerReleaseConfig(env,options);

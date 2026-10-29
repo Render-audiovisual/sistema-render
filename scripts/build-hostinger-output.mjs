@@ -162,7 +162,8 @@ export function buildHostingerOutput({sourceRoot=projectRoot,outputRoot=path.joi
   mkdirSync(destination,{recursive:false,mode:0o700});
   for(const relative of inputs)cpSync(path.join(source,relative),path.join(destination,relative),{recursive:true,errorOnExist:true,force:false});
   const rootPackageBytes=JSON.stringify({name:'render-release',private:true,
-    version:rootPackage.version,engines:rootPackage.engines,scripts:{start:'node backend/src/runtime-entrypoint.js'}},null,2)+'\n';
+    version:rootPackage.version,engines:rootPackage.engines,scripts:{start:'node backend/src/runtime-entrypoint.js',
+      'jobs:run':'node backend/scripts/run-scheduled-automations.js run'}},null,2)+'\n';
   writeFileSync(path.join(destination,'package.json'),rootPackageBytes,{flag:'wx'});
   if(installDependencies)install(path.join(destination,'backend'));
   const expected=sorted([...sourceTree,{path:'package.json',type:'file',sha256:hash(rootPackageBytes)}]);

@@ -97,7 +97,7 @@ async function append(pool, conversationId, sender, content, type = "mensaje", m
   return result.rows[0];
 }
 
-async function personalTasks(pool, auth) {
+async function personalTasks(pool, auth, now = new Date()) {
   // Incluso los líderes reciben una cola personal; su permiso global de
   // administración no debe convertir a Wilson en un resumen de todo el equipo.
   const access = buildTaskAccessClause({ ...auth, rol: auth.rol === "admin" ? "personal" : auth.rol }, "t", "$1");
@@ -112,7 +112,8 @@ async function personalTasks(pool, auth) {
        AND t.estado NOT IN ('finalizada','publicada')${access.sql}
      ORDER BY t.fecha_vencimiento NULLS LAST,t.id`, values,
   );
-  const today = localParts().year + "-" + localParts().month + "-" + localParts().day;
+  const parts = localParts(now);
+  const today = `${parts.year}-${parts.month}-${parts.day}`;
   const ranked = rankTaskPriorities(result.rows, { today, limit: 50 });
   const isOriana = auth.rol === "community" || String(auth.nombre || auth.usuario || "").toLowerCase().includes("oriana");
   if (!isOriana) return ranked;
@@ -486,23 +487,73 @@ export function createWilsonChatRouter({ express, pool }) {
   return router;
 }
 
+// One shot, no timers or history cleanup. A committed claim always has its
+// message; failed recipients can be retried without repeating committed ones.
+// Failure exposes counts only, never database errors or recipient information.
+export async function runWilsonScheduledDigest(pool, { now = new Date() } = {}) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new TypeError("Fecha de recordatorio inválida.");
+  const capturedNow = new Date(now.getTime());
+  const trigger = shouldSendWilsonDigest(capturedNow);
+  const result = { due: Boolean(trigger), date: trigger?.date ?? null, type: trigger?.type ?? null, sent: 0, duplicates: 0, skipped: 0, failed: 0 };
+  if (!trigger) return Object.freeze(result);
+  const failure = () => Object.assign(new Error("No se pudieron generar todos los recordatorios programados de Wilson."), {
+    code: "WILSON_DIGEST_FAILED", result: Object.freeze({ ...result }),
+  });
+  let users;
+  try {
+    users = await pool.query("SELECT id FROM usuarios WHERE activo IS TRUE ORDER BY id");
+    if (!Array.isArray(users.rows) || users.rows.some(user => !Number.isSafeInteger(user.id) || user.id <= 0)
+      || new Set(users.rows.map(user => user.id)).size !== users.rows.length) throw new Error("Invalid recipients");
+  } catch { result.failed++; throw failure(); }
+  for (const { id } of users.rows) {
+    let db;
+    let discard;
+    try {
+      db = await pool.connect();
+      await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      const user = (await db.query("SELECT id,usuario,nombre,rol,activo FROM usuarios WHERE id=$1 FOR SHARE", [id])).rows[0];
+      let outcome = "skipped";
+      if (user?.id === id && user.activo === true) {
+        const ranked = await personalTasks(db, user, capturedNow);
+        const tasks = ranked.recommendations.filter(task => !task.blocked && !task.waiting_review).slice(0, 5);
+        if (tasks.length) {
+          const claimed = await db.query(
+            `INSERT INTO wilson_envios_programados(usuario_id,fecha,tipo) VALUES($1,$2,$3)
+             ON CONFLICT(usuario_id,fecha,tipo) DO NOTHING RETURNING usuario_id`, [id, trigger.date, trigger.type],
+          );
+          outcome = "duplicates";
+          if (claimed.rowCount) {
+            const current = await conversation(db, id, wilsonPeriod(capturedNow));
+            if (!current?.id) throw new Error("Missing conversation");
+            const prefix = trigger.type === "semanal_mensual" ? "Cierre semanal y mensual" : trigger.type === "mensual" ? "Cierre del mes" : "Cierre de semana";
+            const message = await append(db, current.id, "wilson", `${prefix}: tenés que priorizar esto:\n${taskSummary(tasks)}\nSi algún registro está mal, decime y lo revisamos.`, "recordatorio", { task_ids: tasks.map(task => task.id) });
+            if (!message?.id) throw new Error("Missing message");
+            outcome = "sent";
+          }
+        }
+      }
+      await db.query("COMMIT");
+      result[outcome]++;
+    } catch {
+      if (db) {
+        try { await db.query("ROLLBACK"); } catch (error) { discard = error; }
+      }
+      result.failed++;
+    } finally { db?.release(discard); }
+  }
+  if (result.failed) throw failure();
+  return Object.freeze(result);
+}
+
 export function scheduleWilsonMessages(pool) {
   let running = false;
   const check = async () => {
     if (running) return;
-    await pool.query(`DELETE FROM wilson_conversaciones WHERE periodo<>$1`, [wilsonPeriod()]);
-    const trigger = shouldSendWilsonDigest(); if (!trigger) return; running = true;
+    running = true;
     try {
-      const users = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre`);
-      for (const user of users.rows) {
-        const claimed = await pool.query(`INSERT INTO wilson_envios_programados(usuario_id,fecha,tipo) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING usuario_id`, [user.id, trigger.date, trigger.type]);
-        if (!claimed.rowCount) continue;
-        const ranked = await personalTasks(pool, user); const tasks = ranked.recommendations.filter((task) => !task.blocked && !task.waiting_review).slice(0, 5);
-        if (!tasks.length) continue;
-        const current = await conversation(pool, user.id);
-        const prefix = trigger.type === "semanal_mensual" ? "Cierre semanal y mensual" : trigger.type === "mensual" ? "Cierre del mes" : "Cierre de semana";
-        await append(pool, current.id, "wilson", `${prefix}: tenés que priorizar esto:\n${taskSummary(tasks)}\nSi algún registro está mal, decime y lo revisamos.`, "recordatorio", { task_ids: tasks.map((task) => task.id) });
-      }
+      await runWilsonScheduledDigest(pool);
+    } catch {
+      console.error("No se pudieron generar los recordatorios programados de Wilson.");
     } finally { running = false; }
   };
   void check(); const timer = setInterval(check, 60 * 60 * 1000); timer.unref?.(); return timer;

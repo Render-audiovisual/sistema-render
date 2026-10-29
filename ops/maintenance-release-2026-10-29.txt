@@ -53,3 +53,35 @@ Puertas aún abiertas, NO certificar publicación lista:
    y permisos comprobados. Validar salud y conservar las nuevas tareas vigentes.
 No hacer push a la rama de despliegue ni activar un build automáticamente para
 atajar estos controles. No restaurar la copia local sobre producción.
+
+Comparación independiente posterior:
+- Git HEAD y producción divergen: base86b6396573d1c0ef39a58a74d3b8d5310e5cc37b;
+  los32 commits exclusivos de producción NO equivalen a32 funciones ausentes.
+  La revisión de los flujos solicitados encontró implementaciones equivalentes
+  y pruebas para WhatsApp, traspaso atómico, cierres, ledger y objetivos.
+- No usar force-push ni merge ours para ocultar la divergencia. La ruta de
+  entrega debe dejar explícita la sustitución/integración revisada.
+- Diferencia sin aceptación cerrada: la nueva política prohíbe activar jobs de
+  fondo en producción. No basta restaurar flags antiguos para reanudar calendario,
+  objetivos, Wilson/supervisor. No desactivar esas funciones silenciosamente.
+- Se consultó al usuario si deben conservarse antes de publicar o si acepta
+  operación manual temporal. Hasta resolverlo, la publicación operativa sigue
+  pendiente; el modo de mantenimiento está implementado solo localmente.
+
+Decisión posterior del usuario y verificación local de automatizaciones:
+- Usuario confirmó conservar calendario/objetivos y supervisor antes de publicar.
+- Se implementó ejecutor one-shot separado de la web, opt-in scheduled-v1,
+  con pausa antes de conexión, TLS estricto, comprobación de esquema y mutex
+  compartido con el ejecutor de actualización. Sin migraciones ni eliminación.
+- Wilson conserva historial y hace claim+mensaje atómicos por usuario estable.
+- Pruebas generales:3478 PASS,0 FAIL,194 SKIP; la primera ejecución restringida
+  falló en4 pruebas por EPERM de sockets; repetición autorizada completa pasó.
+- Pruebas PostgreSQL explícitas runner/Wilson:14 PASS,0 FAIL,0 SKIP.
+  Fixtures desechables locales detenidos/eliminados; sin mensajes externos.
+- Nuevo candidato: /private/tmp/render-automations-release-QaqG2E/app
+  347 archivos fuente,121 dependencias instaladas, manifiesto:
+  08cc7db066a9b07c2fa12be4293c18012c2dee89103557f6cb2d780deff914a5
+- CLI empaquetada help y PAUSED comprobados sin conexión.
+- No se activó cron en Hostinger. Faltan verificar mecanismo disponible y
+  herencia privada del entorno, además de las puertas productivas anteriores.
+  El candidato no constituye publicación ni garantía de envío WhatsApp externo.
