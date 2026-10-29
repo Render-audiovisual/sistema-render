@@ -11,7 +11,7 @@
     "migrate": "node backend/scripts/migrate.js",
     "seed:usuarios": "npm run seed:usuarios --prefix backend",
     "start": "npm start --prefix backend",
-    "start:hostinger": "node backend/src/server.js",
+    "start:hostinger": "node backend/src/runtime-entrypoint.js",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build:hosting": "bash scripts/build-hosting.sh"

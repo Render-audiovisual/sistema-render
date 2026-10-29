@@ -16,7 +16,8 @@ async function fixture(t) {
   for (const [name, contents] of Object.entries({
     'package.json': JSON.stringify({ version: '0.0.0', engines: { node: '>=24 <25' } }),
     'backend/package.json': '{"name":"isolated-release-qa","type":"module","dependencies":{}}', 'backend/package-lock.json': '{}',
-    'backend/src/server.js': '// QA only', 'backend/src/production-release-executor.js': 'export async function executeProductionRelease(){throw Error("QA_STUB_NOT_ACTUAL_EXECUTOR");}',
+    'backend/src/server.js': '// QA only', 'backend/src/runtime-entrypoint.js': '// QA controlled runtime only',
+    'backend/src/production-release-executor.js': 'export async function executeProductionRelease(){throw Error("QA_STUB_NOT_ACTUAL_EXECUTOR");}',
     'backend/scripts/migrate.js': '// QA only', 'backend/migrations/000_qa.sql': 'SELECT 1;', 'shared/qa.js': '// QA only',
     'frontend/dist/index.html': '<script type="module" src="/assets/index-QA.js"></script>', 'frontend/dist/assets/index-QA.js': '// QA only',
   })) await writeFile(path.join(source, name), contents);

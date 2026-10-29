@@ -35,9 +35,9 @@ test("start y Hostinger no encadenan migraciones, instalación ni seeds", () => 
   const backend = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(
     packageJson.scripts["start:hostinger"],
-    "node backend/src/server.js",
+    "node backend/src/runtime-entrypoint.js",
   );
-  assert.equal(backend.scripts.start, "node src/server.js");
+  assert.equal(backend.scripts.start, "node src/runtime-entrypoint.js");
   assert.equal(packageJson.scripts.start, "npm start --prefix backend");
   assert.equal(packageJson.scripts.migrate, "node backend/scripts/migrate.js");
   assert.equal(backend.scripts.migrate, "node scripts/migrate.js");

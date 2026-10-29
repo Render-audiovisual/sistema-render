@@ -155,12 +155,14 @@ export function buildHostingerOutput({sourceRoot=projectRoot,outputRoot=path.joi
     throw new Error('Unsafe release destination.');
   const sourceTree=inputInventory(source),sourcePackage=fileEntry(source,'package.json');
   const sourceFiles=sourceTree.filter(entry=>entry.type==='file');
+  if(!sourceFiles.some(entry=>entry.path==='backend/src/runtime-entrypoint.js'))
+    throw new Error('Verified runtime entrypoint is missing.');
   const rootPackage=JSON.parse(readFileSync(checkedPath(source,'package.json'),'utf8'));
   verifyFrontend(source);
   mkdirSync(destination,{recursive:false,mode:0o700});
   for(const relative of inputs)cpSync(path.join(source,relative),path.join(destination,relative),{recursive:true,errorOnExist:true,force:false});
   const rootPackageBytes=JSON.stringify({name:'render-release',private:true,
-    version:rootPackage.version,engines:rootPackage.engines,scripts:{start:'node backend/src/server.js'}},null,2)+'\n';
+    version:rootPackage.version,engines:rootPackage.engines,scripts:{start:'node backend/src/runtime-entrypoint.js'}},null,2)+'\n';
   writeFileSync(path.join(destination,'package.json'),rootPackageBytes,{flag:'wx'});
   if(installDependencies)install(path.join(destination,'backend'));
   const expected=sorted([...sourceTree,{path:'package.json',type:'file',sha256:hash(rootPackageBytes)}]);

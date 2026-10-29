@@ -102,7 +102,7 @@ test('principal actual startup and explicit CLI: no implicit writes and approved
   await t.test('package entrypoints separate ordinary startup from explicit migration/install/seed', async () => {
     const backend = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
     const root = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
-    assert.equal(backend.scripts.start, 'node src/server.js');
+    assert.equal(backend.scripts.start, 'node src/runtime-entrypoint.js');
     for (const script of [root.scripts.start, root.scripts['start:hostinger']]) {
       assert.equal(typeof script, 'string');
       assert.ok(!/migrat|seed|setup|install/.test(script));

@@ -7,13 +7,19 @@ import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:u
 function fixture(){const root=mkdtempSync(path.join(os.tmpdir(),'render-package-test-')),source=path.join(root,'source');mkdirSync(source);
  for(const dir of ['backend/src','backend/scripts','backend/migrations','shared','frontend/dist/assets'])mkdirSync(path.join(source,dir),{recursive:true});
  for(const [name,text] of Object.entries({'package.json':JSON.stringify({version:'0.1.0',engines:{node:'>=24 <25'}}),'backend/package.json':'{"name":"fixture"}','backend/package-lock.json':'{}','backend/src/server.js':'// synthetic','backend/scripts/migrate.js':'// synthetic','backend/migrations/000.sql':'SELECT 1;','shared/x.js':'// synthetic','frontend/dist/index.html':'<script type="module" src="/assets/index-QA.js"></script>','frontend/dist/assets/index-QA.js':'// synthetic'}))writeFileSync(path.join(source,name),text);
+ writeFileSync(path.join(source,'backend/src/runtime-entrypoint.js'),'// synthetic controlled entrypoint');
  return{root,source,output:path.join(root,'release')};}
+test('package refuses a missing controlled runtime entrypoint before creating output',()=>{
+ const f=fixture();unlinkSync(path.join(f.source,'backend/src/runtime-entrypoint.js'));
+ assert.throws(()=>buildHostingerOutput({sourceRoot:f.source,outputRoot:f.output,installDependencies:false}),/entrypoint is missing/);
+ assert.equal(existsSync(f.output),false);
+});
 test('new package contains canonical inputs, root start contract and manifest without copying DB/env',()=>{
  const f=fixture();writeFileSync(path.join(f.source,'.env'),'secret');const result=buildHostingerOutput({sourceRoot:f.source,outputRoot:f.output,installDependencies:false});
  assert.equal(result.dependenciesInstalled,false);assert.match(result.manifestSha256,/^[0-9a-f]{64}$/);
  assert.equal(existsSync(path.join(f.output,'.env')),false);assert.equal(existsSync(path.join(f.output,'backend/src/server.js')),true);
  assert.equal(readFileSync(path.join(f.output,'shared/x.js'),'utf8'),'// synthetic');
- assert.equal(JSON.parse(readFileSync(path.join(f.output,'package.json'))).scripts.start,'node backend/src/server.js');
+ assert.equal(JSON.parse(readFileSync(path.join(f.output,'package.json'))).scripts.start,'node backend/src/runtime-entrypoint.js');
 });
 test('existing output and symlink never get removed or overwritten',()=>{
  const f=fixture();mkdirSync(f.output);writeFileSync(path.join(f.output,'keep'),'preserve');

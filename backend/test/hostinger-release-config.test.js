@@ -33,6 +33,17 @@ test('explicit shared production mode accepts configuration only, never certifie
   }
 });
 
+test('normal release cannot certify maintenance or disabled startup as an operational application',()=>{
+  for(const name of ['RENDER_MAINTENANCE','RENDER_DISABLE_SERVER_START']){
+    for(const value of ['true','TRUE','1','unexpected']){
+      const result=validateHostingerReleaseConfig({...base(),[name]:value},options);
+      assert.equal(result.configurationValid,false);
+      assert.equal(check(result,name).status,'invalid');
+    }
+    assert.equal(validateHostingerReleaseConfig({...base(),[name]:'false'},options).configurationValid,true);
+  }
+});
+
 test('pure checklist accepts explicit safe configuration, never approves release or mutates inputs', () => {
   const env = Object.freeze(base()), before = { ...env };
   const result = validateHostingerReleaseConfig(env, Object.freeze(options));

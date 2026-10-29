@@ -1,0 +1,55 @@
+PUBLICACIÓN CONTROLADA — AVANCE 29/10/2026
+
+Aplicado en Hostinger:
+- Despliegue automático desactivado y confirmado por el panel.
+- La aplicación sigue corriendo en 43f02707e299293c5b0c2bb6f12386bd4642746b.
+- No se reinició, detuvo ni publicó la aplicación; no se cambió contraseña/base.
+- Evidencia: /private/tmp/render-autodeploy-disabled-20261029.png
+
+Hallazgos operativos:
+- El menú Corriendo ofrece Reiniciar, no Detener.
+- Reiniciar el código antiguo no pausa sus automatizaciones.
+- Consumo observado: 584127/600000 inodos. No se certificó margen suficiente
+  para todo el build. Solo hay una versión bajo hbuilds/versions y es current:
+  01a16755-9dd0-7219-b3e8-0ceb5fdb7d69. No borrar esa carpeta, config, storage,
+  sources o last-source como una supuesta limpieza de versiones antiguas.
+
+Implementado localmente:
+- runtime-entrypoint.js, opt-in exacto RENDER_MAINTENANCE=true.
+- Mantenimiento no importa server.js, db.js ni dotenv; no accede a PostgreSQL.
+- GET/HEAD / y /health confirman mantenimiento; operaciones restantes503.
+- Sin flag, sigue el servidor normal. No hay migraciones automáticas nuevas.
+- Compatible con CLI y require() de Node24, sin top-level await.
+- Los scripts start y el empaquetador usan el nuevo punto de entrada.
+- La validación de operación normal rechaza mantenimiento o arranque desactivado.
+
+Verificado:
+- Backend:3405 PASS,0 FAIL,194 SKIP; omitidas no se certifican.
+- Integración real de arranque y migraciones explícitas en copia aislada:
+  13 PASS,0 FAIL,0 SKIP.
+- Pruebas específicas de runtime:43 PASS; empaquetado/configuración también pasan.
+- Artefacto instalado arrancó sin configuración de base, health maintenance200
+  y POST/api/tareas503. Servidor de prueba cerrado después de la comprobación.
+- Paquete nuevo: /private/tmp/render-maintenance-release-8efDcQ/app
+- release-manifest SHA256:
+  0eea6963b9787111860a5d41ee91c2ad2154ccacd82a4091551b53748cbac933
+- Este paquete reemplaza como candidato al manifiesto1612974..., no lo sobrescribe.
+
+Puertas aún abiertas, NO certificar publicación lista:
+1. Elegir/verificar ruta de entrega en Hostinger. El artefacto empaquetado tiene
+   start pero no build; NO cargarlo como raíz y conservar npm run build sin
+   cambiar el contrato. Desplegar desde el código fuente con build completo o
+   configurar explícitamente la entrega preconstruida; probar el contrato elegido.
+2. Verificar configuración real y preservar JWT, integraciones y datos persistentes.
+3. Publicar mantenimiento de manera deliberada; comprobar el reemplazo del
+   proceso anterior y el bloqueo de rutas entrantes, no solo que exista un flag.
+4. Capturar/restaurar respaldo de esa ventana y observación privada vigente:
+   identidad, snapshot de datos/seguridad,58 migraciones y universo actual de tareas.
+5. Preparar alcance exacto y aprobación de un solo uso para el ejecutor probado.
+6. Aplicar41 migraciones/asignaciones por IDs en transacción verificada;
+   provisión de perfiles en transacción separada revisada y con recibo propio.
+7. Contraseña solo mediante intervención del usuario coordinada con Hostinger.
+8. Desactivar mantenimiento únicamente con migraciones, asignaciones, configuración
+   y permisos comprobados. Validar salud y conservar las nuevas tareas vigentes.
+No hacer push a la rama de despliegue ni activar un build automáticamente para
+atajar estos controles. No restaurar la copia local sobre producción.

@@ -26,6 +26,9 @@ export function validateHostingerReleaseConfig(env = {}, { nodeVersion, currentD
   exact('RENDER_BROWSER_SESSIONS', 'true');
   exact('RENDER_BROWSER_ORIGIN', HOSTINGER_RELEASE_ORIGIN);
   exact('RENDER_BROWSER_ALLOW_LOCAL_HTTP', 'false');
+  for (const name of ['RENDER_MAINTENANCE', 'RENDER_DISABLE_SERVER_START']) {
+    add(name, 'required', absent(env[name]) || env[name] === 'false' ? 'pass' : 'invalid');
+  }
   let ownerProfilesStatus='deferred';
   if (!absent(env.RENDER_OWNER_PROFILES)) {
     try { parseOwnerProfilePolicy(env);ownerProfilesStatus='pass'; }
