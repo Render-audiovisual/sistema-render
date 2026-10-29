@@ -85,3 +85,9 @@ Decisión posterior del usuario y verificación local de automatizaciones:
 - No se activó cron en Hostinger. Faltan verificar mecanismo disponible y
   herencia privada del entorno, además de las puertas productivas anteriores.
   El candidato no constituye publicación ni garantía de envío WhatsApp externo.
+- Inspección Hostinger solo lectura confirmó formulario Cron Node24 con
+  --env-file del entorno del sitio. No se guardó una tarea; falta comprobar
+  layout bajo current/nodejs y la ejecución real con el paquete publicado.
+- Ensayo adicional de dominios PostgreSQL por agente:3 PASS,0 FAIL,0 SKIP,
+  calendario/cuotas y cola del supervisor sin duplicados; cero llamadas externas.
+- Commit local de implementación: a9d8093. Sin push ni despliegue.
