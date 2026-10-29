@@ -57,6 +57,9 @@ export function buildDatabasePoolConfig(env = {}) {
   const { password, ...connection } = parsed;
   return {
     ...connection,
+    // Supabase includes extensions in its role default. Principal queries and
+    // startup checks require public only; do not inherit ambient PGOPTIONS.
+    options: '-c search_path=public',
     // A supplied function prevents pg from falling back to PGPASSWORD/.pgpass
     // when this explicit URL intentionally carries an empty password.
     password: () => password,

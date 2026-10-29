@@ -6,6 +6,11 @@ import {X509Certificate} from 'node:crypto';
 import { buildDatabasePoolConfig, isLoopbackDatabaseUrl } from '../src/database-transport.js';
 
 const remote = 'postgresql://qa_user:qa_unused@db.example.invalid:5433/qa_database';
+test('every explicit connection pins public instead of inherited schema options',()=>{
+  for(const DATABASE_URL of [remote,'postgresql://qa@127.0.0.1/qa']){
+    assert.equal(buildDatabasePoolConfig({DATABASE_URL,PGOPTIONS:'-c search_path=untrusted'}).options,'-c search_path=public');
+  }
+});
 test('single-line hosting PEM preserves the exact CA and strict TLS identity checks',()=>{
   const root=tls.rootCertificates[0],flat=root.replace(/[\r\n]/g,'');
   const config=buildDatabasePoolConfig({DATABASE_URL:remote,RENDER_DB_CA_PEM:flat});
