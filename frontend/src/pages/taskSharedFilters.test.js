@@ -10,7 +10,7 @@ import postcss from 'postcss';
 // from git at runtime. CSS/AST/SSR only, not mounted/native select acceptance.
 const filters = [
   ['Estado', `aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => changeTaskStatus(event.target.value)}`,
-    `{taskStatus !== "all" && !STATUSES.some(item=>item.id===taskStatus) && <option value={taskStatus} disabled>Estado no válido</option>}<option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}`],
+    `{taskStatus !== "all" && !STATUSES.some(item=>item.id===taskStatus) && <option value={taskStatus} disabled>Estado no válido</option>}<option value="all">Todos</option>{STATUSES.filter(item => item.id !== "finalizada").map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}`],
   ['Área', `aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}`,
     `<option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}`],
   ['Responsable', `aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}`,

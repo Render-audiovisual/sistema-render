@@ -338,13 +338,15 @@ test("Reportes prioriza rendimiento y conserva una barra de avance accesible", (
   assert.doesNotMatch(reportesSource, /OBJETIVOS_MENSUALES_EQUIPO/);
 });
 
-test("Tareas conserva únicamente Papelera como acción secundaria", () => {
+test("Tareas muestra solo trabajo activo sin accesos a archivo ni papelera", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.doesNotMatch(workspaceSource, /Ver archivadas/);
   assert.doesNotMatch(workspaceSource, />Archivar</);
   assert.match(workspaceSource, /10 días/);
-  assert.match(workspaceSource, /Volver a tareas activas/);
+  assert.doesNotMatch(workspaceSource, /Volver a tareas activas|>Papelera<\/button>/);
+  assert.match(workspaceSource, /WORKING_BOARD_COLUMNS as BOARD_COLUMNS/);
+  assert.match(workspaceSource, /workOnly: true/);
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
   assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);
   assert.match(workspaceStyles, /\.ros-board-four\{display:block;grid-template-columns:none/);

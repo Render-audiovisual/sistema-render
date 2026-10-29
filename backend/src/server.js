@@ -109,6 +109,7 @@ import { createMoodboardsRouter } from "./moodboards.js";
 import { createTaskBoardOrderRouter } from './task-board-order.js';
 import { parseTaskOrderRead, readTaskBoardPage } from './task-board-page.js';
 import { parseTaskReviewRead, parseTaskStateRead, buildTaskReviewClause, effectiveTaskStateSql, readTaskReviewPage } from './task-review-query.js';
+import { workingTaskReadClause } from './task-working-set.js';
 import { createClientGoalsRouter, reconcileMonthlyGoals } from "./client-goals.js";
 import {
   getStateNotification,
@@ -2278,6 +2279,7 @@ router.get("/tareas", async (req, res, next) => {
     const orderRead = parseTaskOrderRead(req.query);
     const reviewRead = parseTaskReviewRead(req.query);
     const taskStates = parseTaskStateRead(req.query.estado);
+    const workingTaskClause = workingTaskReadClause(req.query);
     if (reviewRead?.scope === 'team' && req.auth.rol !== 'admin') {
       return res.status(403).json({ error: 'La cola de revisión del equipo requiere administración.' });
     }
@@ -2439,6 +2441,7 @@ router.get("/tareas", async (req, res, next) => {
       params.push(taskStates);
       paramCount++;
     }
+    query += workingTaskClause;
 
     for (const term of getTaskSearchTerms(q)) {
       query += ` AND CONCAT_WS(' ',

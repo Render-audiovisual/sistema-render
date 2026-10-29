@@ -16,6 +16,7 @@ export const BOARD_COLUMNS = [
 ];
 
 // Read-only compatibility projection. Never mutate historical DTOs or write this alias.
+export const WORKING_BOARD_COLUMNS = BOARD_COLUMNS.filter(column => column.id !== 'finalizadas');
 export const canonicalTaskState = (state) => state === "publicada" ? "finalizada" : state;
 export const isTaskCompleted = (task) => canonicalTaskState(task?.estado) === "finalizada";
 

@@ -6,6 +6,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getTaskViewState, updateTaskViewUrl, taskQueryNotice, effectiveTaskFilterState, taskMatchesReviewScope } from '../features/render-os/utils/task-view-state.js';
 import { buildTaskPageUrl, apiTaskPage } from '../features/render-os/services/render-os-api.js';
+import { isWorkingTask } from '../features/render-os/utils/working-task-view.js';
 import { homeReviewTaskHref } from './personalHome.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { STATUSES } from '../features/render-os/constants.js';
@@ -159,7 +160,7 @@ test('actual approve callback removes a row from effective queue and invalidates
  assert.equal(f.writes.length,1);assert.equal(JSON.parse(f.writes[0].options.body).expected_revision,1);assert.equal(f.deps.reviewPageRef.current,null);
  assert.equal(f.state.total,2);assert.equal(f.state.effects.includes('total'),false);assert.ok(f.state.effects.some(value=>value[0]==='PagingBlocked'&&value[1]===true));
  const visibleInit=nodes(owner('TasksView'),n=>ts.isVariableDeclaration(n)&&n.name.getText(ast)==='visible')[0].initializer.arguments[0];
- const visible=evaluate(visibleInit,{tasks:f.state.tasks,archiveMode:'active',taskStatus:'en_revision',reviewScope:'personal',sesion:f.deps.sesion,area:'all',responsible:'all',client:'all',sector:'all',priority:'all',query:'',effectiveTaskFilterState,taskMatchesReviewScope,taskMatchesResponsible})();
+ const visible=evaluate(visibleInit,{isWorkingTask,tasks:f.state.tasks,archiveMode:'active',taskStatus:'en_revision',reviewScope:'personal',sesion:f.deps.sesion,area:'all',responsible:'all',client:'all',sector:'all',priority:'all',query:'',effectiveTaskFilterState,taskMatchesReviewScope,taskMatchesResponsible})();
  assert.deepEqual(visible,[]);await f.more();assert.equal(f.state.requests.length,0);assert.equal(f.writes.length,1);
 });
 

@@ -34,6 +34,7 @@ export function buildTaskPageUrl(options = {}) {
     throw new Error("Paginación de tareas no válida.");
   }
   const params = new URLSearchParams({ workspace: "render_os", limit: String(limit), offset: String(offset) });
+  if (settings.workOnly === true) params.set('trabajo_pendiente', 'true');
   const reviewScope = settings.reviewScope ?? '', status = settings.status ?? (reviewScope ? 'en_revision' : 'all');
   // This validates query shape only. The server independently verifies scope.
   const notice = taskQueryNotice({status,reviewScope,sort:settings.sort??'date',archiveMode:settings.archiveMode??'active'});
