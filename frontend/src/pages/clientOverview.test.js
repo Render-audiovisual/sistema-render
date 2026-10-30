@@ -19,6 +19,13 @@ const monthlyCode = ts.transpileModule(monthlyDeclarations.map(node => node.getT
 const monthly = Function('React', 'instagramMonthlyGroupObservation', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, ...Object.values(clientStats));
 const monthClient = { id: 1, nombre: 'Cliente QA', activo: true, cuota_reels: 4, cuota_carruseles: 2 };
 const monthPiece = (id, extra = {}) => ({ id, cliente_id: 1, tipo: 'reel', estado: 'publicada', fecha_programada: '2026-10-05', ...extra });
+test('client cards offer named edit actions only when authorized by the parent and display stored logos',()=>{
+ const props={clients:[{...monthClient,logo:'data:image/png;base64,QA'}],publicaciones:[],period:'2026-10'};
+ const plain=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,props));
+ assert.doesNotMatch(plain,/client-card-edit/);assert.match(plain,/<img/);
+ const editable=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{...props,onEdit:()=>{}}));
+ assert.match(editable,/aria-label="Editar Cliente QA"/);
+});
 function observation(clientId=1, posts=[]) {
   return {version:1,period:'2026-10',clientId,handle:'public_test',totalPosts:posts.length,checkedAt:'2026-10-29T15:00:00Z',boundaryVerified:true,posts,
     boundary:[1,2,3].map(id=>({url:`https://www.instagram.com/p/Before${id}/`,publishedAt:'2026-09-30T15:00:00Z'}))};

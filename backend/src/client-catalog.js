@@ -18,7 +18,8 @@ export const CLIENT_CATALOG_SQL = `
     (cfg.id IS NOT NULL) AS configuracion_completa,c.grupo_feed_id,gf.nombre AS grupo_feed_nombre,
     gf.cuota_reels AS cuota_feed_reels,gf.cuota_carruseles AS cuota_feed_carruseles,
     (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida,
-    instagram_observation.detalles AS instagram_monthly_observation
+    instagram_observation.detalles AS instagram_monthly_observation,
+    branding.detalles->>'logo' AS logo
   FROM clientes c
   LEFT JOIN LATERAL (
     SELECT cc.* FROM cliente_configuraciones cc
@@ -31,6 +32,12 @@ export const CLIENT_CATALOG_SQL = `
     ORDER BY ca.vigente_desde DESC LIMIT 1
   ) abono ON TRUE
   LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
+  LEFT JOIN LATERAL (
+    SELECT ia.detalles FROM integracion_auditoria ia
+    WHERE ia.integracion='client_branding' AND ia.canal='web' AND ia.accion='logo_updated'
+      AND ia.resultado='ok' AND ia.detalles->>'clientId'=c.id::text
+    ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+  ) branding ON TRUE
   LEFT JOIN LATERAL (
     SELECT ia.detalles FROM integracion_auditoria ia
     WHERE ia.integracion='instagram_manual_review' AND ia.canal='web'

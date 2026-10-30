@@ -16,6 +16,7 @@ import { useGoalDraftMemory } from '../components/GoalDraftMemoryProvider.jsx';
 import { resolveGoalDraftPiece } from '../shared/navigation/goalDraftMemory.js';
 import { createClientOverviewLoader } from './clientOverview.js';
 import { ClientMonthlyProgressList } from './Clientes.jsx';
+import { ClientCardEditor } from '../components/ClientCardEditor.jsx';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
@@ -106,6 +107,7 @@ export function ClientesObjetivosPage({ sesion }) {
 }
 
 function ClientMonthlyOverviewPage({sesion}) {
+  const [editingIds,setEditingIds]=useState(null);
   const initial = useRef(null);
   if (!initial.current) {
     try { initial.current={period:goalPeriod(window.location.search),advanced:parseGoalClientId(window.location.search)!==null||new URLSearchParams(window.location.search).has('borrador'),error:''}; }
@@ -139,7 +141,8 @@ function ClientMonthlyOverviewPage({sesion}) {
   };
   return <main className="client-goals client-monthly-page" aria-label="Clientes"><div className="frame"><div className="content cg-content">
     <header className="client-monthly-header"><h1>Clientes</h1><label>Mes<input aria-label="Mes de clientes" type="month" value={period} onChange={event=>changePeriod(event.target.value)}/></label></header>
-    {loading?<PageState title="Cargando clientes…"/>:locationError||error?<PageState type="error" title={locationError||error} onRetry={load}/>:result?.period===period&&<ClientMonthlyProgressList clients={result.clientes} publicaciones={result.publicaciones} period={period}/>}
+    {loading?<PageState title="Cargando clientes…"/>:locationError||error?<PageState type="error" title={locationError||error} onRetry={load}/>:result?.period===period&&<ClientMonthlyProgressList clients={result.clientes} publicaciones={result.publicaciones} period={period} onEdit={view.session?.usuario?.rol==='admin'?setEditingIds:undefined}/>}
+    {editingIds&&result?.period===period&&<ClientCardEditor clients={result.clientes.filter(item=>editingIds.includes(item.id))} period={period} session={view.session} onClose={()=>setEditingIds(null)} onSaved={async()=>{setEditingIds(null);await load();}}/>}
   </div></div></main>;
 }
 

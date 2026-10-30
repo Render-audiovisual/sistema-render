@@ -101,6 +101,7 @@ import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google
 import { createPublicationDispatchRouter } from "./publication-dispatch.js";
 import { createPersonalListsRouter } from "./personal-lists.js";
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
+import { validateClientLogo, saveClientLogo } from './client-branding.js';
 import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
@@ -1309,6 +1310,8 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
+    const changesLogo = Object.hasOwn(req.body, 'logo');
+    const logo = changesLogo ? validateClientLogo(req.body.logo) : undefined;
     const {
       nombre,
       activo,
@@ -1394,6 +1397,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
         id,
       ],
     );
+    if (changesLogo) await saveClientLogo(client, req.auth, id, logo);
     const result = await client.query(
       `SELECT
          c.id,
@@ -1414,7 +1418,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
       [id],
     );
     await client.query("COMMIT");
-    res.json(result.rows[0]);
+    res.json({...result.rows[0], ...(changesLogo ? {logo} : {})});
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.status) return res.status(error.status).json({error:error.message,code:error.code});

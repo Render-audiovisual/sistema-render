@@ -45,7 +45,7 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
       .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
     return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
       memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
-      observation,
+      observation, logo: first.logo || null,
       reels:{count:observation ? observation.reels : first.reelsPublicados,historicalCount:observation ? 0 : first.reelsSinConfirmacion,quota:quota(getCuotaReelsMensual)},
       carruseles:{count:observation ? observation.carruseles : first.carruselesPublicados,historicalCount:observation ? 0 : first.carruselesSinConfirmacion,quota:quota(getCuotaCarruselesMensual)}, noActivity:observation ? observation.totalPosts===0 : publications.length===0};
   });
@@ -60,11 +60,12 @@ function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
       aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
       aria-valuetext={known?`${total} de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
 }
-export function ClientMonthlyProgressList({clients,publicaciones,period}) {
+export function ClientMonthlyProgressList({clients,publicaciones,period,onEdit}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
-      <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
+      {onEdit && <button type="button" className="client-card-edit" aria-label={`Editar ${row.name}`} onClick={()=>onEdit(row.clientIds)}>✎</button>}
+      <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.logo ? <img src={row.logo} alt=""/> : row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
       <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/>
     </li>)}</ul>}
   </section>;
