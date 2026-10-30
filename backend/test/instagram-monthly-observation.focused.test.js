@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInstagramMonthlyObservation as validate } from '../../shared/instagram-monthly-observation.mjs';
+import { validateInstagramMonthlyObservation as validate, instagramMonthlyGroupObservation as group } from '../../shared/instagram-monthly-observation.mjs';
 import { loadClientCatalogSnapshot, CLIENT_CATALOG_SQL } from '../src/client-catalog.js';
 
 const post = {url:'https://www.instagram.com/reel/October1/',kind:'reel',publishedAt:'2026-10-01T03:00:00Z'};
@@ -34,4 +34,17 @@ test('catalog attaches only validated public evidence after DTO in same readonly
     if(rol==='edicion') assert.equal(Object.hasOwn(result[0],'abono_mensual'),false);
   }
   assert.match(CLIENT_CATALOG_SQL,/ia\.canal='web'/); assert.match(CLIENT_CATALOG_SQL,/ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1/);
+});
+test('owner confirms Render attribution without altering observed profile posts', () => {
+  const posts=Array.from({length:11},(_,i)=>({...post,url:`https://www.instagram.com/reel/Video${i}/`}));
+  posts.push({...post,url:'https://www.instagram.com/p/Carousel1/',kind:'carrusel'});
+  const s={...snapshot(),posts,totalPosts:12,agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-30T01:00:00Z',reels:3,carruseles:1,carouselUrls:['https://www.instagram.com/p/Carousel1/'],private:'canary'}};
+  const before=JSON.stringify(s), clean=validate(s);
+  assert.equal(clean.posts.length,12);assert.equal(clean.agencyAttribution.reels,3);assert.equal(clean.agencyAttribution.private,undefined);
+  const summary=group([{id:19,instagram_monthly_observation:s}],'2026-10');
+  assert.equal(summary.reels,3);assert.equal(summary.carruseles,1);assert.equal(summary.profileReels,11);assert.equal(summary.agencyConfirmed,true);
+  assert.equal(JSON.stringify(s),before);
+  for(const change of [{source:'instagram'}, {reels:12},{carruseles:2},{carouselUrls:['https://evil.test/p/Carousel1/']},{confirmedAt:'invalid'}])
+    assert.equal(validate({...s,agencyAttribution:{...s.agencyAttribution,...change}}),null);
+  assert.equal(group([{id:19,instagram_monthly_observation:s},{id:20,instagram_monthly_observation:{...s,clientId:20}}],'2026-10'),null);
 });

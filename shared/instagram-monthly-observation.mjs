@@ -46,14 +46,33 @@ export function validateInstagramMonthlyObservation(value, { clientId, period } 
     boundary.push({ url: `https://www.instagram.com/p/${code}/`, publishedAt: new Date(time).toISOString() });
   }
   if (value.totalPosts !== posts.length || checked < start) return null;
-  return { version: 1, period: value.period, clientId: value.clientId, handle: value.handle, totalPosts: posts.length,
+  const result = { version: 1, period: value.period, clientId: value.clientId, handle: value.handle, totalPosts: posts.length,
     checkedAt: new Date(checked).toISOString(), boundaryVerified: true, posts, boundary };
+  if (value.agencyAttribution !== undefined) {
+    const a = value.agencyAttribution;
+    if (!a || a.source !== 'owner_confirmation' || !instant(a.confirmedAt) || Date.parse(a.confirmedAt) < checked
+      || !Number.isSafeInteger(a.reels) || a.reels < 0 || a.reels > posts.filter(p=>p.kind==='reel').length
+      || !Number.isSafeInteger(a.carruseles) || a.carruseles < 0 || a.carruseles > posts.filter(p=>p.kind==='carrusel').length
+      || !Array.isArray(a.carouselUrls) || new Set(a.carouselUrls.map(instagramShortcode)).size !== a.carruseles
+      || a.carouselUrls.length !== a.carruseles || a.carouselUrls.some(url=>!posts.some(p=>p.kind==='carrusel'&&instagramShortcode(p.url)===instagramShortcode(url)))) return null;
+    result.agencyAttribution = { source:a.source, confirmedAt:new Date(a.confirmedAt).toISOString(), reels:a.reels,
+      carruseles:a.carruseles, carouselUrls:a.carouselUrls.map(url=>`https://www.instagram.com/p/${instagramShortcode(url)}/`) };
+  }
+  return result;
 }
 
 export function instagramMonthlyGroupObservation(clients, period) {
   if (!clients.length) return null;
   const snapshots = clients.map(client => validateInstagramMonthlyObservation(client.instagram_monthly_observation, { clientId: client.id, period }));
   if (snapshots.some(snapshot => !snapshot)) return null;
+  if (snapshots.some(s=>s.agencyAttribution)) {
+    // Aggregate attestations cannot identify which shared/collab videos overlap.
+    // Do not guess union membership or silently count another feed's work.
+    if(snapshots.length!==1) return null;
+    const s=snapshots[0],a=s.agencyAttribution;
+    return { reels:a.reels,carruseles:a.carruseles,totalPosts:a.reels+a.carruseles,checkedAt:a.confirmedAt,
+      agencyConfirmed:true,profileReels:s.posts.filter(p=>p.kind==='reel').length,profileCarruseles:s.posts.filter(p=>p.kind==='carrusel').length };
+  }
   const posts = new Map();
   for (const snapshot of snapshots) for (const post of snapshot.posts) {
     const code = instagramShortcode(post.url), prior = posts.get(code);

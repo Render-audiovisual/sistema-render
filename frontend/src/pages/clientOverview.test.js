@@ -43,6 +43,15 @@ test('shared evidence requires all members and unions collab shortcodes with one
   clients[1].instagram_monthly_observation=undefined;
   assert.equal(monthly.clientMonthlyProgressRows(clients,[monthPiece(1)],'2026-10')[0].observation,null);
 });
+test('owner attribution displays Render 3/4 reels and 1/2 carousels, keeping profile totals separate',()=>{
+ const posts=Array.from({length:11},(_,i)=>({url:`https://www.instagram.com/reel/Video${i}/`,kind:'reel',publishedAt:'2026-10-05T15:00:00Z'}));
+ posts.push({url:'https://www.instagram.com/p/Carousel1/',kind:'carrusel',publishedAt:'2026-10-08T15:00:00Z'});
+ const snapshot={...observation(1,posts),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-30T01:00:00Z',reels:3,carruseles:1,carouselUrls:['https://www.instagram.com/p/Carousel1/']}};
+ const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[{...monthClient,instagram_monthly_observation:snapshot}],publicaciones:[],period:'2026-10'}));
+ assert.match(html,/Hecho por Render/);assert.match(html,/confirmado por dirección/);
+ assert.match(html,/3 \/ 4/);assert.match(html,/1 \/ 2/);assert.match(html,/Faltan 1 reels/);assert.match(html,/Faltan 1 carruseles/);
+ assert.match(html,/Total del perfil: 11 reels y 1 carruseles/);assert.doesNotMatch(html,/3 verificadas en Instagram/);
+});
 function confirmedMonthPiece(id, extra = {}) {
   return monthPiece(id, { 'fecha_publicación_real': '2026-11-01T12:00:00Z', publicacion_evidencia: {
     classification: 'confirmada_manualmente', revision: 1,

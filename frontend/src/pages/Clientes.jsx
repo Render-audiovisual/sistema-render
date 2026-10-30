@@ -51,24 +51,25 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
-function ClientMonthlyFormatBar({label,count,historicalCount=0,quota,observed=false}) {
+function ClientMonthlyFormatBar({label,count,historicalCount=0,quota,observed=false,agencyConfirmed=false}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
   const total = count + historicalCount;
   const percent = known ? Math.min(100, total / quota * 100) : 0;
-  return <div className="client-monthly-format" title={observed ? 'Verificado en Instagram mediante revisión pública manual' : `${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
+  return <div className="client-monthly-format" title={agencyConfirmed ? "Contenido de Render confirmado por dirección" : observed ? 'Verificado en Instagram mediante revisión pública manual' : `${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
     <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: contenido registrado`:undefined}
       aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
-      aria-valuetext={known?(observed ? `${total} verificadas en Instagram de ${quota}` : `${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`):undefined}><span style={{width:`${percent}%`}} /></div>{observed && known && <small>Faltan {Math.max(0,quota-total)} {label.toLowerCase()}</small>}</div>;
+      aria-valuetext={known?(agencyConfirmed ? `${total} confirmadas por dirección de ${quota}` : observed ? `${total} verificadas en Instagram de ${quota}` : `${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`):undefined}><span style={{width:`${percent}%`}} /></div>{observed && known && <small>Faltan {Math.max(0,quota-total)} {label.toLowerCase()}</small>}</div>;
 }
 export function ClientMonthlyProgressList({clients,publicaciones,period}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
       <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
-      {row.observation && <small>Verificado en Instagram · {new Date(row.observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})}</small>}
-      <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)}/>
+      {row.observation && <small>{row.observation.agencyConfirmed ? 'Hecho por Render · confirmado por dirección' : 'Verificado en Instagram'} · {new Date(row.observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires',hour12:false})}</small>}
+      {row.observation?.agencyConfirmed && <small>Total del perfil: {row.observation.profileReels} reels y {row.observation.profileCarruseles} carruseles. No todo corresponde a Render.</small>}
+      <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/>
     </li>)}</ul>}
-    <p className="client-monthly-evidence">Las tarjetas verificadas muestran el relevamiento de Instagram a la fecha indicada. Las demás muestran registros internos, sin confirmar su publicación.</p>
+    <p className="client-monthly-evidence">Las confirmaciones de dirección distinguen el trabajo de Render del total del perfil. Las tarjetas verificadas muestran el relevamiento de Instagram a la fecha indicada. Las demás muestran registros internos, sin confirmar su publicación.</p>
   </section>;
 }
 
@@ -97,7 +98,7 @@ function getClienteInicial(nombre = "") {
   return nombre.trim().charAt(0).toUpperCase() || "C";
 }
 
-export function ClienteCuotaResumen({ etiqueta, publicados, cuota, observed=false }) {
+export function ClienteCuotaResumen({ etiqueta, publicados, cuota, observed=false, agencyConfirmed=false }) {
   const cuotaNumero = Number(cuota) || 0;
   const porcentaje = calcularPorcentajeCuota(publicados, cuotaNumero);
   return (
@@ -115,7 +116,7 @@ export function ClienteCuotaResumen({ etiqueta, publicados, cuota, observed=fals
           <div className="cliente-quota-progress" aria-label={`${porcentaje}% de la cuota de ${etiqueta}`}>
             <span style={{ width: `${Math.min(porcentaje, 100)}%` }} />
           </div>
-          <small>{observed ? `${publicados} verificados en Instagram · Faltan ${cuotaNumero - Math.min(publicados, cuotaNumero)}` : `${publicados} confirmados · ${cuotaNumero - Math.min(publicados, cuotaNumero)} sin confirmar`}</small>
+          <small>{agencyConfirmed ? `${publicados} de Render confirmados por dirección · Faltan ${cuotaNumero - Math.min(publicados, cuotaNumero)}` : observed ? `${publicados} verificados en Instagram · Faltan ${cuotaNumero - Math.min(publicados, cuotaNumero)}` : `${publicados} confirmados · ${cuotaNumero - Math.min(publicados, cuotaNumero)} sin confirmar`}</small>
         </>
       )}
       {cuotaNumero === 0 && <small>Este formato no forma parte del acuerdo mensual.</small>}
@@ -509,7 +510,7 @@ function ClientesAdminContent({ sesion }) {
                         {hasNoConfiguredMonthlyAgreement(cliente) ? <strong>Sin cuota mensual</strong> : <>
                         {sharedFollower ? <small>Avance incluido en la cuota compartida · {cliente.grupo_feed_nombre}</small> : <>
                         <strong>{publicadas} de {comprometidas} {observation ? 'observados / confirmados' : 'confirmados'}</strong>
-                        {observation && <small>Verificado en Instagram · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
+                        {observation && <small>{observation.agencyConfirmed ? "Hecho por Render · confirmado por dirección" : "Verificado en Instagram"} · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
                         {observation && <small>Faltan {Math.max(0,cuotaReels-observation.reels)} reels · {Math.max(0,cuotaCarruseles-observation.carruseles)} carruseles</small>}
                         {!observation && cliente.totalSinConfirmacion > 0 && <small>{cliente.totalSinConfirmacion} registros históricos sin confirmar</small>}
                         <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
@@ -550,7 +551,7 @@ function ClientesAdminContent({ sesion }) {
                         {hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin acuerdo mensual configurado' : cliente.estadoGeneral.label}
                       </span>
                     </div>
-                    {observation && <small>Verificado en Instagram · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
+                    {observation && <small>{observation.agencyConfirmed ? "Hecho por Render · confirmado por dirección" : "Verificado en Instagram"} · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
                     {sharedFollower && <small>Avance incluido en la cuota compartida · {cliente.grupo_feed_nombre}</small>}
                     {!sharedFollower && !hasNoConfiguredMonthlyAgreement(cliente) && <div className="cliente-mobile-quotas">
                       {cliente.feedCompartido ? (
@@ -558,13 +559,13 @@ function ClientesAdminContent({ sesion }) {
                           <ClienteCuotaResumen
                             etiqueta={`Reels compartidos · ${cliente.grupo_feed_nombre}`}
                             publicados={cliente.reelsPublicados}
-                            observed={Boolean(observation)}
+                            observed={Boolean(observation)} agencyConfirmed={observation?.agencyConfirmed===true}
                             cuota={cliente.cuota_feed_reels}
                           />
                           <ClienteCuotaResumen
                             etiqueta={`Carruseles compartidos · ${cliente.grupo_feed_nombre}`}
                             publicados={cliente.carruselesPublicados}
-                            observed={Boolean(observation)}
+                            observed={Boolean(observation)} agencyConfirmed={observation?.agencyConfirmed===true}
                             cuota={cliente.cuota_feed_carruseles}
                           />
                         </>
@@ -573,13 +574,13 @@ function ClientesAdminContent({ sesion }) {
                           <ClienteCuotaResumen
                             etiqueta="Reels"
                             publicados={cliente.reelsPublicados}
-                            observed={Boolean(observation)}
+                            observed={Boolean(observation)} agencyConfirmed={observation?.agencyConfirmed===true}
                             cuota={cliente.cuota_reels}
                           />
                           <ClienteCuotaResumen
                             etiqueta="Carruseles"
                             publicados={cliente.carruselesPublicados}
-                            observed={Boolean(observation)}
+                            observed={Boolean(observation)} agencyConfirmed={observation?.agencyConfirmed===true}
                             cuota={cliente.cuota_carruseles}
                           />
                         </>
