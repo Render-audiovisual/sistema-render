@@ -46,6 +46,7 @@ import { productionTaskClosure, adoptProductionTaskObservation } from './product
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
+import './TaskDetailSimple.css';
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
 import "./TaskHeader.css";
@@ -115,11 +116,11 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
   const savedContent = getUnifiedTaskContent(task);
   const value = editing && String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
   return <section className="ros-work-block ros-content-workspace">
-    <div className="ros-block-heading"><div><h3>Brief · Contenido de trabajo</h3></div><small>{presentation.description}</small></div>
+    <div className="ros-block-heading"><div><h3>Contenido</h3></div><small>{presentation.description}</small></div>
     {editing ? <div className="ros-content-editor">
       <div className="ros-content-editor-header"><div><span>Documento de trabajo</span><strong>Escribí todo lo necesario para resolver la tarea</strong></div></div>
-      <div className="ros-content-tools"><span>Usá bloques para ordenar el texto.</span>{presentation.templates.map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
-      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" aria-label="Brief · Contenido de trabajo" rows={16} value={value} placeholder={presentation.placeholder} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
+      <details className="ros-content-block-menu"><summary>Agregar bloque</summary><div className="ros-content-tools">{presentation.templates.map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div></details>
+      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" aria-label="Brief · Contenido de trabajo" rows={8} value={value} placeholder={presentation.placeholder} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
       <div className="ros-content-edit-actions"><small>Guardá antes de cerrar la tarea.</small><div><button type="button" onClick={onCancelEdit}>Cancelar</button><button className="primary" type="button" disabled={saving || !canSave} onClick={onSaveEdit}>{saving ? "Guardando…" : "Guardar texto"}</button></div></div>
     </div> : value ? <div className={`ros-content-editor ros-content-viewer ${onEditContent ? "is-editable" : ""}`} role={onEditContent ? "button" : undefined} tabIndex={onEditContent ? 0 : undefined} onClick={onEditContent || undefined} onKeyDown={onEditContent ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEditContent(); } } : undefined}><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div>{onEditContent && <b>Hacé clic para editar</b>}</div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>{presentation.empty}</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
     {preserveEditorialCopy && <aside aria-label="Copy editorial"><h4>Copy editorial</h4>{editorialCopy.trim() ? <div className="ros-content-reading">{renderizarTextoTarea(editorialCopy)}</div> : <p>El copy editorial se gestiona en la pieza vinculada.</p>}</aside>}
@@ -797,7 +798,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   return <div ref={windowMotion.backdropRef} className="ros-drawer-backdrop" inert={windowMotion.closing} onClick={closeDetail}>
-    <aside ref={windowMotion.panelRef} className="ros-drawer ros-task-workspace" role="dialog" aria-modal="true" aria-labelledby={`ros-task-title-${task.id}`} tabIndex={-1} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape' && !event.defaultPrevented) { event.stopPropagation(); closeDetail(); } }}>
+    <aside ref={windowMotion.panelRef} className="ros-drawer ros-task-workspace ros-task-simple" role="dialog" aria-modal="true" aria-labelledby={`ros-task-title-${task.id}`} tabIndex={-1} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape' && !event.defaultPrevented) { event.stopPropagation(); closeDetail(); } }}>
       <header className="ros-task-workspace-header">
         <button className="ros-task-back" type="button" aria-label="Volver al tablero" onClick={closeDetail}><span aria-hidden="true">←</span><b>Volver</b></button>
         <span className="ros-task-window-icon">✓</span>
