@@ -36,6 +36,10 @@
 .principal-calendar-day-preview>span>span{display:block;color:var(--render-muted);font-size:10px;overflow:hidden;text-overflow:ellipsis}
 .principal-calendar-day-preview em{font-size:10px;font-style:normal;color:var(--render-muted)}
 .principal-calendar-agenda{padding:24px}
+.principal-calendar .principal-calendar-layout.principal-calendar-full{grid-template-columns:minmax(0,1fr)}
+.render-native-dialog.calendar-day-overlay::backdrop{background:rgba(24,30,42,.28);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.modal.calendar-day-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;border-radius:16px}
+.principal-calendar .calendar-day-dialog .principal-calendar-agenda{position:static;border:0;box-shadow:none;border-radius:0;padding:8px 24px 24px;background:transparent}
 .principal-calendar-agenda>header p{font-size:12px;margin:8px 0 0}
 .principal-calendar-agenda ol{list-style:none;margin:16px 0 0;padding:0}
 .principal-calendar-agenda li{padding:16px 0;border-top:1px solid var(--render-line);overflow-wrap:anywhere}

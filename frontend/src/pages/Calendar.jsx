@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { Modal } from '../components/Modal.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { sessionViewKey } from '../shared/session/session-view.js';
@@ -17,6 +18,8 @@ export function CalendarPage({ sesion, onNavigate }) {
 function CalendarContent({ sesion, onNavigate }) {
   const [selection, setSelection] = useState(() => readCalendarSelection(window.location.search));
   const [result, setResult] = useState({ key: null, status: 'loading', data: null, error: '' }), [retry, setRetry] = useState(0);
+  const [dayOpen,setDayOpen]=useState(false);
+  const dayTrigger=useRef(null);
   const loader = useRef(null), generation = useRef(0);
   const today = cordobaToday(), grid = calendarGrid(selection.mes);
   const selectionKey = calendarHref(selection);
@@ -74,14 +77,17 @@ function CalendarContent({ sesion, onNavigate }) {
     {status === 'loading' && <p role="status">Cargando calendario…</p>}
     {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button>{selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}</div>}
     {data?.truncated && <p className="principal-calendar-notice" role="status">Agenda paginada: se muestran {agenda.length} de {data.pagination.total} eventos del día. Los recuentos del calendario incluyen todos los eventos.</p>}
-    <div className="principal-calendar-layout"><section className="principal-calendar-month-view" aria-label="Selector de día">
+    <div className="principal-calendar-layout principal-calendar-full"><section className="principal-calendar-month-view" aria-label="Selector de día">
       <header className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button className="calendar-today" type="button" onClick={()=>change({mes:today.slice(0,7),dia:today})}>Hoy</button><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button></header>
       <div className="principal-calendar-weekdays" aria-hidden="true">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, index) => <span key={index}>{day}</span>)}</div>
-      <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; if(!day.startsWith(selection.mes))return <span key={day} aria-hidden="true"/>; return <button type="button" key={day} className={day === selection.dia ? 'selected' : ''} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
+      <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; if(!day.startsWith(selection.mes))return <span key={day} aria-hidden="true"/>; return <button type="button" key={day} className={day === selection.dia ? 'selected' : ''} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-haspopup="dialog" aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={event => {dayTrigger.current=event.currentTarget;setDayOpen(true);change({ mes: day.slice(0, 7), dia: day });}}>
         <span>{Number(day.slice(-2))}</span>{data && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
         <div className="principal-calendar-day-preview">{events.map(item => <span key={item.key} title={`${calendarPublicationLabel(item)} · ${item.cliente_nombre}`}><strong>{item.cliente_nombre}</strong><span>{calendarPublicationLabel(item)}</span></span>)}{count>events.length&&<em>+{count-events.length} más</em>}</div>
       </button>; })}</div></section>
-      <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)} en el día · mostrando {agenda.length} de {data.pagination.total}</p>}</header>
+      </div>{dayOpen&&<Modal native closeOnBackdropClick className="calendar-day-dialog" overlayClassName="calendar-day-overlay" overlayAriaLabel="Publicaciones del día" title="Publicaciones del día" onClose={()=>setDayOpen(false)} returnFocusRef={dayTrigger}>
+      <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)}</p>}</header>
+        {status==='loading'&&<p role="status">Cargando publicaciones…</p>}
+        {status==='error'&&<div role="alert"><p>{result.error}</p><button type="button" onClick={()=>setRetry(value=>value+1)}>Reintentar</button></div>}
         {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'No hay publicaciones para este día.'}</p>}
         {data && (selection.pagina>0 || data.pagination.has_more) && <nav className="principal-calendar-month" aria-label="Páginas de agenda">
           <button type="button" disabled={selection.pagina === 0} onClick={() => change({ pagina: selection.pagina - 1 })}>Anterior</button>
@@ -91,6 +97,6 @@ function CalendarContent({ sesion, onNavigate }) {
         </nav>}
         {data && <ol>{agenda.map(item => <li key={item.key}><h3>{calendarPublicationLabel(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
         </li>)}</ol>}
-      </section></div>
+      </section></Modal>}
   </div></main>;
 }

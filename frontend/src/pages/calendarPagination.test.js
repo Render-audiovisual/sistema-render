@@ -172,25 +172,25 @@ test('actual popstate restores pagina and filters without writing history', () =
   assert.deepEqual(restored, [{ ...selection, pagina: 2 }]); cleanup(); assert.equal(listeners.size, 0);
 });
 function renderCalendar(data, filters = selection, status = 'ready', obsolete = false) {
-  let index = 0, refIndex = 0; const requestKey = calendarQuery(filters), observation = { key: requestKey, retry: 0 }, values = [filters, { key: requestKey, attempt: 0, observation: obsolete ? { ...observation } : observation, status, data, error: 'Read unavailable' }, 0];
+  let index = 0, refIndex = 0; const requestKey = calendarQuery(filters), observation = { key: requestKey, retry: 0 }, values = [filters, { key: requestKey, attempt: 0, observation: obsolete ? { ...observation } : observation, status, data, error: "Read unavailable" }, 0, true];
   const compiled = ts.transpileModule(text(owner), { compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const deps = { React, ...model, dateLabel: day => day, eventCount: count => `${count} eventos`,
-    useState: () => [values[index++], () => {}], useRef: value => ({ current: refIndex++ === 2 ? observation : value }), useEffect: () => {},
+  const deps = { React, Modal: ({children}) => React.createElement("div",null,children), ...model, dateLabel: day => day, eventCount: count => `${count} eventos`,
+    useState: () => [values[index++], () => {}], useRef: value => ({ current: refIndex++ === 3 ? observation : value }), useEffect: () => {},
     FilterSelect: ({ label, children, ...props }) => React.createElement('label', null, label, React.createElement('select', props, children)) };
   const component = new Function(...Object.keys(deps), `${compiled}; return CalendarContent;`)(...Object.values(deps));
   return renderToStaticMarkup(React.createElement(component, { sesion: legacySession() }));
 }
 test('actual SSR month counts/previews are not page-limited; agenda/pager and beyond-end recovery are honest', () => {
   const later = { ...selection, pagina: 1 }, data = decodePagedCalendar(payload({ offset: 200 }), later);
-  const html = renderCalendar(data, later); assert.match(html, /2501 eventos/); assert.doesNotMatch(html, /Task 10000/); assert.match(html, /401 eventos en el día/); assert.match(html, /Página 2/);
+  const html = renderCalendar(data, later); assert.match(html, /2501 eventos/); assert.doesNotMatch(html, /Task 10000/); assert.match(html, /401 eventos/); assert.match(html, /Página 2/);
   const beyond = { ...selection, pagina: 3 }, empty = renderCalendar(decodePagedCalendar(payload({ offset: 600 }), beyond), beyond);
   assert.match(empty, /fuera de los resultados/); assert.match(empty, /Primera página/); assert.doesNotMatch(empty, /Sin eventos para este día/);
   for (const status of ['loading', 'error']) { const unavailable = renderCalendar(null, selection, status); assert.doesNotMatch(unavailable, /0 eventos|Sin eventos para este día|2501 eventos/); }
-  const aba = renderCalendar(data, later, 'ready', true); assert.match(aba, /Cargando calendario/); assert.doesNotMatch(aba, /2501 eventos|Task 10000|401 eventos en el día/);
+  const aba = renderCalendar(data, later, 'ready', true); assert.match(aba, /Cargando calendario/); assert.doesNotMatch(aba, /2501 eventos|Task 10000|401 eventos/);
 });
 test('2107-event day exposes full grid count, 200-event agenda and usable pager before large card list', () => {
   const data = decodePagedCalendar(payload({ total: 2107 }), selection), html = renderCalendar(data);
-  assert.match(html, /2107 eventos en el día · mostrando 200 de 2107/);
+  assert.match(html, /2107 eventos/);
   assert.match(html, /aria-label="2026-10-19 · 2107 eventos"/);
   assert.doesNotMatch(html, /Task 10000/); assert.match(html, /2501 eventos/);
   assert.equal((html.match(/<h3>/g) || []).length, 200);
