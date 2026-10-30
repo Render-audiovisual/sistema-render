@@ -19,4 +19,5 @@ test('editor removes day pickers while retaining their saved values and exposes 
  assert.match(editor.getText(tree),/dias_reels: diasReels/);assert.match(editor.getText(tree),/dias_carruseles: diasCarruseles/);
  assert.match(editor.getText(tree),/closeEditor\(onBack\)/);assert.match(editor.getText(tree),/Descartar los cambios del cliente sin guardar/);
  const card=readFileSync(new URL('./ClientCardEditor.jsx',import.meta.url),'utf8');assert.match(card,/onBack=\{\(\)=>setMode\('choose'\)\}/);assert.match(card,/close\(onBack\)/);
+ const css=readFileSync(new URL('../pages/ClientesProgress.css',import.meta.url),'utf8');assert.match(css,/\.modal\.client-card-dialog \.cg-button\.cg-primary\{background:#0068d4/);
 });

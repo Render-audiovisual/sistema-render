@@ -50,8 +50,8 @@
 .client-card-dialog .cliente-edit-finance>div>small{color:#6e6e73;line-height:1.6;max-width:58ch}
 .client-card-dialog .cliente-money-input{max-width:none;width:100%;box-sizing:border-box;border:1px solid #d2d2d7;min-height:58px;gap:12px!important;padding:0 16px}
 .client-card-dialog .cliente-money-input input{min-width:0;width:100%;padding:12px 0;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;background:#fff;color:#1d1d1f}
-.client-card-dialog .btn.primary,.client-card-dialog .cg-primary{background:#0068d4;border:1px solid #0068d4;color:#fff;border-radius:10px;min-height:44px;padding:10px 18px}
-.client-card-dialog .btn.primary:hover,.client-card-dialog .cg-primary:hover{background:#0057b5;color:#fff}
+.modal.client-card-dialog .btn.primary,.modal.client-card-dialog .cg-button.cg-primary{background:#0068d4;border:1px solid #0068d4;color:#fff;border-radius:10px;min-height:44px;padding:10px 18px}
+.modal.client-card-dialog .btn.primary:hover,.modal.client-card-dialog .cg-button.cg-primary:hover{background:#0057b5;color:#fff}
 .client-card-dialog button:disabled{opacity:.45;cursor:default}
 .client-card-dialog .cg-button:not(.cg-primary),.client-card-dialog .btn.ghost{background:#fff;border:1px solid #d2d2d7;color:#343438;border-radius:10px;min-height:44px;padding:10px 18px}
 .client-logo-area{display:flex;align-items:center;gap:24px;padding:24px;background:#f5f5f7;border:1px solid #e5e5e7;border-radius:14px}
