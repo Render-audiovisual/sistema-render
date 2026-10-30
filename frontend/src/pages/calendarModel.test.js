@@ -234,7 +234,7 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   const jsx = readFileSync(new URL('./Calendar.jsx', import.meta.url), 'utf8');
   assert.match(jsx, /\[requestKey, retry\]/); assert.match(jsx, /requestKey = calendarQuery\(selection\)/);
   assert.match(jsx, /removeEventListener\('popstate'/); assert.match(jsx, /history.replaceState/); assert.match(jsx, /navigateWithinApp/);
-  assert.match(jsx, /Agenda paginada/); assert.match(jsx, /recuentos del calendario incluyen todos/); assert.match(jsx, /data\?\.pagination.days/);
+  assert.match(jsx, /Agenda paginada/); assert.match(jsx, /recuentos del calendario incluyen todos/); assert.match(jsx, /monthData\?\.pagination.days/);
   assert.doesNotMatch(jsx, /localStorage|sessionStorage|method: 'POST'|method: 'PATCH'/);
   const css = readFileSync(new URL('./Calendar.css', import.meta.url), 'utf8');
   assert.match(css, /margin-left:var\(--render-sidebar-width,236px\)/); assert.match(css, /max-width:980px.*margin-left:0/);

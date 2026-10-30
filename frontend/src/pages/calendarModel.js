@@ -182,14 +182,31 @@ export function calendarTaskState(value) {
 export function calendarMilestoneState(value) {
   return ({ pendiente: 'Hito pendiente', completado: 'Hito completado', cancelado: 'Hito cancelado' })[value] || 'Estado de hito sin clasificar';
 }
-export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {} }) {
+export function calendarMonthContext(selection) {
+  const params = new URLSearchParams(calendarQuery(selection).split('?')[1]);
+  params.delete('dia');params.delete('offset');params.delete('expected_snapshot');
+  return params.toString();
+}
+export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {}, now = Date.now }) {
   let generation = 0, controller = null, disposed = false, anchor = null;
+  let recentMonth = null;
+  const recentDays = new Map();
   const guard = createEditorialSessionGuard(sesion, readSession, onInvalidated);
   return {
     async load(selection, { refresh = false } = {}) {
       controller?.abort(); const version = ++generation;
       if (disposed) return undefined;
       if (!guard.isCurrent()) throw new Error('La sesión cambió. Volvé a abrir el calendario desde la sesión actual.');
+      const context = calendarMonthContext(selection);
+      if (refresh || recentMonth?.context !== context || now()-recentMonth.at >= 15000) {recentMonth=null;recentDays.clear();}
+      if (selection.vista === 'publicaciones' && !selection.pagina && recentMonth) {
+        const saved = recentDays.get(selection.dia);
+        if (saved) return saved;
+        const summary = recentMonth.data.pagination.days.find(day=>day.date===selection.dia);
+        if (!summary || summary.total === summary.preview.length) {
+          return {...recentMonth.data,events:summary?.preview || [],truncated:false,pagination:{...recentMonth.data.pagination,day:selection.dia,offset:0,total:summary?.total || 0,has_more:false}};
+        }
+      }
       controller = new AbortController();
       const signal = controller.signal;
       const stale = () => disposed || version !== generation || !guard.isCurrent();
@@ -205,6 +222,11 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
         if (!offset || !anchor) {
           const first = await read(0);
           if (!first || stale()) return undefined;
+          if (selection.vista === 'publicaciones') {
+            // A new server snapshot supersedes every previously remembered day.
+            if (recentMonth?.data.pagination.snapshot !== first.pagination.snapshot) recentDays.clear();
+            recentMonth={context,data:first,at:now()};recentDays.set(selection.dia,first);
+          }
           anchor = { base, snapshot: first.pagination.snapshot };
           if (!offset) return first;
         }
@@ -212,11 +234,12 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
       } catch (error) {
         if (stale()) return undefined;
         anchor = null;
+        recentMonth=null;recentDays.clear();
         if (error?.status === 409) throw new Error('El calendario cambió. Reintentá explícitamente para consultar una versión actualizada.');
         throw new Error('No se pudo cargar el calendario. Reintentá la consulta.');
       }
     },
     cancel() { generation++; controller?.abort(); guard.cancel(); },
-    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel(); },
+    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel();recentMonth=null;recentDays.clear(); },
   };
 }

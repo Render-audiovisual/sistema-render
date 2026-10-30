@@ -48,7 +48,7 @@ const FilterSelect = evaluate(`const result = (${component.getText(componentTree
 const optionsFunction = routes.Projects.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Options');
 const Options = evaluate(`const result = (${optionsFunction.getText(routes.Projects)});`);
 function element(route, name, bindings) {
-  return evaluate(`const result = (${control(route, name).getText(routes[route])});`, { FilterSelect, Options, PROJECT_STATES, CALENDAR_KINDS, ...bindings });
+  return evaluate(`const result = (${control(route, name).getText(routes[route])});`, { FilterSelect, Options, PROJECT_STATES, CALENDAR_KINDS, monthData:bindings.data, ...bindings });
 }
 function optionRows(element) {
   const rows = [];

@@ -32,6 +32,23 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a, b)
 const settle = async () => { for (let i = 0; i < 25; i++) await Promise.resolve(); };
 const params = url => new URL(url, 'https://render.test').searchParams;
 
+test('publication day switching reuses complete previews and remembered days, with expiry and explicit refresh',async()=>{
+  const filters={...selection,vista:'publicaciones'},current=legacySession();let time=0,calls=0;
+  const loader=createCalendarLoader({sesion:current,readSession:()=>current,now:()=>time,request:async()=>{
+    calls++;
+    const raw=payload({filters,total:2,otherTotal:1});
+    const convert=row=>({...row,key:`programacion:publicacion:${row.source_id}`,kind:'programacion',source:'publicacion',title:`Programación editorial · Reel #${row.source_id}`,href:'/planificacion-publicaciones?tab=calendario&cliente=3&mes=2026-10'});
+    raw.events=raw.events.map(convert);raw.pagination.days=raw.pagination.days.map(day=>({...day,preview:day.preview.map(convert)}));
+    return raw;
+  }});
+  await loader.load(filters);assert.equal(calls,1);
+  assert.equal((await loader.load({...filters,dia:'2026-10-20'})).events.length,1);assert.equal(calls,1);
+  assert.equal((await loader.load({...filters,dia:'2026-10-21'})).events.length,0);assert.equal(calls,1);
+  await loader.load(filters);assert.equal(calls,1);
+  time=15000;await loader.load(filters);assert.equal(calls,2);
+  await loader.load(filters,{refresh:true});assert.equal(calls,3);loader.dispose();
+});
+
 test('pagina URL is canonical safe offset, reload/Back round-trip all context, malformed aliases normalize zero', () => {
   for (const pagina of [0, 1, 2, MAX_CALENDAR_PAGE]) {
     const value = { ...selection, pagina }; assert.deepEqual(readCalendarSelection(params(calendarHref(value)).toString()), value);
