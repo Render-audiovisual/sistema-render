@@ -35,13 +35,13 @@ export function buildResponsibleOptions(users = [], tasks = [], selected = 'all'
   const people = new Map();
   for (const user of users) {
     if (!validId(user?.id) || people.has(user.id)) continue;
-    const name = typeof user.nombre === 'string' && user.nombre.trim() ? user.nombre : `Usuario #${user.id}`;
-    people.set(user.id, { value: `id:${user.id}`, label: `${name}${user.usuario ? ` · @${user.usuario}` : ''} · #${user.id}` });
+    const name = typeof user.nombre === 'string' && user.nombre.trim() ? user.nombre.trim() : 'No disponible';
+    people.set(user.id, { value: `id:${user.id}`, label: name });
   }
   const ids = tasks.flatMap(task => [task.asignado_a_id, ...(Array.isArray(task.colaborador_ids) ? task.colaborador_ids : [])]);
   ids.push(responsibleFilterId(selected));
   for (const id of ids) if (validId(id) && !people.has(id)) {
-    people.set(id, { value: `id:${id}`, label: `Usuario #${id} · No disponible en el catálogo` });
+    people.set(id, { value: `id:${id}`, label: 'No disponible' });
   }
   return [...people.values()].sort((a, b) => a.label.localeCompare(b.label, 'es') || responsibleFilterId(a.value) - responsibleFilterId(b.value));
 }

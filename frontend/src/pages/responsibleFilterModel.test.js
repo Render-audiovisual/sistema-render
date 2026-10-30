@@ -31,12 +31,13 @@ test('ID membership includes real collaborators once and never historical labels
   assert.equal(taskMatchesResponsible(task, 'all'), true);
 });
 
-test('options disambiguate homonyms and retain missing catalog IDs without inventing identities', () => {
+test('options show names only while retaining distinct stable IDs and missing selections', () => {
   const original = structuredClone(users);
   const options = buildResponsibleOptions(users, [{ asignado_a_id: 9, colaborador_ids: [1, 3], asignado_a: 'Fake label' }], 'id:10');
   assert.equal(new Set(options.map(option => option.value)).size, 5);
-  assert.ok(options.find(option => option.value === 'id:1').label.includes('#1'));
-  assert.ok(options.find(option => option.value === 'id:2').label.includes('#2'));
+  assert.equal(options.find(option => option.value === 'id:1').label, users.find(user=>user.id===1).nombre);
+  assert.equal(options.find(option => option.value === 'id:2').label, users.find(user=>user.id===2).nombre);
+  assert.ok(options.every(option=>!/[#@·]/.test(option.label)));
   assert.ok(options.find(option => option.value === 'id:10').label.includes('No disponible'));
   assert.ok(!JSON.stringify(options).includes('Fake label'));
   assert.deepEqual(users, original);

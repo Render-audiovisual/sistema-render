@@ -76,7 +76,7 @@ test('option values and client-side matching use IDs, not shared display names',
   const options = buildResponsibleOptions(users, [{ asignado_a_id: 10, colaborador_ids: [11] }], 'id:12');
   for (const id of [7, 8, 9, 10, 11, 12]) {
     const option = options.find(value => value.value === `id:${id}`);
-    assert.ok(option); assert.ok(option.label.includes(`#${id}`));
+    assert.ok(option); assert.equal(option.label,users.find(user=>user.id===id)?.nombre || 'No disponible');
   }
   assert.equal(taskMatchesResponsible({ asignado_a_id: 7, asignado_a: 'Alex' }, 'id:7'), true);
   assert.equal(taskMatchesResponsible({ asignado_a_id: 8, asignado_a: 'Alex', propiedades_extra: { colaboradores: ['Alex'] } }, 'id:7'), false);
