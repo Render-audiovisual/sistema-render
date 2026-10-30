@@ -697,11 +697,10 @@ export function ProductionsPage({sesion}) {
     if(!selected || selected.cliente_id !== video.cliente_id){setNotice('Elegí una visita del mismo cliente antes de retomar este guion.');return;}
     try {await writeVisit(selected,'/videos','POST',{video_origen_id:video.id});}catch{/* Conflict message already visible. */}
   };
-  return <main className="productions-page">{contextConfirmation.dialog}<header className="prod-page-heading"><div><h1>Producciones</h1><p>Visitas, guiones y material del equipo.</p></div><button className="prod-primary" type="button" disabled={busy} onClick={startCreateVisit}>Nueva visita</button></header>
+  return <main className="productions-page">{contextConfirmation.dialog}<header className="prod-page-heading"><div><h1>Producciones</h1><p>Grabaciones y material del equipo.</p></div><div className="prod-heading-actions"><button className="prod-refresh" type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button><button className="prod-primary" type="button" disabled={busy} onClick={startCreateVisit}>Nueva visita</button></div></header>
     <nav className="prod-toolbar" aria-label="Vistas de producciones">
       <div className="prod-tabs">{[['calendar','Calendario'],['pending','Videos pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>changeContext(clientId,id)}>{label}</button>)}</div>
       <FilterSelect label="Cliente" value={clientId} onChange={e=>changeContext(e.target.value,tab)}><option value="">Todos los clientes</option>{clientId && !clients.some(client=>String(client.id)===clientId) && <option value={clientId}>Cliente #{clientId}</option>}{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}{client.activo === false ? ' (inactivo)' : ''}</option>)}</FilterSelect>
-      <button className="prod-refresh" type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button>
     </nav>
     {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" disabled={busy||loading} onClick={tab==='pending'?retryPendingBank:retryProductionPage}>Reintentar</button></p>}
     <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Material pendiente'}>
