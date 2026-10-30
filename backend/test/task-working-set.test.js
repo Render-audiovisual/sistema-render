@@ -10,7 +10,7 @@ test('working set is opt-in and read only, leaving reports and history intact', 
   assert.doesNotMatch(sql, /INSERT|UPDATE|DELETE/);
   assert.match(sql, /t.estado IN \('finalizada','publicada'\)/);
   assert.match(sql, /finalizada_at/);
-  assert.match(sql, /2026-10-29T20:46:32[.]000Z/);
+  assert.match(sql, /2026-10-29T20:46:32/);
   assert.match(sql, /archivada_render_os/); assert.match(sql, /papelera_render_os/);
 });
 

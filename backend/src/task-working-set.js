@@ -11,7 +11,7 @@ export function workingTaskReadClause(query = {}) {
   return ` AND (t.estado IN ('pendiente','en_progreso','en_revision','aprobada')
       OR (t.estado IN ('finalizada','publicada')
         AND t.propiedades_extra->>'finalizada_at' ~ '${TASK_COMPLETION_ISO_PATTERN}'
-        AND t.propiedades_extra->>'finalizada_at' >= '${TASK_WORKSPACE_HISTORY_CUTOFF}'))
+        AND substring(t.propiedades_extra->>'finalizada_at' FROM 1 FOR 19) >= '${TASK_WORKSPACE_HISTORY_CUTOFF.slice(0, 19)}'))
     AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
     AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'`;
 }

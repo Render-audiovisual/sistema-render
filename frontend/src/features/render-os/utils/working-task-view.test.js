@@ -16,7 +16,7 @@ test('stale completed/trash links return to live work without changing records',
 });
 test('new completions stay visible and historical edits do not resurrect old finalizations', () => {
   for (const estado of ['finalizada', 'publicada']) {
-    for (const finalizada_at of [TASK_WORKSPACE_HISTORY_CUTOFF, '2026-10-30T10:00:00.000Z'])
+    for (const finalizada_at of [TASK_WORKSPACE_HISTORY_CUTOFF, '2026-10-30T10:00:00.000Z', '2026-10-29T20:46:32.123456+00:00', '2026-10-30T10:00:00+00:00'])
       assert.equal(isWorkingTask({ estado, propiedades_extra: { finalizada_at } }), true);
     for (const finalizada_at of [null, '', '2026-10-29T20:46:31.999Z', '2026-10-01T10:00:00.000Z', 'invalid'])
       assert.equal(isWorkingTask({ estado, updated_at: '2026-11-01T10:00:00.000Z', propiedades_extra: { finalizada_at } }), false);
