@@ -1,3 +1,4 @@
+import { createProductionCatalogReader } from "./productionCatalogReader.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -24,7 +25,7 @@ function fixture(){
   let bankObservation=null,pending=[],pendingPhotos=[],selected=visit(2),visits=[visit(2)];
   // No draft setter is supplied: any attempt to clear/reset an editor fails.
   const draft=Object.freeze({copy:'Unsaved exact text',revision:2});
-  const deps={AbortController,productionReadUrl,assertProductionClient,verifiedProductionDraftVisit,newestProductionVisit,reconcileProductionVisitList,
+  const deps={productionCatalog:{current:{reader:createProductionCatalogReader()}},AbortController,productionReadUrl,assertProductionClient,verifiedProductionDraftVisit,newestProductionVisit,reconcileProductionVisitList,
     month:'2026-10',clientId:'7',tab:'pending',contextError:'',readEpoch:{current:0},positiveId:value=>Number.isSafeInteger(value)&&value>0,
     apiRequest(url){requests.push(url);if(url==='/api/producciones?mes=2026-10&cliente_id=7')return collection.promise;
       if(url===productionReadUrl({month:'2026-10',clientId:'7',tab:'pending'}))return bank.promise;
@@ -75,7 +76,7 @@ test('rejected bank recovers through actual manual reload in the same instance a
     const collection=deferred(),bank=deferred();let reload=0;
     const retry=nodes.find(node=>ts.isVariableDeclaration(node)&&node.name.getText(ast)==='retryPendingBank');
     assert.ok(retry,'Actual manual bank retry handler');
-    evaluate(retry.initializer,{writeLock:{current:false},batchDraft:{current:{busy:false}},setReload:update=>{reload=update(reload);}})();
+    evaluate(retry.initializer,{productionCatalog:f.deps.productionCatalog,writeLock:{current:false},batchDraft:{current:{busy:false}},setReload:update=>{reload=update(reload);}})();
     assert.equal(reload,1);
     cleanup();
     // Replace only the transport's held responses, preserving all state,

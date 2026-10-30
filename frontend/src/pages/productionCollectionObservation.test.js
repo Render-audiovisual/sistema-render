@@ -1,3 +1,4 @@
+import { createProductionCatalogReader } from "./productionCatalogReader.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -27,7 +28,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 function fixture(initial = [visit(1)]) {
   const collection = deferred(), paints = [], errors = [];
   let visits = initial, selected = initial[0];
-  const deps = {
+  const deps={productionCatalog:{current:{reader:createProductionCatalogReader()}},
     newestProductionVisit, reconcileProductionVisitList, AbortController, productionReadUrl, assertProductionClient, verifiedProductionDraftVisit,
     readEpoch: { current: 0 }, openVersion: { current: 1 }, refreshVersion: { current: 0 },
     month: '2026-10', clientId: '7', tab: 'calendar', contextError: '',

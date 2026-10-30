@@ -1,3 +1,4 @@
+import { createProductionCatalogReader } from "./productionCatalogReader.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -17,7 +18,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture(){
   let selected=null,visits=[];
   const held=[],urls=[],errors=[];
-  const deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},month:'2026-10',clientId:'7',tab:'calendar',contextError:'',
+  const deps={productionCatalog:{current:{reader:createProductionCatalogReader()}},readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},month:'2026-10',clientId:'7',tab:'calendar',contextError:'',
     AbortController,productionReadUrl,verifiedProductionDraftVisit,assertProductionClient,newestProductionVisit,reconcileProductionVisitList,
     mayLeave:action=>action(),apiRequest:(url,options)=>new Promise((resolve,reject)=>held.push({url,options,resolve,reject})),
     setSelected:value=>{selected=typeof value==='function'?value(selected):value;},

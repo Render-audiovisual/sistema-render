@@ -14,7 +14,7 @@ const declaration=name=>{const node=nodes.find(n=>ts.isVariableDeclaration(n)&&n
 const evaluate=(node,deps)=>Function(...Object.keys(deps),`return (${node.getText(tree)});`)(...Object.values(deps));
 function fixture(){
   let reload=4;const events=[],dirty=new Set(['held draft']);
-  const deps={writeLock:{current:false},batchDraft:{current:{busy:false,dirty:true}},
+  const deps={productionCatalog:{current:{reader:{clear(){}}}},writeLock:{current:false},batchDraft:{current:{busy:false,dirty:true}},
     setReload:update=>{reload=update(reload);events.push('reload');},
     mayLeave:()=>assert.fail('read retry must not prompt or discard'),
     dirty:{current:dirty},setSelected:()=>assert.fail('do not close detail'),

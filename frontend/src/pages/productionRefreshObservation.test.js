@@ -1,3 +1,4 @@
+import { createProductionCatalogReader } from "./productionCatalogReader.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ function fixture() {
   let selected = visit(1), visits = [selected], session = { token: 'synthetic-A', usuario: { id: 7, rol: 'edicion' } };
   const held = [], paints = [], errors = [];
   const request = url => new Promise((resolve, reject) => { held.push({ url, resolve, reject }); });
-  const deps = {
+  const deps={productionCatalog:{current:{reader:createProductionCatalogReader()}},
     readEpoch: { current: 0 }, openVersion: { current: 1 }, refreshVersion: { current: 0 },
     clientId: '7', month: '2026-10', selected, verifiedProductionDraftVisit, assertProductionClient, newestProductionVisit, reconcileProductionVisitList, apiRequest: request,
     setSelected(update) { selected = update(selected); paints.push(['selected', selected]); },

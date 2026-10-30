@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { productionResultStatus } from './productionResultStatus.js';
+import { createProductionCatalogReader } from './productionCatalogReader.js';
 import { captureProductionMediaFocus } from './productionMediaFocus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { Modal } from '../components/Modal.jsx';
@@ -453,6 +454,8 @@ export function ProductionsPage({sesion}) {
   const [visits, setVisits] = useState([]);
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
+  const productionCatalog = useRef(null);
+  if (!productionCatalog.current || productionCatalog.current.session !== sesion) productionCatalog.current = { session: sesion, reader: createProductionCatalogReader() };
   const [pending, setPending] = useState([]);
   const [pendingPhotos, setPendingPhotos] = useState([]);
   const [bankObservation,setBankObservation]=useState(null);
@@ -503,7 +506,7 @@ export function ProductionsPage({sesion}) {
     const controller = new AbortController(),epoch=readEpoch.current;setLoading(true);setListAvailable(false);setError('');
     if(contextError){setLoading(false);return;}
     const current=()=>!controller.signal.aborted && epoch===readEpoch.current;
-    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal})])
+    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),productionCatalog.current.reader.read(apiRequest,'/api/usuarios',{signal:controller.signal}),productionCatalog.current.reader.read(apiRequest,'/api/clientes',{signal:controller.signal})])
       .then(async([data,people,brands])=>{if(current()){
         if(!Array.isArray(data?.visitas))throw new Error('No se pudo verificar la lista de producciones.');
         const verifiedVisits=data.visitas.map(visit=>assertProductionClient(verifiedProductionDraftVisit(visit),clientId));
@@ -596,6 +599,7 @@ export function ProductionsPage({sesion}) {
     return()=>{++readEpoch.current;++openVersion.current;window.removeEventListener('popstate',restore);};
   },[]);
   const retryProductionPage = () => {
+    productionCatalog.current.reader.clear();
     if(!selected)return mayLeave(()=>{setReload(value=>value+1);return navigationRef.current();});
     setReload(value=>value+1);
     if(selected) {
@@ -608,6 +612,7 @@ export function ProductionsPage({sesion}) {
     else void navigationRef.current();
   };
   const retryPendingBank=()=>{
+    productionCatalog.current.reader.clear();
     if(writeLock.current||batchDraft.current.busy)return;
     setReload(value=>value+1);
   };
