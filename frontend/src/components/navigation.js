@@ -17,7 +17,6 @@ export function getNavigationGroups(role) {
       { href: "/producciones", label: "Producciones", icon: "video" },
     ] },
     { id: "content", label: "Contenido", links: [
-      { href: "/planificacion-historias", label: "Historias", icon: "content" },
       { href: "/feedback", label: "Feedback", icon: "feedback" },
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [

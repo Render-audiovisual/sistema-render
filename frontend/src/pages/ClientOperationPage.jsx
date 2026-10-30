@@ -82,7 +82,7 @@ function ClientOperationRead({session,selection}) {
         </Block>
         <Block title="Contenido" subtitle={`Piezas programadas para ${data.periodo} · la evidencia de publicación es independiente del trabajo`} total={data.editorial.total}>
           <dl className="co-counts">{Object.entries(data.editorial.counts).map(([key,value])=><div key={key}><dt>{evidence[key]}</dt><dd>{value}</dd></div>)}</dl>
-          <nav className="co-links" aria-label="Planillas del cliente"><HubLink className="co-action" href={`/planificacion-historias?vista=planilla&cliente=${data.cliente.id}&filtro=${data.cliente.id}&mes=${data.periodo}`}>Planilla de historias</HubLink><HubLink className="co-action" href={`/planificacion-publicaciones?tab=planilla&cliente=${data.cliente.id}&mes=${data.periodo}`}>Planilla de publicaciones</HubLink></nav>
+          <nav className="co-links" aria-label="Planillas del cliente"><HubLink className="co-action" href={`/planificacion-publicaciones?tab=planilla&cliente=${data.cliente.id}&mes=${data.periodo}`}>Planilla de publicaciones</HubLink></nav>
           <Preview section={data.editorial}>{data.editorial.items.map(item=><li key={`${item.domain}:${item.id}`}><strong>{item.domain==='historia'?'Historia':'Publicación'} #{item.id} · {item.titulo||'Sin título'}</strong><small>{item.fecha_programada} · {evidence[item.publication_classification]}</small><EditorialPieceDetails key={`${item.domain}:${item.id}`} piece={item} sesion={view.session}/></li>)}</Preview>
         </Block>
         <Block title="Objetivos" subtitle={`Trabajo mensual de ${data.periodo} · cada acuerdo compartido se muestra por separado`} total={data.objetivos.total} href={goalClientHref(data.cliente.id,data.periodo)}>

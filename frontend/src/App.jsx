@@ -28,7 +28,6 @@ const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "Clien
 const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
 const ClientOperationPage = lazyNamed(() => import("./pages/ClientOperationPage.jsx"), "ClientOperationPage");
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
-const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
 const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
@@ -229,12 +228,6 @@ export function App() {
     }
     if (path === "/calendario") {
       return <CalendarPage sesion={sesion} onNavigate={navigate} />;
-    }
-    if (path === "/calendario-estructura") {
-      return <HistoriasPage initialTab="estructura" />;
-    }
-    if (path === "/planificacion-historias") {
-      return <HistoriasPage />;
     }
     if (path === "/reportes-historias") {
       return <ReportesEquipoPage />;

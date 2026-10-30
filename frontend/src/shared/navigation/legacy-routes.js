@@ -5,7 +5,7 @@ const dashboardAliases = new Set([
   // Reference files stay intact.
   '/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider', '/german',
   // Retired sections: keep old bookmarks safe without mounting their clients.
-  '/drive', '/moodboards',
+  '/drive', '/moodboards', '/planificacion-historias', '/calendario-estructura',
 ]);
 const taskAliases = new Set(['/piezas', '/wilson-conversaciones']);
 

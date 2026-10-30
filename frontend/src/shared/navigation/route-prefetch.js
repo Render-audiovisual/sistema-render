@@ -7,7 +7,6 @@ const loaders = {
   '/producciones': () => import('../../pages/Productions.jsx'),
   '/lista': () => import('../../pages/PersonalLists.jsx'),
   '/feedback': () => import('../../pages/Feedback.jsx'),
-  '/planificacion-historias': () => import('../../pages/Historias.jsx'),
 };
 export function createRoutePrefetch(routeLoaders) {
   const pending = new Map();

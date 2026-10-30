@@ -19,7 +19,7 @@ test('principal route uses the connected calendar page, not the old publication-
   const source=readFileSync(new URL('../App.jsx',import.meta.url),'utf8');
   assert.match(source,/canUseSharedCalendarRole\(sesion.usuario.rol\) \? \["\/calendario", "\/calendario-estructura"\]/);
   assert.match(source,/const CalendarPage = lazyNamed\(\(\) => import\("\.\/pages\/Calendar.jsx"\), "CalendarPage"\)/);
-  const route=source.slice(source.indexOf('if (path === "/calendario")'),source.indexOf('if (path === "/calendario-estructura")'));
+  const route=source.slice(source.indexOf('if (path === "/calendario")'),source.indexOf('if (path === "/reportes-historias")'));
   assert.match(route,/CalendarPage sesion=\{sesion\} onNavigate=\{navigate\}/);
   assert.doesNotMatch(route,/PublicacionesPage/);
   assert.match(source,/if \(path === "\/planificacion-publicaciones"\)/);

@@ -12,7 +12,6 @@ const shared = new Map([
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
   ["/feedback", ["Feedback"]],
-  ["/planificacion-historias", ["Historias"]],
   ["/reportes-historias", ["Reportes"]],
   ["/perfil", ["Perfil"]],
 ]);

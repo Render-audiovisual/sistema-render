@@ -8,7 +8,8 @@ const roles = ['admin', 'diseno', 'edicion', 'produccion', 'community', 'program
 
 test('closed canonical paths include actual shared navigation and explicit supported aliases, not arbitrary same-origin paths', () => {
   const paths = new Set(roles.flatMap(role => getNavigationGroups(role).flatMap(group => group.links.map(link => link.href))));
-  for (const route of ['/bloc-notas', '/calendario-estructura', '/sueldos', '/empleados']) paths.add(route);
+  for (const route of ['/bloc-notas', '/sueldos', '/empleados']) paths.add(route);
+  assert.equal(normalizeLoginDestination('/calendario-estructura'),'/inicio');
   for (const route of paths) assert.equal(normalizeLoginDestination(route), route, route);
   for (const route of ['/unknown', '/api', '/api/usuarios', '/assets/logo.png', '/src/App.jsx', '/login', '/login?next=%2Finicio',
     '/design-preview', '/design-preview/comments-proposal', '/sandbox-api', '/inicio/child', '/Inicio', '/inicio/', '/ínicio', '/іnicio']) {
@@ -133,7 +134,8 @@ test('roles, not IDs or personal names, gate finance, users and management desti
 
 test('calendar gates follow actual shared-calendar role policy while ordinary operational context is retained', () => {
   for (const rol of [...roles, 'unknown_role', 'Admin']) {
-    for (const route of ['/calendario?day=2026-10-23#day', '/calendario-estructura?month=2026-10']) {
+    assert.equal(resolveLoginDestination('/calendario-estructura?month=2026-10',user(rol)),'/inicio');
+    for (const route of ['/calendario?day=2026-10-23#day']) {
       assert.equal(resolveLoginDestination(route, user(rol)), canUseSharedCalendarRole(rol) ? route : '/inicio');
     }
   }
