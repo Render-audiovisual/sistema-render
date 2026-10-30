@@ -172,6 +172,10 @@ export function calendarEventTitle(event) {
   const prefix = `${calendarEventLabel(event)} · `;
   return event.title.startsWith(prefix) ? event.title.slice(prefix.length) || event.title : event.title;
 }
+export function calendarPublicationLabel(event) {
+  const title = calendarEventTitle(event);
+  return /^Carrusel(?:\s|$)/i.test(title) ? 'Carrusel' : /^Reel(?:\s|$)/i.test(title) ? 'Reel' : 'Contenido';
+}
 export function calendarTaskState(value) {
   return ({ pendiente: 'Pendiente', en_progreso: 'En progreso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', publicada: 'Finalizada' })[value] || 'Estado de trabajo sin clasificar';
 }

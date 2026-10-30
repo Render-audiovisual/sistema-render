@@ -41,7 +41,7 @@ test('future dates remain planned, completed tasks never imply publication and o
   assert.doesNotMatch(calendarEditorialSql('publicacion', 'all'), /p.tipo IN/);
 });
 
-test('monthly SQL counts only canonical visits and reel/carrusel pieces before pagination; snapshot binds view', async () => {
+test('monthly publication view counts only reel/carrusel pieces before pagination; snapshot binds view', async () => {
   const calls = [];
   const db = { async query(sql, params) { calls.push({ sql, params }); return { rows: [{ total: '0', range_total: '0', fingerprint: 'a'.repeat(64), events: [], days: [] }] }; } };
   const filters = normalizeCalendarQuery(query);
@@ -51,7 +51,7 @@ test('monthly SQL counts only canonical visits and reel/carrusel pieces before p
   const result = await readCalendarPage(db, input, deps);
   const { sql, params } = calls[0];
   assert.doesNotMatch(sql, /task_rows AS|milestone_rows AS|FROM historias|FROM proyectos/);
-  assert.match(sql, /FROM produccion_visitas/); assert.match(sql, /FROM publicaciones/);
+  assert.doesNotMatch(sql, /FROM produccion_visitas/); assert.match(sql, /FROM publicaciones/);
   assert.match(sql, /p.tipo IN \('video','reel','carrusel'\)/);
   assert.equal(params[4], true);
   const legacy = await readCalendarPage(db, { ...input, filters: { ...filters, vista: undefined } }, deps);

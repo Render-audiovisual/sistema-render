@@ -5,20 +5,18 @@ import { getSesion } from '../utils.jsx';
 import { sessionViewKey } from '../shared/session/session-view.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
-import { CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, cordobaToday, createCalendarLoader, readPublicationCalendarSelection as readCalendarSelection, publicationPlanningHref, shiftCalendarMonth } from './calendarModel.js';
+import { CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarPublicationLabel, calendarGrid, calendarHref, calendarQuery, cordobaToday, createCalendarLoader, readPublicationCalendarSelection as readCalendarSelection, publicationPlanningHref, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 import './OperationalCalendars.css';
-import {CalendarLinkedTask} from './CalendarLinkedTask.jsx';
 import {calendarDateLabel as dateLabel} from './calendarDateLabel.js';
 
-const eventCount = count => `${count} ${count === 1 ? 'evento' : 'eventos'}`;
+const eventCount = count => `${count} ${count === 1 ? "publicación" : "publicaciones"}`;
 export function CalendarPage({ sesion, onNavigate }) {
   return <CalendarContent key={sessionViewKey(sesion)} sesion={sesion} onNavigate={onNavigate} />;
 }
 function CalendarContent({ sesion, onNavigate }) {
   const [selection, setSelection] = useState(() => readCalendarSelection(window.location.search));
   const [result, setResult] = useState({ key: null, status: 'loading', data: null, error: '' }), [retry, setRetry] = useState(0);
-  const [openedPublication,setOpenedPublication]=useState(null);
   const loader = useRef(null), generation = useRef(0);
   const today = cordobaToday(), grid = calendarGrid(selection.mes);
   const selectionKey = calendarHref(selection);
@@ -81,19 +79,18 @@ function CalendarContent({ sesion, onNavigate }) {
       <div className="principal-calendar-weekdays" aria-hidden="true">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, index) => <span key={index}>{day}</span>)}</div>
       <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; if(!day.startsWith(selection.mes))return <span key={day} aria-hidden="true"/>; return <button type="button" key={day} className={day === selection.dia ? 'selected' : ''} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
         <span>{Number(day.slice(-2))}</span>{data && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
-        <div className="principal-calendar-day-preview">{events.map(item => <span key={item.key} title={`${calendarEventLabel(item)} · ${calendarEventTitle(item)}`}><strong>{item.cliente_nombre}</strong><span>{calendarEventTitle(item)}{item.kind === 'publicacion'?' · Publicado':''}</span></span>)}{count>events.length&&<em>+{count-events.length} más</em>}</div>
+        <div className="principal-calendar-day-preview">{events.map(item => <span key={item.key} title={`${calendarPublicationLabel(item)} · ${item.cliente_nombre}`}><strong>{item.cliente_nombre}</strong><span>{calendarPublicationLabel(item)}</span></span>)}{count>events.length&&<em>+{count-events.length} más</em>}</div>
       </button>; })}</div></section>
       <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)} en el día · mostrando {agenda.length} de {data.pagination.total}</p>}</header>
-        {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'Sin eventos para este día con estos filtros.'}</p>}
+        {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'No hay publicaciones para este día.'}</p>}
         {data && (selection.pagina>0 || data.pagination.has_more) && <nav className="principal-calendar-month" aria-label="Páginas de agenda">
           <button type="button" disabled={selection.pagina === 0} onClick={() => change({ pagina: selection.pagina - 1 })}>Anterior</button>
           <span>Página {selection.pagina + 1} · hasta {CALENDAR_PAGE_LIMIT} eventos por página</span>
           <button type="button" disabled={!data.pagination.has_more || selection.pagina >= MAX_CALENDAR_PAGE} onClick={() => change({ pagina: selection.pagina + 1 })}>Siguiente</button>
           {selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}
         </nav>}
-        {data && <ol>{agenda.map(item => <li key={item.key}><small>{item.kind === 'programacion' ? 'Fecha planificada' : calendarEventLabel(item)}</small><h3>{item.source==='publicacion'?<button className="principal-calendar-open-task" type="button" aria-label={`Abrir tarea de ${calendarEventTitle(item)}`} onClick={()=>setOpenedPublication(item)}>{calendarEventTitle(item)}<span aria-hidden="true"> ↗</span></button>:calendarEventTitle(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
-          {item.source!=='publicacion'&&<a href={item.href} onClick={event => follow(event, item.href)}>Abrir visita ↗</a>}
+        {data && <ol>{agenda.map(item => <li key={item.key}><h3>{calendarPublicationLabel(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
         </li>)}</ol>}
       </section></div>
-  </div>{openedPublication&&<CalendarLinkedTask key={openedPublication.key} event={openedPublication} sesion={sesion} onClose={()=>{setOpenedPublication(null);setRetry(value=>value+1);}}/>}</main>;
+  </div></main>;
 }

@@ -244,8 +244,8 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   const dateHelper=readFileSync(new URL('./calendarDateLabel.js',import.meta.url),'utf8');
   assert.match(dateHelper, /toLocaleUpperCase\('es-AR'\)\+label.slice\(1\)/);
   assert.match(dateHelper, /timeZone:'UTC'/);
-  assert.match(jsx, /count === 1 \? 'evento' : 'eventos'/);
-  assert.match(jsx, /calendarEventTitle\(item\).*<\/h3>/);
+  assert.match(jsx, /count === 1 \? "publicación" : "publicaciones"/);
+  assert.match(jsx, /calendarPublicationLabel\(item\).*<\/h3>/);
   assert.match(jsx, /label="Contenido"/);
   assert.match(jsx, /readPublicationCalendarSelection as readCalendarSelection/);
   assert.doesNotMatch(jsx, /calendarTaskState|calendarMilestoneState|Abrir proyecto/);

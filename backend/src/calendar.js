@@ -148,7 +148,7 @@ function closedEvidence(row) {
 export function buildCalendarEvents({ tasks = [], visits = [], historias = [], publicaciones = [], hitos = [] }, filters) {
   const result = new Map();
   const add = (row, kind, source, date, href, label, evidence = null) => {
-    if (filters.vista === 'publicaciones' && !['visita', 'publicacion'].includes(source)) return;
+    if (filters.vista === 'publicaciones' && source !== 'publicacion') return;
     if (!day(date) || date < filters.desde || date >= filters.hasta || (filters.kind !== 'all' && filters.kind !== kind)) return;
     if (['visita', 'hito'].includes(source) ? typeof row.id !== 'string' || !UUID.test(row.id) : !id(row.id)) return;
     if (row.cliente_id !== null && !id(row.cliente_id)) return;
@@ -216,7 +216,7 @@ export async function readCalendar(pool, auth, query) {
       return rows.slice(0, LIMIT + 1);
     };
     if (!filters.vista && ['all', 'tarea'].includes(filters.kind)) data.tasks = await fetch(CALENDAR_TASK_SQL);
-    if (!filters.formato && ['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
+    if (!filters.vista && !filters.formato && ['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
     if (!filters.vista && ['all', 'hito'].includes(filters.kind)) data.hitos = await fetch(CALENDAR_MILESTONE_SQL);
     if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
       for (const domain of filters.vista ? ['publicacion'] : ['historia', 'publicacion']) {

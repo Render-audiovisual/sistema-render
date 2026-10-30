@@ -28,9 +28,9 @@ test('late linkage response after close or session replacement cannot open any t
 test('invalid linkage response or error does not fabricate task IDs',async()=>{
   for(const invalid of [null,[{id:-1,titulo:'A'}],[{id:1}]]){const f=fixture();f.resolve(invalid);await settle();assert.deepEqual(f.ids,[]);assert.equal(f.results.at(-1).status,'error');f.cleanup();}
 });
-test('calendar opens shared task window without route navigation or duplicated task business logic',()=>{
+test('shared task window stays available independently but publication agenda no longer opens it',()=>{
   assert.match(source,/detailOnlyTaskId=\{taskId\}/);assert.doesNotMatch(source,/history\.|location\.|method:.*(?:POST|PATCH|DELETE)/);
-  const calendar=readFileSync(new URL('./Calendar.jsx',import.meta.url),'utf8');assert.match(calendar,/onClick=\{\(\)=>setOpenedPublication\(item\)\}/);
+  const calendar=readFileSync(new URL('./Calendar.jsx',import.meta.url),'utf8');assert.doesNotMatch(calendar,/CalendarLinkedTask|setOpenedPublication/);
   const workspace=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8');assert.match(workspace,/if\(detailOnlyTaskId !== null\)/);assert.match(workspace,/onUpdate=\{updateTask\}/);
   const css=readFileSync(new URL('./Calendar.css',import.meta.url),'utf8');assert.match(css,/\.principal-calendar-grid>button\{border:1px solid/);
 });

@@ -25,7 +25,7 @@ function querySql(filters, dependencies) {
       AND (r.cliente_id IS NULL OR r.cliente_id BETWEEN 1 AND 2147483647) ${extra}`);
   };
   if (!filters.vista && ['all', 'tarea'].includes(filters.kind)) add('task_rows', 'tarea', 'tarea', dependencies.taskSql, 'AND r.id BETWEEN 1 AND 2147483647');
-  if (!filters.formato && ['all', 'visita'].includes(filters.kind)) add('visit_rows', 'visita', 'visita', dependencies.visitSql);
+  if (!filters.vista && !filters.formato && ['all', 'visita'].includes(filters.kind)) add('visit_rows', 'visita', 'visita', dependencies.visitSql);
   if (!filters.vista && ['all', 'hito'].includes(filters.kind)) add('milestone_rows', 'hito', 'hito', dependencies.milestoneSql,
     "AND r.estado IN ('pendiente','completado','cancelado')");
   if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
