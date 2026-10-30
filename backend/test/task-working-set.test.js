@@ -7,7 +7,10 @@ test('working set is opt-in and read only, leaving reports and history intact', 
   assert.equal(workingTaskReadClause(), '');
   const sql = workingTaskReadClause({ workspace: 'render_os', trabajo_pendiente: 'true' });
   assert.match(sql, /IN \('pendiente','en_progreso','en_revision','aprobada'\)/);
-  assert.doesNotMatch(sql, /INSERT|UPDATE|DELETE|finalizada|publicada/);
+  assert.doesNotMatch(sql, /INSERT|UPDATE|DELETE/);
+  assert.match(sql, /t.estado IN \('finalizada','publicada'\)/);
+  assert.match(sql, /finalizada_at/);
+  assert.match(sql, /2026-10-29T20:46:32[.]000Z/);
   assert.match(sql, /archivada_render_os/); assert.match(sql, /papelera_render_os/);
 });
 
