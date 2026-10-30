@@ -71,7 +71,7 @@ export function EditarCuotaClienteModal({ sesion, periodo = getMesActualISO(), .
   return <EditarCuotaSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} capture={capture}/>;
 }
 
-function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado, onAccessDenied, returnFocusRef }) {
+function EditarIdentidadSession({ cliente, periodo, capture, onClose, onBack, onGuardado, onAccessDenied, returnFocusRef }) {
   const nameInputRef = useRef(null);
   const [nombre, setNombre] = useState(cliente.nombre);
   const [activo, setActivo] = useState(cliente.activo !== false);
@@ -91,11 +91,11 @@ function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado
     baseline.current = ''; setNombre(''); setActivo(false); setError(null); setConfirmReload(false); setDenied(true);
     onAccessDenied?.(guard);
   };
-  const closeIdentity = () => {
+  const closeIdentity = (destination = onClose) => {
     if (pending.current || !capture().current()) return;
     if (!accessDenied.current && (snapshot !== baseline.current || locked.current)
       && !window.confirm('¿Salir sin guardar el borrador? Si el resultado era incierto, revisá el cliente antes de volver a guardar.')) return;
-    onClose();
+    (typeof destination === 'function' ? destination : onClose)();
   };
   const saveIdentity = async event => {
     event.preventDefault();
@@ -142,8 +142,9 @@ function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado
     } finally { pending.current = false; if (guard.current()) setBusy(false); }
   };
   if (denied) return <Modal native onClose={closeIdentity} title="Acceso no disponible" overlayAriaLabel="Acceso no disponible" closeDisabled={busy} returnFocusRef={returnFocusRef}><div className="modal-body"><p>Se retiraron los datos del cliente. Ya no tenés acceso a esta edición.</p></div></Modal>;
-  return <Modal native onClose={closeIdentity} title="Editar nombre y estado" overlayAriaLabel="Editar nombre y estado del cliente" closeDisabled={busy} initialFocusRef={nameInputRef} returnFocusRef={returnFocusRef} className="cliente-create-modal">
+  return <Modal native onClose={closeIdentity} title="Editar nombre y estado" overlayAriaLabel="Editar nombre y estado del cliente" closeDisabled={busy} initialFocusRef={nameInputRef} returnFocusRef={returnFocusRef} className="cliente-create-modal client-card-dialog">
     <form className="modal-body cliente-create-modal-body" onSubmit={saveIdentity}>
+      {onBack && <button type="button" className="client-editor-back" disabled={busy} onClick={()=>closeIdentity(onBack)}>← Volver</button>}
       <p className="caption">Sin acuerdo mensual configurado. Esta edición no crea cuotas ni abonos.</p>
       <label className="cliente-service-field"><span>Nombre del cliente</span><input ref={nameInputRef} disabled={busy || blocked} value={nombre} onChange={event => { if (!pending.current && !locked.current) setNombre(event.target.value); }}/></label>
       <label className="cliente-active-toggle"><input type="checkbox" disabled={busy || blocked} checked={activo} onChange={event => { if (!pending.current && !locked.current) setActivo(event.target.checked); }}/><span>Cliente activo</span></label>
@@ -160,7 +161,7 @@ function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado
   </Modal>;
 }
 
-function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuardado, capture, returnFocusRef }) {
+function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onBack, onGuardado, capture, returnFocusRef }) {
   const nameInputRef = useRef(null);
   const [cliente, setCliente] = useState(initialCliente);
   const revision = useRef(initialCliente.agreement_revision), blocked = useRef(false);
@@ -180,6 +181,7 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
     String(cliente.cuota_feed_carruseles ?? 0),
   );
   const [abonoMensual, setAbonoMensual] = useState(String(cliente.abono_mensual ?? ""));
+  const [editingAmount,setEditingAmount] = useState(false);
   const [diasReels, setDiasReels] = useState(cliente.dias_reels || []);
   const [diasCarruseles, setDiasCarruseles] = useState(cliente.dias_carruseles || []);
   const [guardando, setGuardando] = useState(false);
@@ -215,11 +217,11 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
     } catch (reason) { if (guard.current()) setError(reason.message); }
     finally { if (guard.current()) { pending.current = false; setGuardando(false); } }
   };
-  const closeEditor = () => {
+  const closeEditor = (destination = onClose) => {
     const guard = capture();
     if (pending.current || !guard.current()) return;
     if (snapshot !== baseline.current && !window.confirm('¿Descartar los cambios del cliente sin guardar?')) return;
-    guard.assertCurrent(); onClose();
+    guard.assertCurrent(); (typeof destination === 'function' ? destination : onClose)();
   };
 
   const esCuotaValida = (valor) =>
@@ -307,13 +309,14 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
       native
       onClose={closeEditor}
       title={<span>Editar cliente</span>}
-      className="cliente-create-modal"
+      className="cliente-create-modal client-card-dialog"
       overlayAriaLabel="Editar cuota mensual"
       closeDisabled={guardando}
       initialFocusRef={nameInputRef}
       returnFocusRef={returnFocusRef}
     >
         <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
+          {onBack && <button type="button" className="client-editor-back" disabled={guardando} onClick={()=>closeEditor(onBack)}>← Volver</button>}
           <div className="cliente-edit-intro">
             <div>
               <span>ACUERDO MENSUAL</span>
@@ -383,17 +386,19 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
             </label>
           </div>
           )}
-          {!esFeedCompartido && <div className="cliente-publishing-days">
-            <WeekdayPicker disabled={guardando} label="Días preferidos para reels" value={diasReels} onChange={value => { if (!pending.current) setDiasReels(value); }} />
-            <WeekdayPicker disabled={guardando} label="Días preferidos para carruseles" value={diasCarruseles} onChange={value => { if (!pending.current) setDiasCarruseles(value); }} />
-          </div>}
           <section className="cliente-edit-finance">
             <div><span>Abono mensual</span><small>Visible únicamente para Líder. {cliente.configuracion_completa && !esFeedCompartido
               ? `Configuración y abono vigentes desde ${periodo}-01.`
               : 'El abono se programa para el próximo mes del servidor, no para el período seleccionado.'}</small></div>
             <label className="cliente-money-input">
               <span>$</span>
-              <input disabled={guardando} min="0" step="0.01" type="number" placeholder="0" value={abonoMensual} onChange={(event) => { if (!pending.current) setAbonoMensual(event.target.value); }} />
+              <input aria-label="Abono mensual en pesos" disabled={guardando} inputMode="decimal" type="text" placeholder="0,00"
+                value={editingAmount || abonoMensual === '' || !Number.isFinite(Number(abonoMensual)) ? abonoMensual : Number(abonoMensual).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                onFocus={()=>setEditingAmount(true)} onBlur={()=>setEditingAmount(false)}
+                onChange={(event) => { if (pending.current) return; const raw=event.target.value.replace(/[\s$]/g,'');
+                  const normalized=raw.includes(',') ? raw.replace(/\./g,'').replace(',','.') : /^\d{1,3}(\.\d{3})+$/.test(raw) ? raw.replace(/\./g,'') : raw;
+                  if (/^\d*(?:\.\d{0,2})?$/.test(normalized)) setAbonoMensual(normalized);
+                }} />
             </label>
           </section>
           {error && <div className="caption login-error">{error}</div>}

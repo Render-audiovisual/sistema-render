@@ -34,8 +34,10 @@ test('actual detail renders observed cents and basic detail still renders no inv
 });
 test('actual create/edit fee inputs accept cent steps without relaxing integer quota inputs',()=>{
  for(const [ast,field] of [[page,'nuevoCliente.abono_mensual'],[modals,'abonoMensual']]){
-  const input=nodes(ast,node=>ts.isJsxSelfClosingElement(node)&&node.tagName.getText(ast)==='input'&&node.attributes.properties.some(prop=>prop.name?.getText(ast)==='value'&&prop.initializer?.expression?.getText(ast)===field))[0];assert.ok(input);
-  const html=renderToStaticMarkup(expression(input,ast,{React,guardando:false,abonoMensual:'125000.50',nuevoCliente:{abono_mensual:'125000.50'}}));assert.match(html,/step="0\.01"/);assert.match(html,/value="125000\.50"/);assert.match(html,/type="number"/);assert.match(html,/min="0"/);
+  const input=nodes(ast,node=>ts.isJsxSelfClosingElement(node)&&node.tagName.getText(ast)==='input'&&node.attributes.properties.some(prop=>prop.name?.getText(ast)==='value'&&prop.initializer?.expression?.getText(ast).includes(field)))[0];assert.ok(input);
+  const html=renderToStaticMarkup(expression(input,ast,{React,guardando:false,editingAmount:false,abonoMensual:'125000.50',nuevoCliente:{abono_mensual:'125000.50'}}));
+  if(ast===page){assert.match(html,/step="0\.01"/);assert.match(html,/value="125000\.50"/);assert.match(html,/type="number"/);assert.match(html,/min="0"/);}
+  else {assert.match(html,/inputMode="decimal"/);assert.match(html,/value="125\.000,50"/);assert.match(html,/type="text"/);}
   const quotaInputs=nodes(ast,node=>ts.isJsxSelfClosingElement(node)&&node.tagName.getText(ast)==='input'&&node.attributes.properties.some(prop=>prop.name?.getText(ast)==='value'&&/cuota/i.test(prop.initializer?.expression?.getText(ast)||'')));
   assert.ok(quotaInputs.length>=2);for(const quota of quotaInputs){const step=quota.attributes.properties.find(prop=>prop.name?.getText(ast)==='step');assert.equal(step.initializer.text,'1');}
  }
