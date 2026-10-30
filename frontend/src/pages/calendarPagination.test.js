@@ -182,7 +182,7 @@ function renderCalendar(data, filters = selection, status = 'ready', obsolete = 
 }
 test('actual SSR month counts/previews are not page-limited; agenda/pager and beyond-end recovery are honest', () => {
   const later = { ...selection, pagina: 1 }, data = decodePagedCalendar(payload({ offset: 200 }), later);
-  const html = renderCalendar(data, later); assert.match(html, /2501 eventos/); assert.match(html, /Task 10000/); assert.match(html, /401 eventos en el día/); assert.match(html, /Página 2/);
+  const html = renderCalendar(data, later); assert.match(html, /2501 eventos/); assert.doesNotMatch(html, /Task 10000/); assert.match(html, /401 eventos en el día/); assert.match(html, /Página 2/);
   const beyond = { ...selection, pagina: 3 }, empty = renderCalendar(decodePagedCalendar(payload({ offset: 600 }), beyond), beyond);
   assert.match(empty, /fuera de los resultados/); assert.match(empty, /Primera página/); assert.doesNotMatch(empty, /Sin eventos para este día/);
   for (const status of ['loading', 'error']) { const unavailable = renderCalendar(null, selection, status); assert.doesNotMatch(unavailable, /0 eventos|Sin eventos para este día|2501 eventos/); }
@@ -192,7 +192,7 @@ test('2107-event day exposes full grid count, 200-event agenda and usable pager 
   const data = decodePagedCalendar(payload({ total: 2107 }), selection), html = renderCalendar(data);
   assert.match(html, /2107 eventos en el día · mostrando 200 de 2107/);
   assert.match(html, /aria-label="2026-10-19 · 2107 eventos"/);
-  assert.match(html, /Task 10000/); assert.match(html, /2501 eventos/);
+  assert.doesNotMatch(html, /Task 10000/); assert.match(html, /2501 eventos/);
   assert.equal((html.match(/<h3>/g) || []).length, 200);
   assert.ok(html.indexOf('aria-label="Páginas de agenda"') < html.indexOf('<ol>'), 'Pager must precede all 200 agenda cards');
   assert.match(html, /Página 1/); assert.match(html, />Siguiente<\/button>/);

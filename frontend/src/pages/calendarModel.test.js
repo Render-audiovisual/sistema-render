@@ -249,6 +249,6 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   assert.match(jsx, /label="Contenido"/);
   assert.match(jsx, /readPublicationCalendarSelection as readCalendarSelection/);
   assert.doesNotMatch(jsx, /calendarTaskState|calendarMilestoneState|Abrir proyecto/);
-  assert.match(jsx, /item.kind === 'publicacion'\?' · Publicado'/);
+  assert.doesNotMatch(jsx, /Abrir tarea|setOpenedPublication/);
   assert.equal((jsx.match(/<main\b/g) || []).length, 1);
 });
