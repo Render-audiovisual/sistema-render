@@ -101,6 +101,11 @@ export function normalizeClientName(value = "") {
 export function getReportPeriodRange(period = "mes_actual", now = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
   const iso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  if (/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(period)) {
+    const start=new Date(`${period}-01T12:00:00`),end=new Date(start);end.setMonth(end.getMonth()+1);
+    const days=Math.round((Date.UTC(end.getFullYear(),end.getMonth(),1)-Date.UTC(start.getFullYear(),start.getMonth(),1))/86400000);
+    return {desde:iso(start),hasta:iso(end),dias:days,diasTranscurridos:days};
+  }
   if (period === "mes_pasado") {
     const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const end = new Date(now.getFullYear(), now.getMonth(), 1);

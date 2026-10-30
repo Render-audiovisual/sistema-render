@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React from 'react';
+import {buildTeamWorkCards} from '../shared/reports/team-work-cards.js';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import postcss from 'postcss';
@@ -29,13 +30,23 @@ const editorialLabels = ['Formato', 'Programadas por fecha', 'Confirmadas manual
 const quotaLabels = ['Cliente / feed', 'Cuota mensual de carruseles', 'Cuota mensual de reels', 'Carruseles confirmados en el período real', 'Reels confirmados en el período real'];
 const personLabels = ['Persona', 'Tareas', 'Para revisar', 'Aprobadas', 'Finalizadas', 'No finalizadas', 'Vencidas'];
 const range = { desde: '2026-10-01', hasta: '2026-11-01' };
+const cardTree=parse('TeamWorkCards.jsx',read('../components/TeamWorkCards.jsx'));
+const cardSource=cardTree.statements.filter(node=>ts.isFunctionDeclaration(node)||ts.isVariableStatement(node)).map(node=>node.getText(cardTree).replace(/^export /,'')).join('\n');
+const cardCode=ts.transpileModule(cardSource,{compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+const TeamWorkCards=Function('React','buildTeamWorkCards',`${cardCode};return TeamWorkCards;`)(React,buildTeamWorkCards);
+test('real team card JSX renders named work counters and expandable task links without financial values',()=>{
+ const data={usuarios:[{id:8,nombre:'Augusto',rol:'diseno',sueldo:987654321}],tareas:[{id:42,asignado_a_id:8,tipo_tarea:'diseno',titulo:'Carrusel <prueba>',estado:'en_revision',fecha_vencimiento:'2026-10-10',propiedades_extra:{workspace:'render_os'}}],clientes:[{id:1,nombre:'Cliente',abono_mensual:987654321}]};
+ const html=renderToStaticMarkup(React.createElement(TeamWorkCards,{data,range}));
+ assert.match(html,/<h2>Augusto<\/h2>/);assert.match(html,/Carruseles realizados/);assert.match(html,/<strong>1<\/strong>/);
+ assert.match(html,/<summary>Ver trabajo<\/summary>/);assert.match(html,/workspace\/tareas\?task=42/);assert.match(html,/Carrusel &lt;prueba&gt;/);assert.doesNotMatch(html,/987654321/);
+});
 const summary = [{ formato: 'reels', programadas: 0, publicadas: 2, historicalFechadas: 3, legacy: 4, legacySinFecha: 5, estados: [{ estado: 'lista', total: 6 }] }];
 function harness(personId = null,calculators = {}) {
   const updates = [], data = { usuarios: [], historias: [], publicaciones: [] };
   const states = ['mes_actual', { context: JSON.stringify(['mes_actual', '2026-10-24', range.desde, range.hasta]), data }, false, '', '2026-10-24', personId];
   let index = 0;
   const bindings = {
-    React, useState: () => { const i = index++; return [states[i], value => updates.push([i, value])]; },
+    React, TeamWorkCards, useState: () => { const i = index++; return [states[i], value => updates.push([i, value])]; },
     useEffect() {}, getHoyLocalISO: () => '2026-10-24', getReportPeriodRange: () => range,
     ROL_LABELS: { edicion: 'Edición' }, uniqueReportTasks: () => [],
     buildEmployeeReport: () => ({ uniqueTasks: 8, unattributed: 0, rows: [{ id: 17, nombre: 'Alex <observado>', rol: 'edicion', total: 8, enRevision: 1, aprobadas: 2, finalizadas: 3, pendientes: 5, vencidas: 0 }] }),

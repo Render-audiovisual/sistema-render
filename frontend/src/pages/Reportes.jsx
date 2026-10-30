@@ -13,11 +13,12 @@ import { productionReportVisitHref } from '../shared/reports/production-report-l
 import { verifyHistoricalClosures } from '../shared/reports/historical-closures.js';
 import { reportParticipantLabel, buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
 import './ReportProductionRegistry.css';
+import {TeamWorkCards} from '../components/TeamWorkCards.jsx';
 
 const PERIODS = [['mes_actual', 'Este mes'], ['mes_pasado', 'Mes pasado'], ['ultimos_30', 'Últimos 30 días']];
 const initialPeriod = () => {
   const value = readUrlContext(window.location.search, { periodo: 'mes_actual' }).periodo;
-  return PERIODS.some(([id]) => id === value) ? value : 'mes_actual';
+  return PERIODS.some(([id]) => id === value) || /^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value) ? value : 'mes_actual';
 };
 const VIDEO_STATES = { planificado: 'Planificado', grabado: 'Grabado', pendiente: 'Pendiente', repetir: 'Repetir' };
 const PHOTO_STATES = { realizada: 'Realizada', pendiente: 'Pendiente', repetir: 'Repetir' };
@@ -84,7 +85,7 @@ function ReportesContent({ session }) {
       fetching = true;
       if (!silent) { setLoading(true); setObservation(null); setError(''); }
       const query = new URLSearchParams({ desde: range.desde, hasta: range.hasta,
-        mes_configuracion: period === 'mes_pasado' ? range.desde.slice(0, 7) : today.slice(0, 7) });
+        mes_configuracion: period === 'ultimos_30' ? today.slice(0, 7) : range.desde.slice(0, 7) });
       try {
         const payload = await loader.load(query);
         if (active && loader.current() && payload) { setObservation({ context, data: payload }); setError(''); }
@@ -111,14 +112,16 @@ function ReportesContent({ session }) {
   const editorial = editorialRecords(data?.historias, data?.publicaciones);
   const editorialSummary = summarizeEditorialRecords(editorial, range);
   const quotas = clientQuotaReport(data?.clientes, editorial, range);
-  const quotaMonth = period === 'mes_pasado' ? range.desde.slice(0, 7) : today.slice(0, 7);
+  const quotaMonth = period === 'ultimos_30' ? today.slice(0, 7) : range.desde.slice(0, 7);
   const closures = data?.cierresMensuales === undefined ? null : verifyHistoricalClosures(data.cierresMensuales);
   return <main className="rpr-page" aria-label="Reportes del equipo"><div className="frame"><div className="content">
-    <header className="rpr-heading"><span className="rpr-eyebrow">Reportes</span><h1>Trabajo y producción</h1><p>Registros del período, sin información económica ni objetivos estimados.</p></header>
+    <header className="rpr-heading"><h1>Reportes del equipo</h1><label className="team-report-month">Mes<input type="month" aria-label="Mes del reporte" value={range.desde.slice(0,7)} onChange={event=>{const value=event.target.value;if(!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value))return;pushUrlContext({periodo:value});notifyViewPreferenceChange(window);setPeriod(value);}}/></label></header>
     <nav className="rpr-periods" aria-label="Período del reporte">{PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => { pushUrlContext({ periodo: id }); notifyViewPreferenceChange(window); setPeriod(id); }}>{label}</button>)}</nav>
     <p className="rpr-muted">Desde {range.desde} hasta {range.hasta} (sin incluir ese día).</p>
     {error && <p className="rpr-error" role="alert">{error}</p>}
     {loading ? <p role="status">Cargando reportes…</p> : !data ? <p>No hay datos disponibles. Cambiá de período para volver a intentar.</p> : <>
+      <TeamWorkCards data={data} range={range}/>
+      <details className="rpr-advanced"><summary>Ver informe completo</summary>
       <section className="rpr-panel" aria-labelledby="rpr-editorial"><header><h2 id="rpr-editorial">Programación y publicación editorial</h2><p>Programación y confirmaciones manuales por fecha real, en horario de Córdoba.</p></header>
         <EditorialTable rows={editorialSummary}/>
         <details className="rpr-visit"><summary>Cómo se cuentan las publicaciones</summary><p className="rpr-muted">Una pieza puede estar programada y confirmada; las columnas no se suman. La confirmación requiere el registro manual del servidor con usuario y fecha, nunca una tarea finalizada, una checklist o una fecha histórica aislada. No equivale a verificación externa de una red social. El historial sin confirmación se muestra por separado y sin fecha de período no se asigna a este mes.</p></details>
@@ -161,6 +164,7 @@ function ReportesContent({ session }) {
         {historical.length ? <ul className="rpr-media">{historical.map(client => <li key={client.id}><span>{client.nombre}</span><span>{client.recorded} videos declarados</span></li>)}</ul> : <p className="rpr-muted">Sin cantidades históricas para este período.</p>}
         <h3>Edición histórica · Sin identidad verificable</h3><p>{unassignedEditing} entregas sin ID de editor en la respuesta del período. No se atribuyen a personas por nombre ni se suman a sus tareas actuales.</p>
       </section>
+      </details>
     </>}
   </div></div></main>;
 }
