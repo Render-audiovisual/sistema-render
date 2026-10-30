@@ -10,6 +10,16 @@
 .render-workspace .ros-task-simple .ros-task-document-properties>div{grid-template-columns:130px minmax(0,1fr);min-height:36px;padding:5px 0;border:0;background:transparent;font-size:13px}
 .render-workspace .ros-task-simple .ros-task-document-properties>div>span{font-size:12px;color:#787774;font-weight:400}
 .render-workspace .ros-task-simple .ros-task-document-properties b{font-weight:400}
+.render-workspace .ros-task-simple .ros-people-picker.compact{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.render-workspace .ros-task-simple .ros-selected-people{display:flex;flex-wrap:wrap;gap:6px}
+.render-workspace .ros-task-simple .ros-selected-people button{border:0;background:#f5f5f4;border-radius:4px;min-height:28px;padding:3px 7px;box-shadow:none}
+.render-workspace .ros-task-simple .ros-selected-people small{display:none}
+.render-workspace .ros-task-simple .ros-add-person{width:auto;min-height:28px;border:0;background:transparent;padding:3px 6px;color:#787774;font-size:11px}
+.render-workspace .ros-task-simple .ros-people-options{flex-basis:100%}
+.render-workspace .ros-task-simple .ros-goal-link{background:transparent;border:0;border-radius:0;box-shadow:none;padding:8px 0;margin:0 0 16px;gap:12px}
+.render-workspace .ros-task-simple .ros-goal-link strong{font-size:12px;font-weight:400;color:#787774}
+.render-workspace .ros-task-simple .ros-goal-link>div>span{display:none}
+.render-workspace .ros-task-simple .ros-goal-link>button{background:transparent;border:0;color:#787774;padding:6px;font-size:12px;min-height:30px;text-decoration:underline;text-underline-offset:3px}
 .render-workspace .ros-task-simple .ros-inline-property{background:transparent;border:1px solid transparent;border-radius:4px;min-height:30px;padding:4px 6px;font-size:13px;color:#37352f;box-shadow:none}
 .render-workspace .ros-task-simple .ros-inline-property:hover{background:#f5f5f4;border-color:#ededed}
 .render-workspace .ros-task-simple .ros-work-block{background:transparent;border:0;border-top:1px solid #efefed;border-radius:0;box-shadow:none;padding:24px 0}
