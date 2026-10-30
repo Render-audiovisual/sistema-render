@@ -51,25 +51,22 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
-function ClientMonthlyFormatBar({label,count,historicalCount=0,quota,observed=false,agencyConfirmed=false}) {
+function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
   const total = count + historicalCount;
   const percent = known ? Math.min(100, total / quota * 100) : 0;
-  return <div className="client-monthly-format" title={agencyConfirmed ? "Contenido de Render confirmado por dirección" : observed ? 'Verificado en Instagram mediante revisión pública manual' : `${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
-    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: contenido registrado`:undefined}
+  return <div className={`client-monthly-format${known ? '' : ' client-monthly-format-disabled'}`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : <span role="img" aria-label={`${label}: no incluido`}>🔒</span>}</strong></div>
+    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-disabled={known?undefined:true} aria-label={known?`${label}: contenido registrado`:`${label}: no incluido`}
       aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
-      aria-valuetext={known?(agencyConfirmed ? `${total} confirmadas por dirección de ${quota}` : observed ? `${total} verificadas en Instagram de ${quota}` : `${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`):undefined}><span style={{width:`${percent}%`}} /></div>{observed && known && <small>Faltan {Math.max(0,quota-total)} {label.toLowerCase()}</small>}</div>;
+      aria-valuetext={known?`${total} de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
 }
 export function ClientMonthlyProgressList({clients,publicaciones,period}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
       <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
-      {row.observation && <small>{row.observation.agencyConfirmed ? 'Hecho por Render · confirmado por dirección' : 'Verificado en Instagram'} · {new Date(row.observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires',hour12:false})}</small>}
-      {row.observation?.agencyConfirmed && <small>Total del perfil: {row.observation.profileReels} reels y {row.observation.profileCarruseles} carruseles. No todo corresponde a Render.</small>}
       <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/>
     </li>)}</ul>}
-    <p className="client-monthly-evidence">Las confirmaciones de dirección distinguen el trabajo de Render del total del perfil. Las tarjetas verificadas muestran el relevamiento de Instagram a la fecha indicada. Las demás muestran registros internos, sin confirmar su publicación.</p>
   </section>;
 }
 

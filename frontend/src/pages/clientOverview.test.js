@@ -32,7 +32,7 @@ test('observed zero replaces history; absent, invalid or other-month evidence pr
   const [row] = monthly.clientMonthlyProgressRows([client], [monthPiece(1),confirmedMonthPiece(2)], '2026-10');
   assert.deepEqual(row.reels,{count:0,historicalCount:0,quota:4}); assert.equal(row.noActivity,true);
   const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[client],publicaciones:[monthPiece(1)],period:'2026-10'}));
-  assert.match(html,/Verificado en Instagram/); assert.match(html,/Faltan 4 reels/); assert.match(html,/Faltan 2 carruseles/);
+  assert.match(html,/0 \/ 4/); assert.match(html,/0 \/ 2/); assert.doesNotMatch(html,/Verificado|Faltan/);
   assert.doesNotMatch(html,/0 confirmadas|API/);
 });
 test('shared evidence requires all members and unions collab shortcodes with one quota', () => {
@@ -48,9 +48,8 @@ test('owner attribution displays Render 3/4 reels and 1/2 carousels, keeping pro
  posts.push({url:'https://www.instagram.com/p/Carousel1/',kind:'carrusel',publishedAt:'2026-10-08T15:00:00Z'});
  const snapshot={...observation(1,posts),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-30T01:00:00Z',reels:3,carruseles:1,carouselUrls:['https://www.instagram.com/p/Carousel1/']}};
  const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[{...monthClient,instagram_monthly_observation:snapshot}],publicaciones:[],period:'2026-10'}));
- assert.match(html,/Hecho por Render/);assert.match(html,/confirmado por dirección/);
- assert.match(html,/3 \/ 4/);assert.match(html,/1 \/ 2/);assert.match(html,/Faltan 1 reels/);assert.match(html,/Faltan 1 carruseles/);
- assert.match(html,/Total del perfil: 11 reels y 1 carruseles/);assert.doesNotMatch(html,/3 verificadas en Instagram/);
+ assert.doesNotMatch(html,/Hecho por Render|confirmado por dirección|Faltan|Total del perfil|verificadas/);
+ assert.match(html,/3 \/ 4/);assert.match(html,/1 \/ 2/);
 });
 function confirmedMonthPiece(id, extra = {}) {
   return monthPiece(id, { 'fecha_publicación_real': '2026-11-01T12:00:00Z', publicacion_evidencia: {
@@ -88,15 +87,15 @@ test('client cards show only two registered-content bars without claiming confir
   const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,
     { clients: [monthClient], publicaciones: [monthPiece(1)], period: '2026-10' }));
   assert.doesNotMatch(html, /Registradas en historial|client-monthly-history-track/); assert.match(html, /1 \/ 4/);
-  assert.match(html, /Las demás muestran registros internos, sin confirmar su publicación/); assert.match(html, /client-monthly-avatar/);
+  assert.doesNotMatch(html, /Las demás muestran|verificad|Faltan/); assert.match(html, /client-monthly-avatar/);
   assert.equal((html.match(/role="progressbar"/g)||[]).length,2);
   const over = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
     { label: 'Reels', count: 5, historicalCount: 7, quota: 4 }));
-  assert.match(over, /12 \/ 4/); assert.match(over, /5 confirmadas/); assert.match(over, /7 históricas/);
+  assert.match(over, /12 \/ 4/); assert.doesNotMatch(over, /confirmadas|históricas/);
   assert.equal((over.match(/width:100%/g) || []).length, 1);
   const noQuota = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
     { label: 'Reels', count: 0, historicalCount: 7, quota: 0 }));
-  assert.match(noQuota, /sin cuota configurada/); assert.doesNotMatch(noQuota, /role="progressbar"|aria-valuemax/);
+  assert.match(noQuota, /aria-disabled="true"/); assert.match(noQuota, /Reels: no incluido/); assert.doesNotMatch(noQuota, /sin cuota configurada|role="progressbar"|aria-valuemax|7 \/ 0/);
   const css = readFileSync(new URL('./ClientesProgress.css', import.meta.url), 'utf8');
   assert.match(css, /\.client-monthly-list \.client-monthly-history-track>span\{background:repeating-linear-gradient/);
 });
