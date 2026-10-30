@@ -22,6 +22,7 @@
 .prod-page-heading{margin-bottom:24px}
 .prod-page-heading p{margin:8px 0 0;color:var(--prod-muted)}
 .prod-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:24px}
+.prod-toolbar .prod-refresh{margin-left:auto;color:var(--prod-muted);background:transparent;border-color:transparent}
 .prod-toolbar>label{min-width:180px}.prod-toolbar>label:not(.render-filter-field){display:flex;align-items:center;gap:8px}
 .prod-tabs{display:flex;gap:4px;background:var(--prod-soft);padding:4px;border:1px solid var(--prod-line);border-radius:24px}
 .prod-tabs button{background:transparent;border-color:transparent;border-radius:20px}

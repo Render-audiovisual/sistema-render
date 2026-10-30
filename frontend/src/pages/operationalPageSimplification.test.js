@@ -93,6 +93,9 @@ test('productions exposes only the client list filter and retains recording/resu
   const source = read('./Productions.jsx'), file = tree('./Productions.jsx'); assert.deepEqual(file.parseDiagnostics, []);
   const nav = source.slice(source.indexOf('<nav className="prod-toolbar"'), source.indexOf('</nav>', source.indexOf('<nav className="prod-toolbar"')));
   assert.equal((nav.match(/<FilterSelect/g) || []).length, 1); assert.match(nav, /label="Cliente"/);
+  assert.doesNotMatch(nav, /Quitar filtro de cliente/);
+  assert.match(nav, /<option value="">Todos los clientes<\/option>/);
+  assert.match(nav, /className="prod-refresh"[^>]*onClick=\{retryProductionPage\}/);
   assert.match(nav, /Videos pendientes/); assert.doesNotMatch(source, /Banco de pendientes/);
   for (const name of ['CreateVisit', 'VisitDetail', 'Participants', 'writeVisit', 'Retomar en la visita seleccionada']) assert.ok(source.includes(name));
   const Item = evaluate(declaration(file, 'VisitAgendaItem'), file, { React, dateLabel: date => date,
