@@ -10,6 +10,12 @@ import { canonicalLegacyRoute } from './legacy-routes.js';
 // are extracted verbatim; SSR and hook leases are tested independently from
 // the manager's DOM tests. No git, listeners, browser or service is started.
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+test('automatic section focus has no heading box while the keyboard skip link remains visible', () => {
+  const css = read('../../components/SectionContentFocus.css');
+  assert.match(css, /\[data-render-section-focus-target\]\[tabindex="-1"\]:focus\s*\{\s*outline:\s*none;/);
+  assert.match(css, /\.render-section-skip-link:focus\s*\{[^}]*outline:\s*2px solid/);
+  assert.doesNotMatch(css, /(?:^|\})\s*(?:\*|button|a|input|select|textarea):focus(?:-visible)?\s*\{/);
+});
 const parse = (name, source) => ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
 const appSource = read('../../App.jsx'), app = parse('App.jsx', appSource);
 const hookSource = read('../../components/SectionContentFocus.jsx'), hook = parse('SectionContentFocus.jsx', hookSource);

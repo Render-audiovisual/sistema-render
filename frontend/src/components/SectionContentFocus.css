@@ -23,9 +23,9 @@
 [data-render-section-focus-target] {
   scroll-margin-top: 24px;
 }
-[data-render-section-focus-target]:focus {
-  outline: 2px solid var(--render-accent);
-  outline-offset: 4px;
+/* Route announcements focus the heading, not an interactive control. */
+[data-render-section-focus-target][tabindex="-1"]:focus {
+  outline: none;
 }
 @media (max-width: 980px) {
   [data-render-section-focus-target] {
