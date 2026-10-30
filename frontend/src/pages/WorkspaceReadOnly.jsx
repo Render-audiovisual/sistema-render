@@ -48,6 +48,7 @@ import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
 import './TaskDetailSimple.css';
 import './TaskRenderPerformance.css';
+import './OperationalCalendars.css';
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
 import "./TaskHeader.css";
@@ -1071,7 +1072,7 @@ function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) 
   const openFromSummary = (taskId) => { setSelectedDate(""); onOpen(taskId); };
   return <>
     <section className="ros-calendar">
-      <header><button type="button" aria-label="Mes anterior" onClick={() => moveMonth(-1)}>‹</button><strong>{label}</strong><button type="button" aria-label="Mes siguiente" onClick={() => moveMonth(1)}>›</button></header>
+      <header><button type="button" aria-label="Mes anterior" onClick={() => moveMonth(-1)}>‹</button><strong>{label}</strong><button className="calendar-today" type="button" onClick={()=>{const [currentYear,currentMonth]=today.split('-').map(Number);setCursor(new Date(currentYear,currentMonth-1,1));setSelectedDate('');onMonthChange(today.slice(0,7));}}>Hoy</button><button type="button" aria-label="Mes siguiente" onClick={() => moveMonth(1)}>›</button></header>
       <div className="ros-calendar-week"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
       <div className="ros-calendar-grid">{cells.map((day, index) => {
         if (!day) return <div className="ros-calendar-day muted" key={`empty-${index}`}/>;

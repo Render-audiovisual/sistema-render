@@ -1,0 +1,52 @@
+/* Shared visual language, scoped to the three operational calendars. */
+.principal-calendar .principal-calendar-layout{grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}
+.productions-page .prod-layout{grid-template-columns:minmax(0,1.35fr) minmax(320px,.85fr);gap:24px;align-items:start}
+.principal-calendar .principal-calendar-month-view,.productions-page .prod-schedule,.render-workspace .ros-calendar{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 3px 16px #1d293905;overflow:hidden}
+.principal-calendar .principal-calendar-month,.productions-page .prod-month-nav,.render-workspace .ros-calendar>header{display:flex;align-items:center;gap:10px;min-width:0;min-height:76px;padding:18px 20px;background:#fff;border-bottom:1px solid #eff0f2}
+.principal-calendar .principal-calendar-month h2,.productions-page .prod-month-nav h2,.render-workspace .ros-calendar>header strong{flex:1;text-align:left;font-size:19px;font-weight:600;letter-spacing:-.025em;line-height:1.4;color:#1d1d1f;text-transform:capitalize;margin:0 8px}
+.principal-calendar .principal-calendar-month button,.productions-page .prod-month-nav button,.render-workspace .ros-calendar>header button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:36px;height:36px;min-height:36px;padding:0;background:#fff;border:1px solid #e5e7eb;border-radius:8px;color:#6e6e73;font-size:22px;box-shadow:none}
+.principal-calendar .principal-calendar-month .calendar-today,.productions-page .prod-month-nav .calendar-today,.render-workspace .ros-calendar>header .calendar-today{width:auto;padding:0 12px;font-size:12px;font-weight:500;color:#343438}
+.principal-calendar .principal-calendar-weekdays,.productions-page .prod-weekdays,.render-workspace .ros-calendar-week{min-width:0;padding:14px 10px 10px;background:#fff;color:#86868b;font-size:11px;font-weight:500;text-align:center;letter-spacing:.025em}
+.principal-calendar .principal-calendar-grid,.productions-page .prod-days,.render-workspace .ros-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-width:0;padding:0 10px 10px;gap:4px;background:#fff}
+.principal-calendar .principal-calendar-grid>button,.productions-page .prod-days>button,.render-workspace .ros-calendar .ros-calendar-day{min-width:0;min-height:112px;align-self:stretch;padding:8px 6px;gap:6px;border:1px solid #eceef1;border-radius:8px;background:#fff;text-align:left;box-shadow:none;overflow:hidden}
+.principal-calendar .principal-calendar-grid>span,.productions-page .prod-days>span,.render-workspace .ros-calendar .ros-calendar-day.muted{background:#fafafb;border-radius:8px;border:1px solid transparent}
+.principal-calendar .principal-calendar-grid>button:nth-child(7n),.principal-calendar .principal-calendar-grid>button:nth-child(7n-1),.productions-page .prod-days>button:nth-child(7n),.productions-page .prod-days>button:nth-child(7n-1){background:#fafafb}
+.principal-calendar .principal-calendar-grid>button:hover,.productions-page .prod-days>button:hover,.render-workspace .ros-calendar .ros-calendar-day:hover{background:#f7f9fc;border-color:#cad8ec}
+.principal-calendar .principal-calendar-grid>button.selected,.productions-page .prod-days>button[aria-pressed=true]{background:#eef5ff;border-color:#80afe9;box-shadow:inset 0 0 0 1px #80afe9}
+.principal-calendar .principal-calendar-grid>button>span,.productions-page .prod-days time,.render-workspace .ros-calendar .ros-calendar-day-number{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:#343438;font-size:12px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;box-shadow:none}
+.principal-calendar .principal-calendar-grid>button[aria-current=date]>span,.productions-page .prod-days>button[aria-current=date] time,.render-workspace .ros-calendar .ros-calendar-day.today .ros-calendar-day-number{background:#0068d4;color:#fff;border:0;border-bottom:0;font-weight:600}
+.principal-calendar .principal-calendar-day-preview{gap:4px}
+.principal-calendar .principal-calendar-day-preview>span,.productions-page .prod-days>button>span{border:0;border-left:2px solid #71a7e1;border-radius:3px;background:#f0f5fc;padding:4px 5px;font-size:11px;line-height:1.35;color:#365b86;max-width:100%;box-sizing:border-box}
+.principal-calendar .principal-calendar-day-preview strong{font-weight:600;font-size:10px}
+.principal-calendar .principal-calendar-day-preview>span>span{font-size:10px;line-height:1.35;color:#61738b}
+.principal-calendar .principal-calendar-day-preview em,.productions-page .calendar-overflow{color:#86868b;font-size:10px;font-style:normal;padding:2px 4px}
+.principal-calendar .principal-calendar-agenda{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;position:sticky;top:24px;box-shadow:0 3px 16px #1d293905}
+.principal-calendar .principal-calendar-agenda>header h2,.productions-page .prod-day-agenda>h3{font-size:17px;font-weight:600;color:#1d1d1f;letter-spacing:-.02em}
+.principal-calendar .principal-calendar-agenda>header p{font-size:12px;color:#86868b;line-height:1.6}
+.principal-calendar .principal-calendar-agenda li{padding:18px 0;border-color:#eff0f2}
+.principal-calendar .principal-calendar-agenda li>small{font-size:10px;color:#86868b;letter-spacing:.02em}
+.principal-calendar .principal-calendar-agenda li p{font-size:12px;color:#6e6e73}
+.productions-page .prod-day-agenda{padding:22px;border-color:#eff0f2;background:#fff}
+.render-workspace .ros-calendar .ros-calendar-task{padding:5px 6px;border:0;border-left:2px solid #71a7e1;border-radius:4px;box-shadow:none;font-size:11px;line-height:1.4;background:#f0f5fc;color:#365b86;max-width:100%;overflow:hidden}
+.render-workspace .ros-calendar .ros-calendar-task strong{font-size:11px;font-weight:500}.render-workspace .ros-calendar .ros-calendar-task small{font-size:10px}
+.render-workspace .ros-calendar .ros-calendar-task.area-carruseles{border-left-color:#a39add;background:#f5f2fc;color:#665699}
+.render-workspace .ros-calendar .ros-calendar-day-tasks{gap:4px;margin-top:6px}
+.render-workspace .ros-calendar .ros-calendar-more{border:0;background:transparent;color:#86868b;font-size:11px;padding:4px}
+.render-workspace .ros-calendar .ros-calendar-day-count{font-size:9px;background:#f0f2f5;color:#6e6e73;border-radius:4px}
+.principal-calendar .calendar-today:focus-visible,.productions-page .calendar-today:focus-visible,.render-workspace .ros-calendar button:focus-visible{outline:2px solid #0068d4;outline-offset:2px}
+@media(max-width:1100px){.principal-calendar .principal-calendar-layout,.productions-page .prod-layout{grid-template-columns:minmax(0,1fr)}.principal-calendar .principal-calendar-agenda{position:static}.principal-calendar .principal-calendar-grid>button,.productions-page .prod-days>button{min-height:100px}}
+@media(max-width:680px){
+ .productions-page .prod-month-grid{display:block}
+ .principal-calendar .principal-calendar-month,.productions-page .prod-month-nav,.render-workspace .ros-calendar>header{padding:14px 12px;gap:6px;min-height:64px}
+ .principal-calendar .principal-calendar-month h2,.productions-page .prod-month-nav h2,.render-workspace .ros-calendar>header strong{font-size:15px;margin:0 2px;min-width:0}
+ .principal-calendar .principal-calendar-month button,.productions-page .prod-month-nav button,.render-workspace .ros-calendar>header button{width:36px;min-height:44px;height:44px}
+ .principal-calendar .principal-calendar-grid,.productions-page .prod-days,.render-workspace .ros-calendar-grid{padding:0 6px 6px;gap:3px;min-width:0}
+ .principal-calendar .principal-calendar-grid>button,.productions-page .prod-days>button,.render-workspace .ros-calendar .ros-calendar-day{padding:5px 2px;min-height:78px;border-radius:6px}
+ .principal-calendar .principal-calendar-grid>button>span,.productions-page .prod-days time{width:24px;height:24px;font-size:11px}
+ .principal-calendar .principal-calendar-day-preview>span,.productions-page .prod-days>button>span{padding:3px;font-size:9px}
+ .principal-calendar .principal-calendar-day-preview strong,.principal-calendar .principal-calendar-day-preview>span>span{font-size:9px}
+ .principal-calendar .principal-calendar-agenda{padding:20px}
+ .render-workspace .ros-calendar .ros-calendar-task strong{font-size:10px}
+ .render-workspace .ros-calendar .ros-calendar-day-number{width:100%;height:44px;min-height:44px;border-radius:6px}
+}
+@media(prefers-reduced-motion:no-preference){.principal-calendar .principal-calendar-grid>button,.productions-page .prod-days>button{transition:background-color .12s ease,border-color .12s ease}}

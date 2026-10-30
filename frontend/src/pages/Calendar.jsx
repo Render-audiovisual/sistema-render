@@ -7,6 +7,7 @@ import { navigateWithinApp } from '../shared/navigation/location.js';
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, cordobaToday, createCalendarLoader, readPublicationCalendarSelection as readCalendarSelection, publicationPlanningHref, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
+import './OperationalCalendars.css';
 import {CalendarLinkedTask} from './CalendarLinkedTask.jsx';
 import {calendarDateLabel as dateLabel} from './calendarDateLabel.js';
 
@@ -76,7 +77,7 @@ function CalendarContent({ sesion, onNavigate }) {
     {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button>{selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}</div>}
     {data?.truncated && <p className="principal-calendar-notice" role="status">Agenda paginada: se muestran {agenda.length} de {data.pagination.total} eventos del día. Los recuentos del calendario incluyen todos los eventos.</p>}
     <div className="principal-calendar-layout"><section className="principal-calendar-month-view" aria-label="Selector de día">
-      <header className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button></header>
+      <header className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button className="calendar-today" type="button" onClick={()=>change({mes:today.slice(0,7),dia:today})}>Hoy</button><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button></header>
       <div className="principal-calendar-weekdays" aria-hidden="true">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, index) => <span key={index}>{day}</span>)}</div>
       <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; if(!day.startsWith(selection.mes))return <span key={day} aria-hidden="true"/>; return <button type="button" key={day} className={day === selection.dia ? 'selected' : ''} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
         <span>{Number(day.slice(-2))}</span>{data && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
