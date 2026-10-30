@@ -7,6 +7,7 @@ import ts from 'typescript';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as clientStats from '../clientesStats.js';
+import { instagramMonthlyGroupObservation } from '../../../shared/instagram-monthly-observation.mjs';
 
 const monthlySource = readFileSync(new URL('./Clientes.jsx', import.meta.url), 'utf8');
 const monthlyTree = ts.createSourceFile('Clientes.jsx', monthlySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -15,9 +16,33 @@ const monthlyDeclarations = monthlyTree.statements.filter(node => ts.isFunctionD
 assert.equal(monthlyDeclarations.length, 3);
 const monthlyCode = ts.transpileModule(monthlyDeclarations.map(node => node.getText(monthlyTree).replace(/^export\s+/, '')).join('\n'),
   { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText;
-const monthly = Function('React', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, ...Object.values(clientStats));
+const monthly = Function('React', 'instagramMonthlyGroupObservation', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, ...Object.values(clientStats));
 const monthClient = { id: 1, nombre: 'Cliente QA', activo: true, cuota_reels: 4, cuota_carruseles: 2 };
 const monthPiece = (id, extra = {}) => ({ id, cliente_id: 1, tipo: 'reel', estado: 'publicada', fecha_programada: '2026-10-05', ...extra });
+function observation(clientId=1, posts=[]) {
+  return {version:1,period:'2026-10',clientId,handle:'public_test',totalPosts:posts.length,checkedAt:'2026-10-29T15:00:00Z',boundaryVerified:true,posts,
+    boundary:[1,2,3].map(id=>({url:`https://www.instagram.com/p/Before${id}/`,publishedAt:'2026-09-30T15:00:00Z'}))};
+}
+test('observed zero replaces history; absent, invalid or other-month evidence preserves history', () => {
+  for (const snapshot of [undefined, {...observation(),period:'2026-09'}, {...observation(),boundaryVerified:false}]) {
+    const [row] = monthly.clientMonthlyProgressRows([{...monthClient,instagram_monthly_observation:snapshot}], [monthPiece(1)], '2026-10');
+    assert.equal(row.reels.historicalCount,1); assert.equal(row.observation,null);
+  }
+  const client = {...monthClient,instagram_monthly_observation:observation()};
+  const [row] = monthly.clientMonthlyProgressRows([client], [monthPiece(1),confirmedMonthPiece(2)], '2026-10');
+  assert.deepEqual(row.reels,{count:0,historicalCount:0,quota:4}); assert.equal(row.noActivity,true);
+  const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[client],publicaciones:[monthPiece(1)],period:'2026-10'}));
+  assert.match(html,/Verificado en Instagram/); assert.match(html,/Faltan 4 reels/); assert.match(html,/Faltan 2 carruseles/);
+  assert.doesNotMatch(html,/0 confirmadas|API/);
+});
+test('shared evidence requires all members and unions collab shortcodes with one quota', () => {
+  const post = {url:'https://www.instagram.com/reel/Collab1/',kind:'reel',publishedAt:'2026-10-05T15:00:00Z'};
+  const clients = [1,2].map(id=>({...monthClient,id,grupo_feed_id:9,cuota_feed_reels:8,cuota_feed_carruseles:3,instagram_monthly_observation:observation(id,[post])}));
+  const rows = monthly.clientMonthlyProgressRows(clients,[monthPiece(1)],'2026-10');
+  assert.equal(rows.length,1); assert.deepEqual(rows[0].reels,{count:1,historicalCount:0,quota:8});
+  clients[1].instagram_monthly_observation=undefined;
+  assert.equal(monthly.clientMonthlyProgressRows(clients,[monthPiece(1)],'2026-10')[0].observation,null);
+});
 function confirmedMonthPiece(id, extra = {}) {
   return monthPiece(id, { 'fecha_publicación_real': '2026-11-01T12:00:00Z', publicacion_evidencia: {
     classification: 'confirmada_manualmente', revision: 1,
@@ -54,7 +79,7 @@ test('client cards show only two registered-content bars without claiming confir
   const html = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,
     { clients: [monthClient], publicaciones: [monthPiece(1)], period: '2026-10' }));
   assert.doesNotMatch(html, /Registradas en historial|client-monthly-history-track/); assert.match(html, /1 \/ 4/);
-  assert.match(html, /No implica publicación confirmada/); assert.match(html, /client-monthly-avatar/);
+  assert.match(html, /Las demás muestran registros internos, sin confirmar su publicación/); assert.match(html, /client-monthly-avatar/);
   assert.equal((html.match(/role="progressbar"/g)||[]).length,2);
   const over = renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,
     { label: 'Reels', count: 5, historicalCount: 7, quota: 4 }));

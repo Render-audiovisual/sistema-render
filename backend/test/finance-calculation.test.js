@@ -46,7 +46,10 @@ test("los endpoints financieros exigen Líder y clientes oculta abonos a emplead
   assert.match(source, /router\.post\("\/clientes\/:id\/abono-proximo-mes", requireRole\("admin"\)/);
   assert.match(source, /res\.json\(await loadClientCatalogSnapshot\(pool, req\.auth, periodo\)\)/);
   const catalog = readFileSync(new URL('../src/client-catalog.js', import.meta.url), 'utf8');
-  assert.match(catalog, /result\.rows\.map\(row => clientOperationalDto\(row, actor\)\)/);
+  assert.match(catalog, /result\.rows\.map\(row => \{/);
+  assert.match(catalog, /const dto = \{ \.\.\.clientOperationalDto\(row, actor\) \}/);
+  assert.match(catalog, /delete dto\.instagram_monthly_observation/);
+  assert.match(catalog, /if \(snapshot\) dto\.instagram_monthly_observation = snapshot/);
   assert.match(catalog, /actor\.rol !== observed\.rol/);
 });
 

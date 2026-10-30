@@ -23,6 +23,7 @@ import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { CLIENT_CREATE_MODES, createClientCreation, hasNoConfiguredMonthlyAgreement } from './clientCreate.js';
 import './ClientesCreate.css';
 import './ClientesProgress.css';
+import { instagramMonthlyGroupObservation } from '../../../shared/instagram-monthly-observation.mjs';
 
 // Publication evidence only. Shared-feed quotas and progress appear once;
 // member names remain recognizable without multiplying the agreement.
@@ -38,33 +39,36 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
   }
   const rows = [...groups].map(([key, members]) => {
     const first = members[0], grouped = Boolean(first.grupo_feed_id);
+    const observation = instagramMonthlyGroupObservation(grouped ? unique.filter(client => client.grupo_feed_id === first.grupo_feed_id) : members, period);
     const quota = read => { const quantities = members.map(read); return quantities.every(n => Number.isSafeInteger(n) && n >= 0 && n === quantities[0]) ? quantities[0] : null; };
     const publications = getPublicacionesDelMismoFeed(first, unique, Array.isArray(publicaciones) ? publicaciones : [])
       .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
     return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
       memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
-      reels:{count:first.reelsPublicados,historicalCount:first.reelsSinConfirmacion,quota:quota(getCuotaReelsMensual)},
-      carruseles:{count:first.carruselesPublicados,historicalCount:first.carruselesSinConfirmacion,quota:quota(getCuotaCarruselesMensual)}, noActivity:publications.length===0};
+      observation,
+      reels:{count:observation ? observation.reels : first.reelsPublicados,historicalCount:observation ? 0 : first.reelsSinConfirmacion,quota:quota(getCuotaReelsMensual)},
+      carruseles:{count:observation ? observation.carruseles : first.carruselesPublicados,historicalCount:observation ? 0 : first.carruselesSinConfirmacion,quota:quota(getCuotaCarruselesMensual)}, noActivity:observation ? observation.totalPosts===0 : publications.length===0};
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
-function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
+function ClientMonthlyFormatBar({label,count,historicalCount=0,quota,observed=false}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
   const total = count + historicalCount;
   const percent = known ? Math.min(100, total / quota * 100) : 0;
-  return <div className="client-monthly-format" title={`${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
+  return <div className="client-monthly-format" title={observed ? 'Verificado en Instagram mediante revisión pública manual' : `${count} confirmadas; ${historicalCount} del historial sin confirmación verificable. No implica cumplimiento confirmado.`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : `${total} · sin cuota configurada`}</strong></div>
     <div className="client-monthly-track" role={known?'progressbar':undefined} aria-label={known?`${label}: contenido registrado`:undefined}
       aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
-      aria-valuetext={known?`${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
+      aria-valuetext={known?(observed ? `${total} verificadas en Instagram de ${quota}` : `${total} registradas de ${quota}; ${count} confirmadas y ${historicalCount} históricas sin confirmación verificable`):undefined}><span style={{width:`${percent}%`}} /></div>{observed && known && <small>Faltan {Math.max(0,quota-total)} {label.toLowerCase()}</small>}</div>;
 }
 export function ClientMonthlyProgressList({clients,publicaciones,period}) {
   const rows = clientMonthlyProgressRows(clients,publicaciones,period);
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
       <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
-      <ClientMonthlyFormatBar label="Reels" {...row.reels}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles}/>
+      {row.observation && <small>Verificado en Instagram · {new Date(row.observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})}</small>}
+      <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)}/>
     </li>)}</ul>}
-    <p className="client-monthly-evidence">Contenido registrado del mes, incluido el historial. No implica publicación confirmada.</p>
+    <p className="client-monthly-evidence">Las tarjetas verificadas muestran el relevamiento de Instagram a la fecha indicada. Las demás muestran registros internos, sin confirmar su publicación.</p>
   </section>;
 }
 
@@ -93,7 +97,7 @@ function getClienteInicial(nombre = "") {
   return nombre.trim().charAt(0).toUpperCase() || "C";
 }
 
-export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
+export function ClienteCuotaResumen({ etiqueta, publicados, cuota, observed=false }) {
   const cuotaNumero = Number(cuota) || 0;
   const porcentaje = calcularPorcentajeCuota(publicados, cuotaNumero);
   return (
@@ -111,7 +115,7 @@ export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
           <div className="cliente-quota-progress" aria-label={`${porcentaje}% de la cuota de ${etiqueta}`}>
             <span style={{ width: `${Math.min(porcentaje, 100)}%` }} />
           </div>
-          <small>{publicados} confirmados · {cuotaNumero - Math.min(publicados, cuotaNumero)} sin confirmar</small>
+          <small>{observed ? `${publicados} verificados en Instagram · Faltan ${cuotaNumero - Math.min(publicados, cuotaNumero)}` : `${publicados} confirmados · ${cuotaNumero - Math.min(publicados, cuotaNumero)} sin confirmar`}</small>
         </>
       )}
       {cuotaNumero === 0 && <small>Este formato no forma parte del acuerdo mensual.</small>}
@@ -476,6 +480,9 @@ function ClientesAdminContent({ sesion }) {
               <>
               <div className="clientes-portfolio-list">
                 {filas.map((cliente) => {
+                  const observation = instagramMonthlyGroupObservation(cliente.grupo_feed_id ? clientes.filter(member => member.grupo_feed_id === cliente.grupo_feed_id) : [cliente], mesSeleccionado);
+                  if (observation) cliente = {...cliente, reelsPublicados:observation.reels, carruselesPublicados:observation.carruseles};
+                  const sharedFollower = observation && cliente.grupo_feed_id && filas.find(member => member.grupo_feed_id === cliente.grupo_feed_id)?.id !== cliente.id;
                   const cuotaReels = getCuotaReelsMensual(cliente);
                   const cuotaCarruseles = getCuotaCarruselesMensual(cliente);
                   const comprometidas = cuotaReels + cuotaCarruseles + cliente.cuotaHistorias;
@@ -500,15 +507,19 @@ function ClientesAdminContent({ sesion }) {
                       </div>
                       <div className="clientes-portfolio-progress">
                         {hasNoConfiguredMonthlyAgreement(cliente) ? <strong>Sin cuota mensual</strong> : <>
-                        <strong>{publicadas} de {comprometidas} confirmados</strong>
-                        {cliente.totalSinConfirmacion > 0 && <small>{cliente.totalSinConfirmacion} registros históricos sin confirmar</small>}
+                        {sharedFollower ? <small>Avance incluido en la cuota compartida · {cliente.grupo_feed_nombre}</small> : <>
+                        <strong>{publicadas} de {comprometidas} {observation ? 'observados / confirmados' : 'confirmados'}</strong>
+                        {observation && <small>Verificado en Instagram · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
+                        {observation && <small>Faltan {Math.max(0,cuotaReels-observation.reels)} reels · {Math.max(0,cuotaCarruseles-observation.carruseles)} carruseles</small>}
+                        {!observation && cliente.totalSinConfirmacion > 0 && <small>{cliente.totalSinConfirmacion} registros históricos sin confirmar</small>}
                         <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
                         <small>{progreso}% del acuerdo mensual</small>
+                        </>}
                         </>}
                       </div>
                       <div className="clientes-portfolio-status">
                         <strong className={cliente.estadoGeneral.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
-                        <small>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin seguimiento de cuota editorial' : pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
+                        <small>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin seguimiento de cuota editorial' : observation ? (pendientes ? `${pendientes} pendientes según evidencia disponible` : 'Cuota cubierta según evidencia disponible') : pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
                       </div>
                       <button className="btn clientes-portfolio-action" type="button"
                         onClick={(event) => { event.stopPropagation(); selectClient(cliente); }}>
@@ -520,7 +531,11 @@ function ClientesAdminContent({ sesion }) {
                 {filas.length === 0 && <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>}
               </div>
               <div className="clientes-mobile-list">
-                {filas.map((cliente) => (
+                {filas.map((cliente) => {
+                  const observation = instagramMonthlyGroupObservation(cliente.grupo_feed_id ? clientes.filter(member => member.grupo_feed_id === cliente.grupo_feed_id) : [cliente], mesSeleccionado);
+                  if (observation) cliente = {...cliente,reelsPublicados:observation.reels,carruselesPublicados:observation.carruseles};
+                  const sharedFollower = observation && cliente.grupo_feed_id && filas.find(member => member.grupo_feed_id === cliente.grupo_feed_id)?.id !== cliente.id;
+                  return (
                   <article className="cliente-mobile-card" key={cliente.id} style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}>
                     <div className="cliente-mobile-card-head">
                       <div className="cliente-mobile-identity">
@@ -535,17 +550,21 @@ function ClientesAdminContent({ sesion }) {
                         {hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin acuerdo mensual configurado' : cliente.estadoGeneral.label}
                       </span>
                     </div>
-                    {!hasNoConfiguredMonthlyAgreement(cliente) && <div className="cliente-mobile-quotas">
+                    {observation && <small>Verificado en Instagram · {new Date(observation.checkedAt).toLocaleString('es-AR', {timeZone:'America/Argentina/Buenos_Aires'})} · Revisión pública manual</small>}
+                    {sharedFollower && <small>Avance incluido en la cuota compartida · {cliente.grupo_feed_nombre}</small>}
+                    {!sharedFollower && !hasNoConfiguredMonthlyAgreement(cliente) && <div className="cliente-mobile-quotas">
                       {cliente.feedCompartido ? (
                         <>
                           <ClienteCuotaResumen
                             etiqueta={`Reels compartidos · ${cliente.grupo_feed_nombre}`}
                             publicados={cliente.reelsPublicados}
+                            observed={Boolean(observation)}
                             cuota={cliente.cuota_feed_reels}
                           />
                           <ClienteCuotaResumen
                             etiqueta={`Carruseles compartidos · ${cliente.grupo_feed_nombre}`}
                             publicados={cliente.carruselesPublicados}
+                            observed={Boolean(observation)}
                             cuota={cliente.cuota_feed_carruseles}
                           />
                         </>
@@ -554,11 +573,13 @@ function ClientesAdminContent({ sesion }) {
                           <ClienteCuotaResumen
                             etiqueta="Reels"
                             publicados={cliente.reelsPublicados}
+                            observed={Boolean(observation)}
                             cuota={cliente.cuota_reels}
                           />
                           <ClienteCuotaResumen
                             etiqueta="Carruseles"
                             publicados={cliente.carruselesPublicados}
+                            observed={Boolean(observation)}
                             cuota={cliente.cuota_carruseles}
                           />
                         </>
@@ -602,7 +623,7 @@ function ClientesAdminContent({ sesion }) {
                       </button>
                     </div>
                   </article>
-                ))}
+                );})}
                 {filas.length === 0 && (
                   <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>
                 )}
