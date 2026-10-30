@@ -8,11 +8,8 @@ import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceE
 import { CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, cordobaToday, createCalendarLoader, readPublicationCalendarSelection as readCalendarSelection, publicationPlanningHref, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 import {CalendarLinkedTask} from './CalendarLinkedTask.jsx';
+import {calendarDateLabel as dateLabel} from './calendarDateLabel.js';
 
-const dateLabel = (day, options) => {
-  const label = new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', ...options }).format(new Date(`${day}T00:00:00Z`));
-  return label.charAt(0).toLocaleUpperCase('es-AR') + label.slice(1);
-};
 const eventCount = count => `${count} ${count === 1 ? 'evento' : 'eventos'}`;
 export function CalendarPage({ sesion, onNavigate }) {
   return <CalendarContent key={sessionViewKey(sesion)} sesion={sesion} onNavigate={onNavigate} />;

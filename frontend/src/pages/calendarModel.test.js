@@ -240,7 +240,10 @@ test('source contracts protect selected-day pagination, history cleanup, honest 
   assert.match(css, /margin-left:var\(--render-sidebar-width,236px\)/); assert.match(css, /max-width:980px.*margin-left:0/);
   assert.match(css, /min-height:44px/); assert.match(css, /focus-visible/);
   assert.doesNotMatch(css, /text-transform:capitalize/);
-  assert.match(jsx, /toLocaleUpperCase\('es-AR'\) \+ label.slice\(1\)/);
+  assert.match(jsx, /calendarDateLabel as dateLabel/);
+  const dateHelper=readFileSync(new URL('./calendarDateLabel.js',import.meta.url),'utf8');
+  assert.match(dateHelper, /toLocaleUpperCase\('es-AR'\)\+label.slice\(1\)/);
+  assert.match(dateHelper, /timeZone:'UTC'/);
   assert.match(jsx, /count === 1 \? 'evento' : 'eventos'/);
   assert.match(jsx, /calendarEventTitle\(item\).*<\/h3>/);
   assert.match(jsx, /label="Contenido"/);

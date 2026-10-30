@@ -47,6 +47,7 @@ import { createCapturedRequest, isSessionFailure } from '../shared/session/captu
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
 import './TaskDetailSimple.css';
+import './TaskRenderPerformance.css';
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
 import "./TaskHeader.css";

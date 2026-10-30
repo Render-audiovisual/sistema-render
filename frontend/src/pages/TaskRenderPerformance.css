@@ -1,0 +1,7 @@
+/* Keep card layout and keyboard controls; skip painting distant cards only. */
+@supports(content-visibility:auto){
+  .render-workspace .ros-board .ros-task-card{
+    content-visibility:auto;
+    contain-intrinsic-size:auto 180px;
+  }
+}
