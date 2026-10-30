@@ -104,6 +104,6 @@ test('CSS keeps existing tokens, focus-only link, bounded mobile scroll margin a
   const css = readFileSync(new URL('./SectionContentFocus.css', import.meta.url), 'utf8');
   assert.match(css, /\.render-section-skip-link\s*\{/); assert.match(css, /position: fixed/); assert.match(css, /min-height: 44px/);
   assert.match(css, /\.render-section-skip-link:focus\s*\{\s*transform: none/); assert.match(css, /var\(--render-accent\)/); assert.match(css, /var\(--render-font\)/);
-  assert.match(css, /\[data-render-section-focus-target\]:focus/); assert.match(css, /@media \(max-width: 980px\)/); assert.match(css, /scroll-margin-top: calc\(88px/);
+  assert.match(css, /\[data-render-section-focus-target\]\[tabindex="-1"\]:focus\s*\{\s*outline: none/); assert.match(css, /@media \(max-width: 980px\)/); assert.match(css, /scroll-margin-top: calc\(88px/);
   assert.doesNotMatch(css, /:root|\.sidebar|\bmain\s*\{|!important|transition: all|#[a-f\d]{3,8}\b/i);
 });
