@@ -28,7 +28,7 @@ function CalendarContent({ sesion, onNavigate }) {
   const requestObservation = useRef(null), lastRetry = useRef(retry);
   if (!requestObservation.current || requestObservation.current.key !== requestKey || requestObservation.current.retry !== retry) requestObservation.current = { key: requestKey, retry };
   useEffect(() => {
-    const instance = createCalendarLoader({ request: apiRequest, sesion, readSession: getSesion,
+    const instance = createCalendarLoader({ request: apiRequest, sesion, readSession: getSesion, monthly:true,
       onInvalidated: () => { generation.current++; setResult({ key: null, status: 'error', data: null, error: 'La sesión cambió. Volvé a abrir el calendario desde la sesión actual.' }); } });
     loader.current = instance;
     return () => { instance.dispose(); if (loader.current === instance) loader.current = null; };
@@ -50,9 +50,9 @@ function CalendarContent({ sesion, onNavigate }) {
     const observation = requestObservation.current;
     const current = () => version === generation.current && requestObservation.current === observation;
     const refresh = lastRetry.current !== retry; lastRetry.current = retry;
-    setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'loading', data: null, error: '', monthContext, monthData:previous.monthContext===monthContext ? previous.data || previous.monthData : null }));
-    loader.current?.load(selection, { refresh }).then(data => { if (data && current()) setResult({ key: requestKey, attempt: retry, observation, status: 'ready', data, monthContext, monthData:data, error: '' }); })
-      .catch(error => { if (current()) setResult({ key: requestKey, attempt: retry, observation, status: 'error', data: null, error: error.message }); });
+    setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'loading', data: null, error: '', catalog:previous.data?.clients||previous.catalog||[], monthContext, monthData:previous.monthContext===monthContext ? previous.data || previous.monthData : null }));
+    loader.current?.load(selection, { refresh }).then(data => { if (data && current()) setResult({ key: requestKey, attempt: retry, observation, status: 'ready', data, catalog:data.clients, monthContext, monthData:data, error: '' }); })
+      .catch(error => { if (current()) setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'error', data: null, catalog:previous.data?.clients||previous.catalog||[], error: error.message })); });
     return () => { generation.current++; loader.current?.cancel(); };
   }, [requestKey, retry]);
   function change(fields) {
@@ -67,13 +67,14 @@ function CalendarContent({ sesion, onNavigate }) {
   const status = (result.key === requestKey && result.attempt === retry && result.observation === requestObservation.current) || (result.key === null && result.status === 'error') ? result.status : 'loading';
   const data = status === 'ready' ? result.data : null;
   const monthData = data || (status==='loading' && result.monthContext===monthContext ? result.data || result.monthData : null);
+  const catalog = data?.clients || result.catalog || [];
   const byDay = new Map((monthData?.pagination.days || []).map(day => [day.date, day]));
   const agenda = data?.events || [];
   return <main className="principal-calendar" aria-label="Calendario"><div className="principal-calendar-shell">
     <header className="principal-calendar-header"><h1>Calendario</h1><a className="principal-calendar-add" href={publicationPlanningHref(selection, true)} onClick={event => follow(event, publicationPlanningHref(selection, true))}>+ Agregar contenido</a></header>
     <div className="principal-calendar-toolbar">
       <div className="principal-calendar-filters">
-        <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !monthData?.clients.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{monthData?.clients.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect>
+        <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !catalog.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{catalog.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect>
         <FilterSelect label="Contenido" value={selection.formato || ''} onChange={event=>change({formato:event.target.value})}><option value="">Todos</option><option value="reel">Reels</option><option value="carrusel">Carruseles</option></FilterSelect></div>
     </div>
     {status === "loading" && !monthData && <p role="status">Cargando calendario…</p>}

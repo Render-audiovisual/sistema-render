@@ -187,10 +187,32 @@ export function calendarMonthContext(selection) {
   params.delete('dia');params.delete('offset');params.delete('expected_snapshot');
   return params.toString();
 }
-export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {}, now = Date.now }) {
+export function decodeCalendarMonth(dto,selection) {
+  const p=dto?.pagination;
+  if(!p||p.version!==1||p.limit!==CALENDAR_PAGE_LIMIT||p.offset!==0||p.day!==null||!calendarSnapshot(p.snapshot)||!Number.isSafeInteger(p.total)||p.total<0||!Array.isArray(dto.events)||!Array.isArray(p.days))throw Error('Mes no verificable.');
+  if(p.total>CALENDAR_PAGE_LIMIT){if(p.has_more!==true||dto.truncated!==true||dto.events.length!==CALENDAR_PAGE_LIMIT)throw Error('Mes incompleto.');return null;}
+  if(p.total>CALENDAR_PAGE_LIMIT||dto.events.length!==p.total||p.has_more!==false||dto.truncated!==false)throw Error('Mes incompleto.');
+  const data=decodeCalendar(dto,{...selection,cliente:'',formato:undefined});
+  const days=new Map();
+  for(const event of data.events){if(!days.has(event.date))days.set(event.date,[]);days.get(event.date).push(event);}
+  if(p.days.length!==days.size)throw Error('Recuento mensual inválido.');
+  let previous='';
+  for(const day of p.days){const expected=days.get(day.date);if(!expected||day.date<=previous||day.total!==expected.length||!Array.isArray(day.preview))throw Error('Recuento mensual inválido.');previous=day.date;const preview=decodeCalendar({...dto,events:day.preview},{...selection,cliente:'',formato:undefined}).events;if(JSON.stringify(preview)!==JSON.stringify(expected.slice(0,2)))throw Error('Resumen mensual inválido.');}
+  return {...data,snapshot:p.snapshot};
+}
+export function calendarMonthDay(data,selection) {
+  const rows=data.events.filter(event=>(!selection.cliente||event.cliente_id===Number(selection.cliente))&&(!selection.formato||calendarPublicationLabel(event)===(selection.formato==='reel'?'Reel':'Carrusel')));
+  const days=new Map();for(const event of rows){if(!days.has(event.date))days.set(event.date,[]);days.get(event.date).push(event);}
+  const dayRows=days.get(selection.dia)||[],offset=(selection.pagina||0)*CALENDAR_PAGE_LIMIT;
+  const events=dayRows.slice(offset,offset+CALENDAR_PAGE_LIMIT);
+  return {...data,events,truncated:events.length<dayRows.length,pagination:{version:1,limit:CALENDAR_PAGE_LIMIT,offset,total:dayRows.length,has_more:offset+events.length<dayRows.length,snapshot:data.snapshot,day:selection.dia,days:[...days].map(([date,rows])=>({date,total:rows.length,preview:rows.slice(0,2)}))}};
+}
+export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {}, now = Date.now, monthly = false }) {
   let generation = 0, controller = null, disposed = false, anchor = null;
   let recentMonth = null;
   const recentDays = new Map();
+  let completeMonth=null;
+  let monthFallback=null;
   const guard = createEditorialSessionGuard(sesion, readSession, onInvalidated);
   return {
     async load(selection, { refresh = false } = {}) {
@@ -211,6 +233,20 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
       const signal = controller.signal;
       const stale = () => disposed || version !== generation || !guard.isCurrent();
       try {
+        if(monthly&&selection.vista==='publicaciones'){
+          const monthSelection={...selection,cliente:'',formato:undefined,pagina:0};
+          const key=calendarMonthContext(monthSelection);
+          if(refresh||completeMonth?.key!==key||now()-completeMonth.at>=15000)completeMonth=null;
+          if(refresh||monthFallback?.key!==key||now()-monthFallback.at>=15000)monthFallback=null;
+          if(!completeMonth&&!monthFallback){
+            const url=new URL(calendarQuery(monthSelection),'https://calendar.invalid');url.searchParams.delete('dia');
+            const raw=await guard.request(request,url.pathname+url.search,{method:'GET',cache:'no-store',signal});
+            if(stale())return undefined;
+            const data=decodeCalendarMonth(raw,monthSelection);
+            if(data)completeMonth={key,data,at:now()};else monthFallback={key,at:now()};
+          }
+          if(completeMonth)return calendarMonthDay(completeMonth.data,selection);
+        }
         const offset = (selection.pagina || 0) * CALENDAR_PAGE_LIMIT;
         const base = calendarQuery(selection, { offset: 0 });
         if (refresh || anchor?.base !== base) anchor = null;
@@ -235,11 +271,13 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
         if (stale()) return undefined;
         anchor = null;
         recentMonth=null;recentDays.clear();
+        completeMonth=null;
+        monthFallback=null;
         if (error?.status === 409) throw new Error('El calendario cambió. Reintentá explícitamente para consultar una versión actualizada.');
         throw new Error('No se pudo cargar el calendario. Reintentá la consulta.');
       }
     },
     cancel() { generation++; controller?.abort(); guard.cancel(); },
-    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel();recentMonth=null;recentDays.clear(); },
+    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel();recentMonth=null;recentDays.clear();completeMonth=null;monthFallback=null; },
   };
 }

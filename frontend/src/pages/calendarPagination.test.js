@@ -32,6 +32,42 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a, b)
 const settle = async () => { for (let i = 0; i < 25; i++) await Promise.resolve(); };
 const params = url => new URL(url, 'https://render.test').searchParams;
 
+function monthlyPublicationPayload(filters) {
+  const raw=payload({filters,total:2,otherTotal:1});
+  const convert=row=>({...row,key:`programacion:publicacion:${row.source_id}`,kind:'programacion',source:'publicacion',title:`Programación editorial · Reel #${row.source_id}`,href:'/planificacion-publicaciones?tab=calendario&cliente=3&mes=2026-10'});
+  raw.pagination.days=raw.pagination.days.map(day=>({...day,preview:day.preview.map(convert)}));
+  raw.events=raw.pagination.days.flatMap(day=>day.preview);raw.pagination.day=null;raw.pagination.total=3;raw.pagination.has_more=false;raw.truncated=false;
+  return raw;
+}
+test('complete monthly mode switches clients and days without repeating requests and still expires',async()=>{
+  const filters={...selection,vista:'publicaciones'},current=legacySession();let calls=0,time=0;
+  const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>time,request:async url=>{calls++;assert.equal(params(url).has('dia'),false);assert.equal(params(url).has('cliente_id'),false);return monthlyPublicationPayload(filters);}});
+  const a=await loader.load(filters);assert.equal(a.events.length,2);
+  const b=await loader.load({...filters,cliente:'4'});assert.equal(b.events.length,0);assert.equal(b.pagination.days.length,0);
+  const c=await loader.load({...filters,cliente:'',dia:'2026-10-20'});assert.equal(c.events.length,1);assert.equal(c.pagination.total,1);assert.equal(calls,1);
+  const d=await loader.load({...filters,formato:'carrusel'});assert.equal(d.events.length,0);assert.equal(calls,1);
+  time=15000;await loader.load(filters);assert.equal(calls,2);await loader.load(filters,{refresh:true});assert.equal(calls,3);loader.dispose();
+});
+test('month decoder rejects missing events, dishonest counts and previews; session change cannot reuse a full month',async()=>{
+  const filters={...selection,vista:'publicaciones'};
+  for(const mutate of [raw=>raw.events.pop(),raw=>raw.pagination.days[0].total++,raw=>raw.pagination.days[0].preview.pop()]){const raw=monthlyPublicationPayload(filters);mutate(raw);assert.throws(()=>model.decodeCalendarMonth(raw,filters));}
+  let live=legacySession();const original=live;
+  const loader=createCalendarLoader({monthly:true,sesion:original,readSession:()=>live,request:async()=>monthlyPublicationPayload(filters)});
+  await loader.load(filters);live={...live,usuario:{...live.usuario,id:99}};await assert.rejects(loader.load(filters),/sesión cambió/);loader.dispose();
+});
+test('oversized monthly result falls back to real paged day reads without fetching the oversized month again',async()=>{
+  const filters={...selection,vista:'publicaciones'};let calls=[];const current=legacySession();
+  const convert=row=>({...row,key:`programacion:publicacion:${row.source_id}`,kind:'programacion',source:'publicacion',title:`Programación editorial · Reel #${row.source_id}`,href:'/planificacion-publicaciones?tab=calendario&cliente=3&mes=2026-10'});
+  const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,request:async url=>{
+    const p=params(url);calls.push(p.has('dia'));
+    const raw=payload({filters,total:401});raw.events=raw.events.map(convert);raw.pagination.days=raw.pagination.days.map(day=>({...day,preview:day.preview.map(convert)}));
+    if(!p.has('dia')){raw.pagination.day=null;raw.pagination.total=2902;}
+    return raw;
+  }});
+  const first=await loader.load(filters);assert.equal(first.pagination.total,401);assert.equal(first.events.length,200);assert.equal(first.pagination.has_more,true);assert.deepEqual(calls,[false,true]);
+  await loader.load({...filters,formato:'reel'});assert.deepEqual(calls,[false,true,true]);loader.dispose();
+});
+
 test('publication day switching reuses complete previews and remembered days, with expiry and explicit refresh',async()=>{
   const filters={...selection,vista:'publicaciones'},current=legacySession();let time=0,calls=0;
   const loader=createCalendarLoader({sesion:current,readSession:()=>current,now:()=>time,request:async()=>{
