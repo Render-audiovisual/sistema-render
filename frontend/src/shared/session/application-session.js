@@ -3,6 +3,7 @@ import { createBrowserSessionController } from './browser-session-controller.js'
 import { createBrowserApiFetch } from './browser-api-fetch.js';
 import { createAuthenticatedApiFetch } from './api-fetch.js';
 import { parseCurrentSession } from './current-session.js';
+import { createBootstrapCalendarRead } from './bootstrap-calendar-read.js';
 
 export class ApplicationSessionError extends Error {
   constructor(code) {
@@ -13,7 +14,7 @@ export class ApplicationSessionError extends Error {
 
 // One instance belongs to one document, not to a React mount. No globals,
 // event listeners or storage access at module import time.
-export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange, eventTarget, sessionChanges } = {}) {
+export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange, eventTarget, sessionChanges, initialCalendarRead } = {}) {
   if (!['bearer', 'browser'].includes(mode) || typeof fetchImpl !== 'function')
     throw new ApplicationSessionError('application_session_config_invalid');
   let disposed = false, started;
@@ -39,7 +40,8 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
     // Never consult storage, including when configuration/locks are invalid.
     const store = createBrowserSessionState();
     const controller = createBrowserSessionController({ origin, store, fetchImpl, locks, notifyChange });
-    const apiFetch = createBrowserApiFetch({ origin, store, fetchImpl });
+    const initialRead = createBootstrapCalendarRead({ request: initialCalendarRead, store, fetchImpl });
+    const apiFetch = createBrowserApiFetch({ origin, store, fetchImpl: initialRead.fetch });
     const subscriptions = new Set();
     let removeChanges;
     return Object.freeze({ mode,
@@ -56,7 +58,9 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
           if (typeof sessionChanges.subscribe !== 'function') throw new ApplicationSessionError('application_session_changes_invalid');
           removeChanges = sessionChanges.subscribe(() => controller.invalidateExternal());
         }
-        return controller.bootstrap();
+        const result = controller.bootstrap();
+        initialRead.start();
+        return result;
       }),
       login(options) { assertLive(); return controller.login(options); },
       logout(options) { assertLive(); return controller.logout(options); },
@@ -65,7 +69,7 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
       invalidateSession(intent) { assertLive(); return store.invalidate(intent); },
       sync() { assertLive(); throw new ApplicationSessionError('application_session_mode_unsupported'); },
       dispose() { if (!disposed) {
-        disposed = true; removeChanges?.(); for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
+        disposed = true; initialRead.dispose(); removeChanges?.(); for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
       } },
     });
   }

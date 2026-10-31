@@ -7,6 +7,7 @@ import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
 import { createApplicationSession } from './shared/session/application-session.js';
 import { installApplicationSession } from './shared/session/application-session-access.js';
 import { createBrowserSessionCoordination } from './shared/session/browser-session-coordination.js';
+import { calendarQuery, readPublicationCalendarSelection } from './pages/calendarModel.js';
 
 installUnsavedNavigation(window);
 
@@ -16,11 +17,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 const fetchOriginal = window.fetch.bind(window);
 const root = createRoot(document.getElementById("root"));
 const coordination = createBrowserSessionCoordination();
+let initialCalendarRead;
+if (window.location.pathname === '/calendario') {
+  const selection = { ...readPublicationCalendarSelection(window.location.search), cliente: '', formato: undefined, pagina: 0 };
+  const query = new URL(calendarQuery(selection), window.location.origin);
+  query.searchParams.delete('dia');
+  initialCalendarRead = `${query.pathname}${query.search}`;
+}
 try {
   // Document-owned, outside StrictMode. Web Locks serialize cookie writers
   // across tabs; broadcasts only withdraw stale observations, never log in.
   const applicationSession = createApplicationSession({ mode: 'browser', fetchImpl: fetchOriginal,
     location: window.location, apiBase: API_BASE, locks: window.navigator.locks,
+    initialCalendarRead: initialCalendarRead,
     sessionChanges: coordination, notifyChange: coordination.notifyChange });
   installApplicationSession(applicationSession);
   window.fetch = applicationSession.fetch;
