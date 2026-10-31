@@ -213,8 +213,16 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
   const recentDays = new Map();
   let completeMonth=null;
   let monthFallback=null;
+  let previousMonth=null;
   const guard = createEditorialSessionGuard(sesion, readSession, onInvalidated);
   return {
+    // Display-only while renewing; never authorizes a write or suppresses the
+    // normal refresh. The caller must label this observation as updating.
+    peek(selection) {
+      if(!monthly||disposed||selection.vista!=='publicaciones'||!guard.isCurrent()||!previousMonth||now()-previousMonth.at>120000)return undefined;
+      const key=calendarMonthContext({...selection,cliente:'',formato:undefined,pagina:0});
+      return previousMonth.key===key ? calendarMonthDay(previousMonth.data,selection) : undefined;
+    },
     async load(selection, { refresh = false } = {}) {
       controller?.abort(); const version = ++generation;
       if (disposed) return undefined;
@@ -243,7 +251,7 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
             const raw=await guard.request(request,url.pathname+url.search,{method:'GET',cache:'no-store',signal});
             if(stale())return undefined;
             const data=decodeCalendarMonth(raw,monthSelection);
-            if(data)completeMonth={key,data,at:now()};else monthFallback={key,at:now()};
+            if(data){completeMonth={key,data,at:now()};previousMonth=completeMonth;}else {monthFallback={key,at:now()};previousMonth=null;}
           }
           if(completeMonth)return calendarMonthDay(completeMonth.data,selection);
         }
@@ -273,11 +281,12 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
         recentMonth=null;recentDays.clear();
         completeMonth=null;
         monthFallback=null;
+        previousMonth=null;
         if (error?.status === 409) throw new Error('El calendario cambió. Reintentá explícitamente para consultar una versión actualizada.');
         throw new Error('No se pudo cargar el calendario. Reintentá la consulta.');
       }
     },
     cancel() { generation++; controller?.abort(); guard.cancel(); },
-    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel();recentMonth=null;recentDays.clear();completeMonth=null;monthFallback=null; },
+    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel();recentMonth=null;recentDays.clear();completeMonth=null;monthFallback=null;previousMonth=null; },
   };
 }

@@ -193,10 +193,19 @@ export async function readCalendar(pool, auth, query) {
   try {
     db = await pool.connect();
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [captured.id])).rows[0];
+    // Read the same authoritative actor and public client catalog in one round
+    // trip. The existing RR snapshot and rejection checks below remain intact.
+    const actorCatalog = filters.vista === 'publicaciones' ? (await db.query(`/* calendar_actor_catalog */
+      SELECT u.id,u.rol,u.activo,u.session_version,
+        CASE WHEN u.activo IS TRUE AND u.rol=$2 AND u.session_version=$3 AND u.rol::text=ANY($4::text[])
+          THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('id',c.id,'nombre',c.nombre) ORDER BY c.nombre,c.id),'[]'::jsonb)
+            FROM clientes c WHERE c.activo IS DISTINCT FROM FALSE)
+          ELSE '[]'::jsonb END AS clients
+      FROM usuarios u WHERE u.id=$1`,[captured.id,captured.rol,captured.session_version,SYSTEM_USER_ROLES])).rows[0] : null;
+    const user = filters.vista === 'publicaciones' ? actorCatalog : (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [captured.id])).rows[0];
     if (!user || user.id !== captured.id || user.activo !== true || user.session_version !== captured.session_version || user.rol !== captured.rol) throw fail('La sesión ya no está activa.', 401);
     if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al calendario.', 403);
-    const clients = (await db.query('SELECT id,nombre FROM clientes WHERE activo IS DISTINCT FROM FALSE ORDER BY nombre,id')).rows
+    const clients = (filters.vista === 'publicaciones' ? actorCatalog.clients : (await db.query('SELECT id,nombre FROM clientes WHERE activo IS DISTINCT FROM FALSE ORDER BY nombre,id')).rows)
       .filter(row => id(row.id)).map(row => ({ id: row.id, nombre: text(row.nombre, 250) }));
     if (filters.pagination) {
       const page = await readCalendarPage(db, { filters, page: filters.pagination, clients, user }, {

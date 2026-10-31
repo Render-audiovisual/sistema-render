@@ -50,7 +50,9 @@ function CalendarContent({ sesion, onNavigate }) {
     const observation = requestObservation.current;
     const current = () => version === generation.current && requestObservation.current === observation;
     const refresh = lastRetry.current !== retry; lastRetry.current = retry;
-    setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'loading', data: null, error: '', catalog:previous.data?.clients||previous.catalog||[], monthContext, monthData:previous.monthContext===monthContext ? previous.data || previous.monthData : null }));
+    const preview=loader.current?.peek?.(selection);
+    if(!current())return;
+    setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'loading', data: null, preview, error: '', catalog:previous.data?.clients||previous.catalog||[], monthContext, monthData:preview || (previous.monthContext===monthContext ? previous.data || previous.monthData : null) }));
     loader.current?.load(selection, { refresh }).then(data => { if (data && current()) setResult({ key: requestKey, attempt: retry, observation, status: 'ready', data, catalog:data.clients, monthContext, monthData:data, error: '' }); })
       .catch(error => { if (current()) setResult(previous=>({ key: requestKey, attempt: retry, observation, status: 'error', data: null, catalog:previous.data?.clients||previous.catalog||[], error: error.message })); });
     return () => { generation.current++; loader.current?.cancel(); };
@@ -65,7 +67,7 @@ function CalendarContent({ sesion, onNavigate }) {
     event.preventDefault(); if (onNavigate) onNavigate(href); else navigateWithinApp(window, href);
   }
   const status = (result.key === requestKey && result.attempt === retry && result.observation === requestObservation.current) || (result.key === null && result.status === 'error') ? result.status : 'loading';
-  const data = status === 'ready' ? result.data : null;
+  const data = status === 'ready' ? result.data : status==='loading'&&result.key===requestKey&&result.observation===requestObservation.current ? result.preview || null : null;
   const monthData = data || (status==='loading' && result.monthContext===monthContext ? result.data || result.monthData : null);
   const catalog = data?.clients || result.catalog || [];
   const byDay = new Map((monthData?.pagination.days || []).map(day => [day.date, day]));
@@ -78,6 +80,7 @@ function CalendarContent({ sesion, onNavigate }) {
         <FilterSelect label="Contenido" value={selection.formato || ''} onChange={event=>change({formato:event.target.value})}><option value="">Todos</option><option value="reel">Reels</option><option value="carrusel">Carruseles</option></FilterSelect></div>
     </div>
     {status === "loading" && !monthData && <p role="status">Cargando calendario…</p>}
+    {status === 'loading' && data && <p role="status">Actualizando calendario…</p>}
     {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button>{selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}</div>}
     {data?.truncated && <p className="principal-calendar-notice" role="status">Agenda paginada: se muestran {agenda.length} de {data.pagination.total} eventos del día. Los recuentos del calendario incluyen todos los eventos.</p>}
     <div className="principal-calendar-layout principal-calendar-full"><section className="principal-calendar-month-view" aria-label="Selector de día">
@@ -89,9 +92,9 @@ function CalendarContent({ sesion, onNavigate }) {
       </button>; })}</div></section>
       </div>{dayOpen&&<Modal native closeOnBackdropClick className="calendar-day-dialog" overlayClassName="calendar-day-overlay" overlayAriaLabel="Publicaciones del día" title="Publicaciones del día" onClose={()=>setDayOpen(false)} returnFocusRef={dayTrigger}>
       <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)}</p>}</header>
-        {status==='loading'&&<p role="status">Cargando publicaciones…</p>}
+        {status==='loading'&&<p role="status">{data?'Actualizando publicaciones…':'Cargando publicaciones…'}</p>}
         {status==='error'&&<div role="alert"><p>{result.error}</p><button type="button" onClick={()=>setRetry(value=>value+1)}>Reintentar</button></div>}
-        {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'No hay publicaciones para este día.'}</p>}
+        {data && agenda.length === 0 && <p>{status==='loading' ? 'Consultando las publicaciones actuales de este día…' : data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'No hay publicaciones para este día.'}</p>}
         {data && (selection.pagina>0 || data.pagination.has_more) && <nav className="principal-calendar-month" aria-label="Páginas de agenda">
           <button type="button" disabled={selection.pagina === 0} onClick={() => change({ pagina: selection.pagina - 1 })}>Anterior</button>
           <span>Página {selection.pagina + 1} · hasta {CALENDAR_PAGE_LIMIT} eventos por página</span>

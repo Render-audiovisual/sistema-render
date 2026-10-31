@@ -39,6 +39,34 @@ function monthlyPublicationPayload(filters) {
   raw.events=raw.pagination.days.flatMap(day=>day.preview);raw.pagination.day=null;raw.pagination.total=3;raw.pagination.has_more=false;raw.truncated=false;
   return raw;
 }
+test('renewal exposes a bounded display-only preview but still performs a fresh authenticated read',async()=>{
+  const filters={...selection,vista:'publicaciones'},current=legacySession(),held=deferred();let time=0,calls=0;
+  const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>time,request:async()=>++calls===1?monthlyPublicationPayload(filters):held.promise});
+  await loader.load(filters);time=16000;
+  assert.equal(loader.peek(filters).pagination.total,2);
+  assert.equal(loader.peek({...filters,cliente:'99'}).pagination.total,0);
+  assert.equal(loader.peek({...filters,mes:'2026-11',dia:'2026-11-01'}),undefined);
+  const renewing=loader.load(filters);await settle();assert.equal(calls,2);
+  assert.equal(loader.peek(filters).pagination.snapshot,snapshot);
+  const next=monthlyPublicationPayload(filters);next.pagination.snapshot=nextSnapshot;held.resolve(next);
+  assert.equal((await renewing).pagination.snapshot,nextSnapshot);
+  assert.equal(loader.peek(filters).pagination.snapshot,nextSnapshot);
+  time=150000;assert.equal(loader.peek(filters),undefined);loader.dispose();assert.equal(loader.peek(filters),undefined);
+});
+test('a failed renewal clears its display-only preview rather than claiming success',async()=>{
+  const filters={...selection,vista:'publicaciones'},current=legacySession();let time=0,calls=0;
+  const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>time,request:async()=>{if(++calls===1)return monthlyPublicationPayload(filters);throw Error('offline');}});
+  await loader.load(filters);time=16000;assert.ok(loader.peek(filters));await assert.rejects(loader.load(filters));assert.equal(loader.peek(filters),undefined);loader.dispose();
+});
+test('session invalidation during peek cannot be overwritten by a loading repaint',()=>{
+  const source=readFileSync(new URL('./Calendar.jsx',import.meta.url),'utf8');
+  const file=ts.createSourceFile('Calendar.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+  let effect;const walk=node=>{if(ts.isCallExpression(node)&&node.expression.getText(file)==='useEffect'&&node.arguments[0]?.getText(file).includes('const preview=loader.current'))effect=node.arguments[0];ts.forEachChild(node,walk);};walk(file);assert.ok(effect);
+  const generation={current:0},paints=[];
+  const deps={generation,requestObservation:{current:{}},lastRetry:{current:0},retry:0,selection:{},
+    loader:{current:{peek(){generation.current++;paints.push('invalidated');},load(){assert.fail('must not fetch after invalidation');}}},setResult(){assert.fail('must not overwrite session error');}};
+  Function(...Object.keys(deps),`return (${effect.getText(file)});`)(...Object.values(deps))();assert.deepEqual(paints,['invalidated']);
+});
 test('complete monthly mode switches clients and days without repeating requests and still expires',async()=>{
   const filters={...selection,vista:'publicaciones'},current=legacySession();let calls=0,time=0;
   const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>time,request:async url=>{calls++;assert.equal(params(url).has('dia'),false);assert.equal(params(url).has('cliente_id'),false);return monthlyPublicationPayload(filters);}});
