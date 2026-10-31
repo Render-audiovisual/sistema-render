@@ -144,7 +144,8 @@ test('real API/auth import, ID participants and complete principal read/write en
 test('day agenda shows actual media titles/states on desktop and mobile, no editor required',()=>{
   const agenda=section('function VisitAgendaItem','function VisitDetail');
   for(const token of ['video.titulo','video.estado','photo.tipo','photo.estado']) assert.ok(agenda.includes(token));
-  assert.equal((source.match(/selectedDayVisits.map\(visit=><VisitAgendaItem/g)||[]).length,2);
+  assert.equal((source.match(/selectedDayVisits.map\(visit=><VisitAgendaItem/g)||[]).length,1);
+  assert.match(source,/dayOpen&&<Modal native closeOnBackdropClick title="Visitas del día"/);
   assert.match(source,/Vincular tarea existente \(opcional\)/);
   assert.match(css,/@media\(max-width:680px\)/);
   assert.match(css,/min-height:44px/);

@@ -109,8 +109,11 @@ async function readVisits(db, where, values) {
   const rows = (await db.query(`${VISITS} ${where} ORDER BY v.fecha,v.id`, values)).rows;
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
-  const videos = (await db.query(`${VIDEOS} WHERE pv.visita_id=ANY($1::uuid[]) ORDER BY pv.created_at,pv.id`, [ids])).rows;
-  const photos = (await db.query(`${PHOTOS} WHERE visita_id=ANY($1::uuid[]) ORDER BY created_at,id`, [ids])).rows;
+  const [videoResult,photoResult] = await Promise.all([
+    db.query(`${VIDEOS} WHERE pv.visita_id=ANY($1::uuid[]) ORDER BY pv.created_at,pv.id`, [ids]),
+    db.query(`${PHOTOS} WHERE visita_id=ANY($1::uuid[]) ORDER BY created_at,id`, [ids]),
+  ]);
+  const videos=videoResult.rows,photos=photoResult.rows;
   return rows.map(row => visitDto(row, videos, photos));
 }
 async function activeClient(db, id) {

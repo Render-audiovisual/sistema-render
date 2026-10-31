@@ -177,3 +177,13 @@ test('desktop calendar and mobile day input both execute selectDay, never direct
   evaluate(attr(mobile[0], 'onChange').initializer.expression.getText(tree), bindings)({ target: { value: '2026-10-22' } });
   assert.deepEqual(calls, ['2026-10-21', '2026-10-22']);
 });
+test('day window opens only after accepting a guarded date change; same-day window preserves the draft',async()=>{
+  for(const allow of [false,true]){
+    const h=harness({allow}),opened=[];h.deps.setDayOpen=value=>opened.push(value);
+    await evaluate(expression('selectDay'),h.deps)('2026-10-21',true);
+    assert.deepEqual(opened,allow?[true]:[]);
+  }
+  const h=harness(),opened=[];h.deps.setDayOpen=value=>opened.push(value);
+  await evaluate(expression('selectDay'),h.deps)('2026-10-20',true);
+  assert.deepEqual(opened,[true]);assert.equal(h.dirty.current.size,2);assert.equal(h.effects.length,0);
+});

@@ -24,6 +24,11 @@
 .prod-heading-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .prod-heading-actions .prod-refresh{color:var(--prod-muted);background:transparent;border-color:transparent}
 .prod-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--prod-line)}
+.productions-page .prod-layout.prod-layout-full{grid-template-columns:minmax(0,1fr)}
+.render-native-dialog.prod-day-overlay::backdrop{background:rgba(24,30,42,.28);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.modal.prod-day-dialog{width:min(640px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;border-radius:16px}
+.productions-page .prod-day-dialog .prod-day-agenda{display:block;padding:20px 24px;border:0;background:transparent}
+.productions-page .prod-detail-column[hidden]{display:none}
 .productions-page .prod-toolbar>.render-filter-field{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
 .productions-page .prod-toolbar>.render-filter-field select{width:220px;max-width:100%}
 .prod-toolbar>label{min-width:180px}.prod-toolbar>label:not(.render-filter-field){display:flex;align-items:center;gap:8px}
