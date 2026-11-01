@@ -16,7 +16,6 @@ const shared = new Map([
   ["/perfil", ["Perfil"]],
 ]);
 const adminOnly = new Map([
-  ["/instagram", "Instagram"],
   ["/sueldos", "Finanzas"],
   ["/empleados", "Usuarios"],
   ["/clientes?gestion=1", "Gestionar clientes"],

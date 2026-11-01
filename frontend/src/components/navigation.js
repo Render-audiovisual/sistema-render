@@ -21,7 +21,6 @@ export function getNavigationGroups(role) {
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-      ...(admin ? [{ href: "/instagram", label: "Instagram", icon: "instagram" }] : []),
       ...(admin ? [{ href: "/sueldos", label: "Finanzas", icon: "salary" }] : []),
     ] },
     { id: "account", label: "Cuenta", links: [

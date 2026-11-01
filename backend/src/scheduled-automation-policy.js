@@ -1,6 +1,6 @@
 import {readDatabaseTarget,isLoopbackAddress} from './startup-policy.js';
 
-export const SCHEDULED_AUTOMATION_JOBS=Object.freeze(['editorial','wilson','supervisor','instagram','instagram_reporte']);
+export const SCHEDULED_AUTOMATION_JOBS=Object.freeze(['editorial','wilson','supervisor']);
 const fail=()=>Object.assign(new Error('La configuración de automatizaciones no está autorizada.'),{code:'AUTOMATION_CONFIGURATION_INVALID'});
 
 // This contract enables only the explicit one-shot worker, never jobs at web

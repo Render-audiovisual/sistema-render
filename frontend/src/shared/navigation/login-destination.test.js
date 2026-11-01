@@ -122,7 +122,7 @@ test('resolve defaults to personal home for unusable destinations or missing/ina
 test('roles, not IDs or personal names, gate finance, users and management destinations', () => {
   for (const rol of roles) {
     const actor = user(rol, { id: 91001, usuario: 'lider', nombre: 'Franco' });
-    for (const route of ['/sueldos?periodo=2026-10#private', '/empleados?user=7', '/instagram'])
+    for (const route of ['/sueldos?periodo=2026-10#private', '/empleados?user=7'])
       assert.equal(resolveLoginDestination(route, actor), rol === 'admin' ? route : '/inicio');
     const management = '/clientes?gestion=1&periodo=2026-08#cliente-17';
     assert.equal(resolveLoginDestination(management, actor), rol === 'admin' ? management : '/clientes');
