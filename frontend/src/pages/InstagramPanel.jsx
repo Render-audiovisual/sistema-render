@@ -4,6 +4,7 @@ import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { hasWeeklyReportCoverage } from '../shared/instagram-report-coverage.js';
 import { readInstagramLocation,instagramPanelHref,instagramReportHref } from './instagramNavigation.js';
+import { needsInstagramOverview } from './instagramLoading.js';
 import './InstagramPanel.css';
 
 // Panel de rendimiento de Instagram. Solo Líder; el servidor vuelve a verificarlo.
@@ -52,10 +53,11 @@ function InstagramPanelContent({ sesion }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
-  const { capture } = useScopedRequest(sesion, `instagram:${period}:${version}`);
+  const needsOverview = needsInstagramOverview(navigation);
+  const { capture } = useScopedRequest(sesion, `instagram:${period}:${version}:${needsOverview}`);
 
   useEffect(() => {
-    if(navigation.error)return undefined;
+    if(!needsOverview)return undefined;
     const controller = new AbortController();
     const guard = capture();
     setLoading(true); setError('');
@@ -64,7 +66,7 @@ function InstagramPanelContent({ sesion }) {
       .catch(reason => { if (guard.current() && !controller.signal.aborted && !isSessionFailure(reason)) setError(reason.message || 'No se pudo cargar el panel.'); })
       .finally(() => { if (guard.current() && !controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [capture, period,navigation.error]);
+  }, [capture, period,needsOverview]);
 
   const reload = useCallback(() => setVersion(v => v + 1), []);
   const visibleAlerts=(data?.alertas||[]).filter(a=>a.tipo!=='sin_vincular');
@@ -91,12 +93,12 @@ function InstagramPanelContent({ sesion }) {
     </nav>
 
     {navigation.error&&<div className="salary-state is-error" role="alert">{navigation.error}<button type="button" className="btn" onClick={()=>navigate({period:currentPeriod(),tab:'clientes',selected:null})}>Volver a clientes</button></div>}
-    {!navigation.error&&loading && data?.periodo !== period && <div className="salary-state">Cargando {labelPeriod(period)}…</div>}
-    {error && <div className="salary-state is-error" role="alert"><strong>No se pudo cargar el panel.</strong><span>{error}</span>
+    {needsOverview&&loading && data?.periodo !== period && <div className="salary-state">Cargando {labelPeriod(period)}…</div>}
+    {needsOverview&&error && <div className="salary-state is-error" role="alert"><strong>No se pudo cargar el panel.</strong><span>{error}</span>
       <button type="button" className="btn" onClick={reload}>Reintentar</button></div>}
 
     {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} onOpen={key=>navigate({selected:key})} />}
-    {!navigation.error&&data?.periodo === period && tab === 'clientes' && selected && <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} />}
+    {!navigation.error&&tab === 'clientes' && selected && <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} />}
     {!navigation.error&&data?.periodo === period && tab === 'equipo' && <TeamView data={data} />}
     {!navigation.error&&tab === 'reportes' && <ReportsView sesion={sesion} />}
     {!navigation.error&&tab === 'cuentas' && <AccountsView sesion={sesion} onChanged={reload} />}
@@ -151,13 +153,14 @@ function ReportsView({ sesion }) {
   const [selected, setSelected] = useState(null);
   const [report, setReport] = useState(null);
   const { capture } = useScopedRequest(sesion, `instagram-reports:${selected ?? ''}`);
+  const { capture: captureList } = useScopedRequest(sesion, 'instagram-report-list');
   useEffect(() => {
-    const controller = new AbortController(), guard = capture();
+    const controller = new AbortController(), guard = captureList();
     guard.request('/api/instagram/reportes', { cache: 'no-store', signal: controller.signal })
       .then(body => { if (guard.current()) { setList({ loading: false, error: '', rows: body.reportes }); setSelected(s => s ?? body.reportes[0]?.id ?? null); } })
       .catch(reason => { if (guard.current() && !controller.signal.aborted && !isSessionFailure(reason)) setList({ loading: false, error: reason.message, rows: [] }); });
     return () => controller.abort();
-  }, [capture]);
+  }, [captureList]);
   useEffect(() => {
     if (!selected) return undefined;
     const controller = new AbortController(), guard = capture();
