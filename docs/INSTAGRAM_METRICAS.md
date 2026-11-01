@@ -44,6 +44,7 @@ Variables del ejecutor (no del servidor web):
 ```
 META_SYSTEM_USER_TOKEN=...        # secreto, solo en el entorno privado
 META_GRAPH_VERSION=v23.0          # opcional
+META_BUSINESS_ID=1034453457860259 # portfolio de Render, fallback de descubrimiento
 RENDER_AUTOMATION_JOBS=editorial,wilson,supervisor,instagram
 ```
 

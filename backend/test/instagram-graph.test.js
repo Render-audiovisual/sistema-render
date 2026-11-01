@@ -9,7 +9,7 @@ test('config requires a plausible token and version', () => {
   assert.throws(() => resolveGraphConfig({}), { kind: 'config' });
   assert.throws(() => resolveGraphConfig({ META_SYSTEM_USER_TOKEN: 'short' }), { kind: 'config' });
   assert.throws(() => resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN, META_GRAPH_VERSION: 'latest' }), { kind: 'config' });
-  assert.deepEqual(resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN }), { token: TOKEN, version: 'v23.0' });
+  assert.deepEqual(resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN }), { token: TOKEN, version: 'v23.0', businessId: null });
 });
 
 test('normalizeMedia maps reels, carousels and images; skips stories and bad links', () => {
@@ -93,4 +93,57 @@ test('errors are classified without leaking messages', async () => {
   }
   const offline = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async () => { throw new Error(TOKEN); } });
   await assert.rejects(offline.listInstagramAccounts(), err => err.kind === 'network' && !err.message.includes(TOKEN));
+});
+
+test('business discovery combines owned AND shared pages, paginates and deduplicates IG IDs', async () => {
+  const seen = [];
+  const account = (id, username) => ({ id: `9${id}`, instagram_business_account: { id, username, followers_count: 10 } });
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0', businessId: '1034453457860259' }, {
+    fetchImpl: async (url, options) => {
+      const u = new URL(url); seen.push(u.pathname);
+      assert.equal(options.headers.Authorization, `Bearer ${TOKEN}`); assert.equal(options.redirect, 'error');
+      if (u.searchParams.has('after')) return json({ data: [] });
+      if (u.pathname.endsWith('/me/accounts')) return json({ error: { code: 200 } }, 403);
+      if (u.pathname.endsWith('/owned_pages')) return json({ data: [account('111', 'owned')],
+        paging: { next: 'https://graph.facebook.com/v23.0/1034453457860259/owned_pages?after=2' } });
+      return json({ data: [account('111', 'owned'), account('222', 'shared')] });
+    },
+  });
+  assert.equal(seen.length, 0, 'Construction itself never fetches');
+  assert.deepEqual((await client.listInstagramAccounts()).map(a => a.igUserId), ['111', '222']);
+  assert.equal(seen.at(-1), '/v23.0/1034453457860259/client_pages');
+});
+
+test('empty me/accounts falls back; complete me/accounts remains the primary inventory', async () => {
+  for (const empty of [false, true]) {
+    const calls = [];
+    const client = createGraphClient({ token: TOKEN, version: 'v23.0', businessId: '1034453457860259' }, { fetchImpl: async url => {
+      const p = new URL(url).pathname; calls.push(p);
+      return json({ data: p.endsWith('/me/accounts') && !empty ? [{ id: '1', instagram_business_account: { id: '2', username: 'test' } }] : [] });
+    } });
+    await client.listInstagramAccounts(); assert.equal(calls.length, empty ? 3 : 1);
+  }
+});
+
+test('partial portfolio errors, token failures and rate limits never produce an authoritative partial inventory', async () => {
+  for (const kind of ['permission', 'auth', 'rate', 'network']) {
+    let calls = 0;
+    const client = createGraphClient({ token: TOKEN, version: 'v23.0', businessId: '1034453457860259' }, { fetchImpl: async url => {
+      calls++;
+      if (url.includes('/me/accounts')) return json({ error: { code: 200 } }, 403);
+      if (url.includes('/owned_pages')) return json({ data: [{ id: '1', instagram_business_account: { id: '2', username: 'test' } }] });
+      if (kind === 'network') throw new Error(TOKEN);
+      return json({ error: { code: { permission: 200, auth: 190, rate: 4 }[kind] } }, 400);
+    } });
+    await assert.rejects(client.listInstagramAccounts(), error => error.kind === kind && !error.message.includes(TOKEN));
+    assert.equal(calls, 3);
+  }
+});
+
+test('business ID is strictly validated and cannot inject a Graph path', () => {
+  assert.equal(resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN, META_BUSINESS_ID: '1034453457860259' }).businessId, '1034453457860259');
+  for (const businessId of ['x', '../me', '0', '123/owned_pages', 123, {}, '1'.repeat(33)]) {
+    assert.throws(() => resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN, META_BUSINESS_ID: businessId }), { kind: 'config' });
+    assert.throws(() => createGraphClient({ token: TOKEN, version: 'v23.0', businessId }), { kind: 'config' });
+  }
 });

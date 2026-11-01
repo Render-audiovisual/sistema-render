@@ -39,6 +39,7 @@ async function main() {
         const {runInstagramSync} = await import('../src/instagram-sync.js');
         await runInstagramSync(pool, {now, env:{
           META_SYSTEM_USER_TOKEN:env.META_SYSTEM_USER_TOKEN, META_GRAPH_VERSION:env.META_GRAPH_VERSION,
+          META_BUSINESS_ID:env.META_BUSINESS_ID,
         }});
       },
       instagram_reporte: async (pool, {now}) => {

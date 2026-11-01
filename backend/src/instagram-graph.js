@@ -37,11 +37,15 @@ export function resolveGraphConfig(env = {}) {
     throw new GraphError('config');
   const version = env.META_GRAPH_VERSION || DEFAULT_VERSION;
   if (!/^v\d{1,2}\.\d$/.test(version)) throw new GraphError('config');
-  return Object.freeze({ token, version });
+  const businessId = env.META_BUSINESS_ID || null;
+  if (businessId !== null && (typeof businessId !== 'string' || !/^[1-9]\d{0,31}$/.test(businessId)))
+    throw new GraphError('config');
+  return Object.freeze({ token, version, businessId });
 }
 
-export function createGraphClient({ token, version }, { fetchImpl = globalThis.fetch, timeoutMs = 20000 } = {}) {
-  if (typeof fetchImpl !== 'function') throw new GraphError('config');
+export function createGraphClient({ token, version, businessId = null }, { fetchImpl = globalThis.fetch, timeoutMs = 20000 } = {}) {
+  if (typeof fetchImpl !== 'function' || (businessId !== null && (typeof businessId !== 'string' || !/^[1-9]\d{0,31}$/.test(businessId))))
+    throw new GraphError('config');
 
   async function request(url) {
     if (url.hostname !== GRAPH_HOST || url.protocol !== 'https:' || url.port || url.username || url.password)
@@ -85,21 +89,34 @@ export function createGraphClient({ token, version }, { fetchImpl = globalThis.f
   return Object.freeze({
     // Páginas asignadas al usuario del sistema con su cuenta profesional de IG.
     async listInstagramAccounts() {
-      const accounts = [];
-      const url = build('me/accounts', {
-        fields: 'id,instagram_business_account{id,username,followers_count}', limit: 100,
-      });
-      for await (const rows of pages(url)) {
-        for (const page of rows) {
-          const ig = page?.instagram_business_account;
-          if (!ig?.id || !ig?.username) continue;
-          accounts.push({
-            igUserId: String(ig.id), username: String(ig.username), pageId: page.id ? String(page.id) : null,
-            followers: Number.isSafeInteger(ig.followers_count) ? ig.followers_count : null,
-          });
+      const byId = new Map();
+      const collect = async source => {
+        for await (const rows of pages(build(source, {
+          fields: 'id,instagram_business_account{id,username,followers_count}', limit: 100,
+        }))) {
+          for (const page of rows) {
+            const ig = page?.instagram_business_account;
+            if (!ig?.id || !ig?.username) continue;
+            byId.set(String(ig.id), {
+              igUserId: String(ig.id), username: String(ig.username), pageId: page.id ? String(page.id) : null,
+              followers: Number.isSafeInteger(ig.followers_count) ? ig.followers_count : null,
+            });
+          }
         }
+      };
+      try {
+        await collect('me/accounts');
+        if (byId.size || !businessId) return [...byId.values()];
+      } catch (error) {
+        if (!businessId || !(error instanceof GraphError) || !['permission', 'metric'].includes(error.kind)) throw error;
       }
-      return accounts;
+      // Both portfolio edges must be complete. A nonempty owned_pages result
+      // must NOT skip client_pages, or shared client accounts would disappear.
+      // Any partial/error result throws before storeAccounts can deactivate IDs.
+      byId.clear();
+      await collect(`${businessId}/owned_pages`);
+      await collect(`${businessId}/client_pages`);
+      return [...byId.values()];
     },
 
     // Publicaciones del feed desde `since` (más nuevas primero). Las historias no se incluyen.
