@@ -1,0 +1,61 @@
+.ig-client-report-page{--icr-bg:var(--render-background,#f5f5f7);--icr-surface:var(--render-surface,#fff);--icr-ink:var(--render-ink,#1d1d1f);--icr-muted:var(--render-muted,#667085);--icr-accent:var(--render-accent,#0071e3);--icr-line:var(--render-line,#e4e7ec);box-sizing:border-box;min-height:100%;padding:32px max(24px,calc((100% - 1000px)/2)) 64px;background:var(--icr-bg);color:var(--icr-ink);font-family:var(--render-font,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
+.ig-client-report-page *{box-sizing:border-box}
+.ig-client-report-toolbar{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:8px}
+.ig-client-report-back,.ig-client-report-controls button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;line-height:1.4;text-decoration:none}
+.ig-client-report-back{color:var(--icr-accent);padding-left:0}
+.ig-client-report-controls{display:flex;align-items:flex-end;gap:16px}
+.ig-client-report-controls label{display:grid;gap:8px;font-size:12px;color:var(--icr-muted)}
+.ig-client-report-controls input{min-height:44px;min-width:164px;padding:10px 12px;background:var(--icr-surface);color:var(--icr-ink);border:1px solid var(--icr-line);border-radius:10px;font:inherit}
+.ig-client-report-controls button{border:1px solid var(--icr-accent);background:var(--icr-accent);color:#fff;cursor:pointer;white-space:nowrap}
+.ig-client-report-controls button:disabled{opacity:.45;cursor:default}
+.ig-client-report-print-help{text-align:right;color:var(--icr-muted);font-size:12px;line-height:1.5;margin:8px 0 32px}
+.ig-client-report-page a:focus-visible,.ig-client-report-page button:focus-visible,.ig-client-report-page input:focus-visible,.ig-client-report-page summary:focus-visible{outline:3px solid var(--icr-accent);outline-offset:4px}
+.ig-client-report-document{max-width:1000px;margin:0 auto}
+.ig-client-report-heading{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:24px;padding:32px 0 40px}
+.ig-client-report-logo{display:grid;place-items:center;width:72px;height:72px;border-radius:18px;background:var(--icr-surface);border:1px solid var(--icr-line);font-size:22px;font-weight:600;color:var(--icr-accent);overflow:hidden}
+.ig-client-report-logo img{width:100%;height:100%;object-fit:contain}
+.ig-client-report-eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--icr-muted);margin:0 0 8px}
+.ig-client-report-heading h1{margin:0;font-size:clamp(28px,4vw,40px);line-height:1.15;letter-spacing:-.035em;font-weight:650;overflow-wrap:anywhere}
+.ig-client-report-accounts{font-size:14px;line-height:1.6;color:var(--icr-muted);margin:8px 0 0;overflow-wrap:anywhere}
+.ig-client-report-period{align-self:end;font-size:14px;font-weight:500;margin:0 0 4px;text-align:right}
+.ig-client-report-formats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.ig-client-report-format{min-width:0;background:var(--icr-surface);padding:32px;border:1px solid var(--icr-line);border-radius:20px}
+.ig-client-report-format h2{font-size:17px;font-weight:600;margin:0 0 24px}
+.ig-client-report-count{display:flex;align-items:baseline;gap:12px;margin:0;font-variant-numeric:tabular-nums;line-height:1}
+.ig-client-report-count strong{font-size:clamp(52px,7vw,72px);letter-spacing:-.05em;font-weight:600}
+.ig-client-report-count>span{font-size:28px;color:var(--icr-muted);font-weight:400}
+.ig-client-report-format-caption{font-size:13px;line-height:1.5;color:var(--icr-muted);margin:16px 0 24px}
+.ig-client-report-bar{height:8px;border-radius:8px;overflow:hidden;background:var(--icr-line)}
+.ig-client-report-bar>span{display:block;height:100%;border-radius:inherit;background:var(--icr-accent)}
+.ig-client-report-bar.is-locked{background:repeating-linear-gradient(135deg,#e4e7ec 0,#e4e7ec 4px,#f5f5f7 4px,#f5f5f7 8px)}
+.ig-client-report-format[data-status=stale] .ig-client-report-bar>span,.ig-client-report-format[data-status=owner_record] .ig-client-report-bar>span{opacity:.55}
+.ig-client-report-format-note{font-size:12px;line-height:1.6;color:var(--icr-muted);margin:16px 0 0;min-height:20px}
+.ig-client-report-evidence{font-size:12px;line-height:1.7;color:var(--icr-muted);margin:20px 0 40px}
+.ig-client-report-coverage{font-size:12px;line-height:1.7;color:var(--icr-muted);margin:-24px 0 32px;max-width:84ch}
+.ig-client-report-statistics{border:1px solid var(--icr-line);border-radius:16px;background:var(--icr-surface);overflow:hidden}
+.ig-client-report-statistics>summary{cursor:pointer;min-height:64px;padding:20px 24px;font-size:15px;font-weight:600}
+.ig-client-report-statistics>summary>span{display:inline-block;color:var(--icr-muted);font-size:12px;font-weight:400;margin-left:16px}
+.ig-client-report-statistics-body{padding:8px 24px 32px;display:grid;gap:32px}
+.ig-client-report-statistics-body h2{font-size:16px;line-height:1.4;margin:0 0 12px;font-weight:600}
+.ig-client-report-help{font-size:12px;line-height:1.7;color:var(--icr-muted);max-width:72ch;margin:0 0 16px}
+.ig-client-report-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin:24px 0 0}
+.ig-client-report-metrics dt,.ig-client-report-posts dt,.ig-client-report-featured dt{font-size:12px;line-height:1.5;color:var(--icr-muted)}
+.ig-client-report-metrics dd{font-size:24px;font-weight:600;margin:8px 0;font-variant-numeric:tabular-nums}
+.ig-client-report-metrics small{font-size:11px;color:var(--icr-muted)}
+.ig-client-report-community{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;border-top:1px solid var(--icr-line);padding-top:24px}
+.ig-client-report-community p{font-size:13px;line-height:1.6}
+.ig-client-report-featured,.ig-client-report-posts{list-style:none;padding:0;margin:0;display:grid;gap:16px}
+.ig-client-report-featured li,.ig-client-report-posts li{border-top:1px solid var(--icr-line);padding-top:16px;break-inside:avoid}
+.ig-client-report-featured strong,.ig-client-report-posts strong{font-size:13px;font-weight:600}
+.ig-client-report-featured p{font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.ig-client-report-posts header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--icr-muted)}
+.ig-client-report-posts header a{margin-left:auto}
+.ig-client-report-posts a,.ig-client-report-featured a{display:inline-flex;align-items:center;min-height:44px;color:var(--icr-accent);font-size:12px;text-underline-offset:4px}
+.ig-client-report-posts dl,.ig-client-report-featured dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:16px 0}
+.ig-client-report-posts dd,.ig-client-report-featured dd{margin:4px 0 0;font-size:14px;font-variant-numeric:tabular-nums}
+.ig-client-report-empty,.ig-client-report-state{padding:24px;border:1px solid var(--icr-line);border-radius:12px;background:var(--icr-surface);font-size:14px;line-height:1.6}
+.ig-client-report-footer{display:flex;justify-content:space-between;gap:16px;margin-top:32px;font-size:11px;line-height:1.6;color:var(--icr-muted)}
+@media(max-width:700px){.ig-client-report-page{padding:24px 16px 40px}.ig-client-report-toolbar{align-items:flex-start;flex-direction:column;gap:16px}.ig-client-report-controls{width:100%;justify-content:space-between;gap:12px}.ig-client-report-controls input{min-width:0;max-width:100%}.ig-client-report-controls button{white-space:normal}.ig-client-report-print-help{text-align:left;margin-bottom:16px}.ig-client-report-heading{grid-template-columns:56px minmax(0,1fr);gap:16px;padding:24px 0 32px}.ig-client-report-logo{width:56px;height:56px;border-radius:14px;font-size:18px}.ig-client-report-period{grid-column:2;text-align:left;font-size:13px}.ig-client-report-format{padding:24px}.ig-client-report-formats{gap:16px}.ig-client-report-count{gap:8px}.ig-client-report-count strong{font-size:48px}.ig-client-report-count>span{font-size:22px}.ig-client-report-statistics>summary>span{display:block;margin:8px 0 0}.ig-client-report-statistics-body{padding:8px 20px 24px}}
+@media(max-width:420px){.ig-client-report-formats{grid-template-columns:1fr}.ig-client-report-community,.ig-client-report-metrics{grid-template-columns:1fr}.ig-client-report-controls{align-items:stretch}.ig-client-report-controls label{min-width:0;flex:1}.ig-client-report-controls button{flex:1;align-self:end}.ig-client-report-footer{flex-direction:column}.ig-client-report-posts dl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:980px){.ig-client-report-page{padding-top:88px}}
+@media print{body:has(.ig-client-report-page){background:#fff!important}body:has(.ig-client-report-page) *{visibility:hidden}.ig-client-report-page,.ig-client-report-page *{visibility:visible}body:has(.ig-client-report-page) .ig-client-report-page{position:absolute;inset:0 auto auto 0;width:100%!important;min-height:0;margin:0!important;padding:0!important;background:#fff!important;color:#1d1d1f!important;max-width:none}.ig-client-report-toolbar,.ig-client-report-print-help{display:none!important}.ig-client-report-page .ig-client-report-heading{padding:0 0 24px}.ig-client-report-page .ig-client-report-formats{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.ig-client-report-page .ig-client-report-format{padding:20px;break-inside:avoid}.ig-client-report-page .ig-client-report-count strong{font-size:48px}.ig-client-report-page .ig-client-report-evidence{margin-bottom:24px}.ig-client-report-page details>summary{display:none!important}.ig-client-report-page details::details-content{display:block!important;content-visibility:visible!important}.ig-client-report-page details>.ig-client-report-statistics-body{display:grid!important}.ig-client-report-page .ig-client-report-statistics{border:0;overflow:visible}.ig-client-report-page .ig-client-report-statistics-body{padding:0}.ig-client-report-page a{color:#1d1d1f;text-decoration:none}.ig-client-report-page .ig-client-report-posts li,.ig-client-report-page .ig-client-report-featured li{break-inside:avoid}.ig-client-report-page .ig-client-report-bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:16mm}}

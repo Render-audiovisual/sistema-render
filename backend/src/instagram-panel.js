@@ -128,6 +128,7 @@ export function buildPanel({ period, clients, accounts, media, objectives, follo
         base: { medidas: 0, alcance: 0 }, ultima_publicacion: null };
       groups.set(client.clave, group);
     }
+    if (!group.logo && typeof client.logo === 'string' && client.logo.trim()) group.logo = client.logo;
     group.cuentas.push({ id: client.id, nombre: client.nombre });
   }
   const accountClave = new Map();
@@ -229,9 +230,15 @@ export function buildPanel({ period, clients, accounts, media, objectives, follo
 
 // ---------- Lectura SQL ----------
 
-const CLIENTS_SQL = `SELECT c.id, c.nombre, g.nombre AS grupo_nombre,
+const CLIENTS_SQL = `SELECT c.id, c.nombre, g.nombre AS grupo_nombre, branding.detalles->>'logo' AS logo,
     CASE WHEN c.grupo_feed_id IS NULL THEN 'cliente-'||c.id ELSE 'grupo-'||c.grupo_feed_id END AS clave
   FROM clientes c LEFT JOIN grupos_feed g ON g.id=c.grupo_feed_id
+  LEFT JOIN LATERAL (
+    SELECT ia.detalles FROM integracion_auditoria ia
+    WHERE ia.integracion='client_branding' AND ia.canal='web'
+      AND ia.accion='logo_updated' AND ia.resultado='ok' AND ia.detalles->>'clientId'=c.id::text
+    ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+  ) branding ON TRUE
   WHERE COALESCE(c.activo,TRUE) OR EXISTS (SELECT 1 FROM instagram_cuentas a WHERE a.cliente_id=c.id)
   ORDER BY c.nombre`;
 
@@ -272,21 +279,36 @@ const BASELINE_SQL = `SELECT m.ig_user_id, count(u.alcance)::int AS medidas, COA
 
 export async function readInstagramPanel(pool, auth, query) {
   const period = panelPeriod(query);
+  return withLeaderRead(pool, auth, async db => (await readPanelFromDb(db, period)).panel);
+}
+
+async function readPanelFromDb(db, period, now = new Date()) {
   const previous = previousPeriod(period);
-  return withLeaderRead(pool, auth, async db => {
-    const [clients, accounts, media, objectives, followers, pieces] = [
-      (await db.query(CLIENTS_SQL)).rows,
-      (await db.query('SELECT ig_user_id, username, cliente_id, activa, sincronizada_at FROM instagram_cuentas')).rows,
-      (await db.query(MEDIA_SQL, [`${previous}-01`, `${period}-01`])).rows,
-      (await db.query(`SELECT clave, reels, carruseles FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`])).rows,
-      (await db.query(FOLLOWERS_SQL, [`${period}-01`])).rows,
-      (await db.query(`SELECT o.clave, p.tipo, p.estado, p.responsables FROM cliente_objetivo_piezas p
-        JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE o.periodo=$1::date`, [`${period}-01`])).rows,
-    ];
-    const baselines = (await db.query(BASELINE_SQL, [`${period}-01`])).rows;
-    const lastPosts = (await db.query(`SELECT ig_user_id, max(publicado_at) AS ultima FROM instagram_media
-      WHERE tipo IN ('reel','carrusel') GROUP BY ig_user_id`)).rows;
-    const snapshots=(await db.query(`SELECT a.ig_user_id,a.cliente_id,s.detalles
+  const [clients, accounts, media, objectives, followers, pieces] = [
+    (await db.query(CLIENTS_SQL)).rows,
+    (await db.query('SELECT ig_user_id, username, cliente_id, activa, sincronizada_at FROM instagram_cuentas')).rows,
+    (await db.query(MEDIA_SQL, [`${previous}-01`, `${period}-01`])).rows,
+    (await db.query(`SELECT clave, reels, carruseles FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`])).rows,
+    (await db.query(FOLLOWERS_SQL, [`${period}-01`])).rows,
+    (await db.query(`SELECT o.clave, p.tipo, p.estado, p.responsables FROM cliente_objetivo_piezas p
+      JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE o.periodo=$1::date`, [`${period}-01`])).rows,
+  ];
+  const baselines = (await db.query(BASELINE_SQL, [`${period}-01`])).rows;
+  const lastPosts = (await db.query(`SELECT ig_user_id, max(publicado_at) AS ultima FROM instagram_media
+    WHERE tipo IN ('reel','carrusel') GROUP BY ig_user_id`)).rows;
+  const snapshots=await readFeedSnapshotsFromDb(db, period);
+  const manualObservations=(await db.query(`SELECT DISTINCT ON (ia.detalles->>'clientId') ia.detalles
+    FROM integracion_auditoria ia WHERE ia.integracion='instagram_manual_review' AND ia.canal='web'
+      AND ia.accion='monthly_publications_observed' AND ia.resultado='ok' AND ia.detalles->>'period'=$1
+    ORDER BY ia.detalles->>'clientId',ia.created_at DESC,ia.id DESC`,[period])).rows
+    .map(r=>validateInstagramMonthlyObservation(r.detalles,{period})).filter(Boolean);
+  const effectiveQuotas=await loadGoalClients(db,period);
+  return { panel: buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts,snapshots,manualObservations,effectiveQuotas,now }),
+    clients, accounts, snapshots, now };
+}
+
+async function readFeedSnapshotsFromDb(db, period) {
+  return (await db.query(`SELECT a.ig_user_id,a.cliente_id,s.detalles
       FROM instagram_cuentas a LEFT JOIN LATERAL (
         SELECT ia.detalles FROM integracion_auditoria ia
         WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
@@ -295,14 +317,6 @@ export async function readInstagramPanel(pool, auth, query) {
           AND ia.detalles->>'period'=$1 ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
       ) s ON TRUE WHERE a.cliente_id IS NOT NULL`,[period])).rows
       .map(r=>validateFeedCountSnapshot(r.detalles,{igUserId:r.ig_user_id,clientId:r.cliente_id,period})).filter(Boolean);
-    const manualObservations=(await db.query(`SELECT DISTINCT ON (ia.detalles->>'clientId') ia.detalles
-      FROM integracion_auditoria ia WHERE ia.integracion='instagram_manual_review' AND ia.canal='web'
-        AND ia.accion='monthly_publications_observed' AND ia.resultado='ok' AND ia.detalles->>'period'=$1
-      ORDER BY ia.detalles->>'clientId',ia.created_at DESC,ia.id DESC`,[period])).rows
-      .map(r=>validateInstagramMonthlyObservation(r.detalles,{period})).filter(Boolean);
-    const effectiveQuotas=await loadGoalClients(db,period);
-    return buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts,snapshots,manualObservations,effectiveQuotas });
-  });
 }
 
 function clientKey(value) {
@@ -313,31 +327,58 @@ function clientKey(value) {
 export async function readInstagramClientPieces(pool, auth, clave, query) {
   const key = clientKey(clave);
   const period = panelPeriod(query);
-  return withLeaderRead(pool, auth, async db => {
-    const clients = (await db.query(CLIENTS_SQL)).rows.filter(c => c.clave === key);
-    if (!clients.length) throw fail(404, 'Cliente no encontrado.');
-    const ids = clients.map(c => c.id);
-    const media = (await db.query(`${MEDIA_SQL} AND m.cliente_id = ANY($3::int[]) ORDER BY m.publicado_at DESC`,
-      [`${period}-01`, `${period}-01`, ids])).rows;
-    const candidates = (await db.query(`SELECT p.id, p.cliente_id, p.tipo, p.fecha_programada::text AS fecha, p.idea, p.estado
-      FROM publicaciones p WHERE p.cliente_id = ANY($1::int[])
-        AND p.fecha_programada >= $2::date AND p.fecha_programada < ($2::date + interval '1 month')
-        AND p.tipo IN ('reel','video','carrusel','flyer') AND p.estado<>'bloqueada'
-        AND NOT EXISTS (SELECT 1 FROM instagram_media x WHERE x.publicacion_id=p.id)
-      ORDER BY p.fecha_programada, p.id`, [ids, `${period}-01`])).rows;
-    return {
-      clave: key, nombre: clients[0].grupo_nombre || clients[0].nombre, periodo: period,
-      piezas: media.map(row => ({
-        ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 280),
-        publicado_at: row.publicado_at, vinculo: row.vinculo, publicacion_id: row.publicacion_id,
-        pieza: row.publicacion_id ? { idea: row.pieza_idea, fecha: row.pieza_fecha } : null,
-        responsables: responsablesDe(row), medido_at: row.medido_at,
-        metricas: { alcance: num(row.alcance), vistas: num(row.vistas), likes: num(row.likes), comentarios: num(row.comentarios),
-          guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) },
-      })),
-      candidatas: candidates,
-    };
+  return withLeaderRead(pool, auth, db => readClientPiecesFromDb(db, key, period));
+}
+
+async function readClientPiecesFromDb(db, key, period, evidence, includeCandidates = true) {
+  const clients = (evidence?.clients ?? (await db.query(CLIENTS_SQL)).rows).filter(c => c.clave === key);
+  if (!clients.length) throw fail(404, 'Cliente no encontrado.');
+  const ids = clients.map(c => c.id);
+  const observed = (await db.query(`${MEDIA_SQL} AND m.cliente_id = ANY($3::int[]) ORDER BY m.publicado_at DESC`,
+    [`${period}-01`, `${period}-01`, ids])).rows;
+  const accounts = evidence?.accounts ?? (await db.query('SELECT ig_user_id, username, cliente_id, activa, sincronizada_at FROM instagram_cuentas')).rows;
+  const snapshots = evidence?.snapshots ?? await readFeedSnapshotsFromDb(db, period);
+  const now = evidence?.now ?? new Date();
+  const inputs = clients.map(c => {
+    const account = accounts.find(a => a.cliente_id === c.id);
+    return { id: c.id, instagram_account_id: account?.ig_user_id, instagram_account_active: account?.activa,
+      instagram_feed_snapshot: snapshots.find(s => s.clientId === c.id && s.igUserId === account?.ig_user_id && s.period === period) };
   });
+  const counts = instagramFeedGroupCounts(inputs, period, { now });
+  const media = observed.filter(row => {
+    // Bind proof membership to this client/account/month, not merely an ID
+    // returned by a different account. Missing proof preserves observations.
+    if (!ids.includes(row.cliente_id) || row.periodo !== period) return false;
+    if (!accounts.some(a => a.ig_user_id === row.ig_user_id && a.cliente_id === row.cliente_id)) return false;
+    const input = inputs.find(c => c.id === row.cliente_id && c.instagram_account_id === row.ig_user_id);
+    const proof = input?.instagram_feed_snapshot;
+    if (!proof || Date.parse(proof.checkedAt) > +now) return true;
+    // A later publication was not in scope of this older observation. Keep it
+    // as an unaccredited profile observation; certified counts stay unchanged.
+    if (+new Date(row.publicado_at) > Date.parse(proof.checkedAt)) return true;
+    return proof.posts.some(post => post.id === row.ig_media_id && post.kind === row.tipo &&
+      Date.parse(post.publishedAt) === +new Date(row.publicado_at));
+  });
+  const candidates = includeCandidates ? (await db.query(`SELECT p.id, p.cliente_id, p.tipo, p.fecha_programada::text AS fecha, p.idea, p.estado
+    FROM publicaciones p WHERE p.cliente_id = ANY($1::int[])
+      AND p.fecha_programada >= $2::date AND p.fecha_programada < ($2::date + interval '1 month')
+      AND p.tipo IN ('reel','video','carrusel','flyer') AND p.estado<>'bloqueada'
+      AND NOT EXISTS (SELECT 1 FROM instagram_media x WHERE x.publicacion_id=p.id)
+    ORDER BY p.fecha_programada, p.id`, [ids, `${period}-01`])).rows : [];
+  return {
+    clave: key, nombre: clients[0].grupo_nombre || clients[0].nombre, periodo: period,
+    coverage: { status: counts.status, source: 'profile_observations',
+      complete: feedCountsAreTrusted(counts.status), checkedAt: counts.checkedAt },
+    piezas: media.map(row => ({
+      ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 280),
+      publicado_at: row.publicado_at, vinculo: row.vinculo, publicacion_id: row.publicacion_id,
+      pieza: row.publicacion_id ? { idea: row.pieza_idea, fecha: row.pieza_fecha } : null,
+      responsables: responsablesDe(row), medido_at: row.medido_at,
+      metricas: { alcance: num(row.alcance), vistas: num(row.vistas), likes: num(row.likes), comentarios: num(row.comentarios),
+        guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) },
+    })),
+    candidatas: candidates,
+  };
 }
 
 export async function readInstagramAccounts(pool, auth) {
@@ -408,25 +449,51 @@ export async function readInstagramReport(pool, auth, id) {
 // Reporte mensual para enviar al cliente: solo datos de ese cliente.
 export async function readInstagramClientReport(pool, auth, clave, query) {
   const key = clientKey(clave);
-  const panel = await readInstagramPanel(pool, auth, query);
-  const client = panel.clientes.find(c => c.clave === key);
-  if (!client) throw fail(404, 'No hay datos de este cliente para el mes.');
-  const detail = await readInstagramClientPieces(pool, auth, key, query);
-  const measured = detail.piezas.filter(p => p.metricas.alcance !== null);
-  const byType = tipo => {
-    const rows = measured.filter(p => p.tipo === tipo);
-    return { piezas: rows.length, alcance_promedio: rows.length ? Math.round(rows.reduce((a, p) => a + p.metricas.alcance, 0) / rows.length) : null };
-  };
-  return {
-    cliente: client.nombre, periodo: panel.periodo, periodo_anterior: panel.periodo_anterior,
-    cuentas: client.instagram.map(a => a.username),
-    actual: client.actual, anterior: client.anterior, cupo: client.cupo,
-    seguidores: client.seguidores, crecimiento_seguidores: client.crecimiento_seguidores,
-    formatos: { reel: byType('reel'), carrusel: byType('carrusel') },
-    destacadas: [...measured].sort((a, b) => b.metricas.alcance - a.metricas.alcance).slice(0, 3)
-      .map(({ responsables, vinculo, publicacion_id, pieza, ...rest }) => rest),
-    piezas: detail.piezas.map(({ responsables, vinculo, publicacion_id, pieza, caption, ...rest }) => rest),
-  };
+  const period = panelPeriod(query);
+  return withLeaderRead(pool, auth, async db => {
+    const evidence = await readPanelFromDb(db, period);
+    const { panel } = evidence;
+    const client = panel.clientes.find(c => c.clave === key);
+    if (!client) throw fail(404, 'No hay datos de este cliente para el mes.');
+    const detail = await readClientPiecesFromDb(db, key, period, evidence, false);
+    const format_counts = publicFormatCounts(client.format_counts);
+    const measured = detail.piezas.filter(p => p.metricas.alcance !== null);
+    const byType = tipo => {
+      const rows = measured.filter(p => p.tipo === tipo);
+      return { piezas: rows.length, alcance_promedio: rows.length ? Math.round(rows.reduce((a, p) => a + p.metricas.alcance, 0) / rows.length) : null };
+    };
+    return {
+      clave: key, cliente: client.nombre, periodo: panel.periodo, periodo_anterior: panel.periodo_anterior,
+      cuentas: client.instagram.map(a => a.username),
+      ...(client.logo ? { logo: client.logo } : {}),
+      format_counts, fulfillment: formatFulfillment(format_counts, client.cupo),
+      dataFecha: format_counts.checkedAt,
+      coverage: { status: detail.coverage.status, source: detail.coverage.source,
+        complete: detail.coverage.complete, checkedAt: detail.coverage.checkedAt,
+        render_count_known: format_counts.status === 'owner_record' },
+      actual: client.actual, anterior: client.anterior, cupo: client.cupo,
+      seguidores: client.seguidores, crecimiento_seguidores: client.crecimiento_seguidores,
+      formatos: { reel: byType('reel'), carrusel: byType('carrusel') },
+      destacadas: [...measured].sort((a, b) => b.metricas.alcance - a.metricas.alcance).slice(0, 3)
+        .map(p => publicReportPiece(p, true)),
+      piezas: detail.piezas.map(p => publicReportPiece(p)),
+    };
+  });
+}
+
+// Explicit allowlists: adding fields to the leader's panel/detail must never
+// widen this client-facing report (the route remains admin-only).
+function publicFormatCounts(counts) {
+  return { status: counts.status, reels: counts.reels, carruseles: counts.carruseles, checkedAt: counts.checkedAt,
+    ...(counts.source ? { source: counts.source } : {}), ...(counts.reason ? { reason: counts.reason } : {}) };
+}
+
+function publicReportPiece(piece, withCaption = false) {
+  const m = piece.metricas;
+  return { tipo: piece.tipo, permalink: piece.permalink, publicado_at: piece.publicado_at, medido_at: piece.medido_at,
+    ...(withCaption ? { caption: piece.caption } : {}),
+    metricas: { alcance: m.alcance, vistas: m.vistas, likes: m.likes, comentarios: m.comentarios,
+      guardados: m.guardados, compartidos: m.compartidos, interacciones: m.interacciones } };
 }
 
 export function createInstagramPanelRouter({ express, pool }) {

@@ -320,3 +320,54 @@ test('complete 90-day snapshots reconcile counts without deleting history; parti
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM tareas')).rows[0].n, taskCount);
   } finally { await pool.end(); }
 });
+
+test('client report reads one authorized RR with closed counts, current quotas and no cross-client detail', { skip: !enabled }, async () => {
+  const { AuthorityBoundPool } = await import('../src/database-authority-context.js');
+  const { readInstagramClientReport } = await import('../src/instagram-panel.js');
+  const pool = new AuthorityBoundPool({ connectionString: url, max: 3 });
+  try {
+    const clients = [];
+    for (const name of ['IG Report Scoped A', 'IG Report Scoped B']) {
+      clients.push((await pool.query('INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES($1,2,1) RETURNING id', [name])).rows[0].id);
+    }
+    const at = '2026-10-20T15:00:00.000Z', checkedAt = '2026-11-01T04:00:00.000Z';
+    for (const [i, id] of ['99111', '99222'].entries()) {
+      await pool.query('INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES($1,$2,$3)', [id, `report_scope_${i}`, clients[i]]);
+    }
+    for (const [id, account, client] of [['99501', '99111', clients[0]], ['99502', '99111', clients[0]], ['99503', '99222', clients[1]]]) {
+      await pool.query(`INSERT INTO instagram_media(ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at)
+        VALUES($1,$2,$3,'reel',$4,'profile observation',$5)`, [id, account, client, `https://www.instagram.com/reel/Public${id}/`, at]);
+      await pool.query('INSERT INTO instagram_media_metricas(ig_media_id,medido_at,alcance) VALUES($1,$2,100)', [id, checkedAt]);
+    }
+    const snapshot = { version: 1, source: 'meta_graph_feed', clientId: clients[0], igUserId: '99111', username: 'report_scope_0',
+      period: '2026-10', windowStart: '2026-08-03T15:00:00.000Z', checkedAt,
+      posts: [{ id: '99501', kind: 'reel', publishedAt: at }], secret: 'NOT PUBLIC' };
+    await pool.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,resultado,detalles)
+      VALUES('instagram_graph','system','render-worker','Render · Instagram',$1,'ok',$2::jsonb)`, [FEED_SNAPSHOT_ACTION, JSON.stringify(snapshot)]);
+    await pool.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,resultado,detalles)
+      VALUES('client_branding','web','fixture','Fixture','logo_updated','ok',$1::jsonb)`,
+    [JSON.stringify({ clientId: clients[0], logo: 'https://example.test/report-logo.png' })]);
+    const leader = (await pool.query("SELECT id,session_version FROM usuarios WHERE usuario='ig_test_lider'")).rows[0];
+    const designer = (await pool.query("SELECT id,session_version FROM usuarios WHERE usuario='ig_test_diseno'")).rows[0];
+    const calls = []; let connects = 0;
+    const observedPool = { async connect() {
+      connects++; const db = await pool.connect();
+      return { async query(sql, params) { calls.push(sql); return db.query(sql, params); }, release(error) { db.release(error); } };
+    } };
+    const report = await readInstagramClientReport(observedPool, leader, `cliente-${clients[0]}`, { periodo: '2026-10' });
+    assert.equal(connects, 1);
+    assert.equal(calls.filter(sql => sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY').length, 1);
+    assert.equal(calls.filter(sql => sql === 'COMMIT').length, 1);
+    assert.deepEqual(report.format_counts, { status: 'historical', reels: 1, carruseles: 0, checkedAt });
+    assert.deepEqual(report.cupo, { reels: 2, carruseles: 1 });
+    assert.equal(report.fulfillment.reels.pendientes, 1);
+    assert.equal(report.fulfillment.carruseles.pendientes, 1);
+    assert.equal(report.actual.piezas, 2, 'secondary observations retain deleted media history');
+    assert.equal(report.piezas.length, 1); assert.equal(report.destacadas.length, 1);
+    assert.equal(report.piezas[0].permalink, 'https://www.instagram.com/reel/Public99501/');
+    assert.equal(report.logo, 'https://example.test/report-logo.png');
+    assert.equal(report.dataFecha, checkedAt);
+    assert.doesNotMatch(JSON.stringify(report), /Scoped B|report_scope_1|Public99502|Public99503|NOT PUBLIC|ig_media_id|publicacion_id|responsables|vinculo|abono_mensual|"posts"/);
+    await assert.rejects(readInstagramClientReport(pool, designer, `cliente-${clients[0]}`, { periodo: '2026-10' }), { status: 403 });
+  } finally { await pool.end(); }
+});
