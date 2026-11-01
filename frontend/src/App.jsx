@@ -32,6 +32,8 @@ const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
 const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
 const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
+const InstagramPanelPage = lazyNamed(() => import("./pages/InstagramPanel.jsx"), "InstagramPanelPage");
+const InstagramClientReportPage = lazyNamed(() => import("./pages/InstagramClientReport.jsx"), "InstagramClientReportPage");
 const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.jsx"), "WorkspaceReadOnlyPage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
 const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
@@ -190,7 +192,7 @@ export function App() {
   );
 
   const rutasCompartidas = esAdmin
-    ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
+    ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/instagram", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
     esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -234,6 +236,12 @@ export function App() {
     }
     if (path === "/sueldos") {
       return <SueldosPage />;
+    }
+    if (path === "/instagram") {
+      return <InstagramPanelPage sesion={sesion} />;
+    }
+    if (path === "/instagram/reporte") {
+      return <InstagramClientReportPage sesion={sesion} />;
     }
     if (path === "/perfil") {
       return <PerfilPage />;

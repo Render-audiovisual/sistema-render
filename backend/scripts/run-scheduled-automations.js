@@ -35,6 +35,20 @@ async function main() {
         }});
         if (result?.busy) throw new Error('Supervisor ocupado');
       },
+      instagram: async (pool, {now}) => {
+        const {runInstagramSync} = await import('../src/instagram-sync.js');
+        await runInstagramSync(pool, {now, env:{
+          META_SYSTEM_USER_TOKEN:env.META_SYSTEM_USER_TOKEN, META_GRAPH_VERSION:env.META_GRAPH_VERSION,
+          META_BUSINESS_ID:env.META_BUSINESS_ID,
+        }});
+      },
+      instagram_reporte: async (pool, {now}) => {
+        const {runInstagramWeeklyReport} = await import('../src/instagram-weekly-report.js');
+        await runInstagramWeeklyReport(pool, {now, env:{
+          INSTAGRAM_AI_REPORTS_ENABLED:env.INSTAGRAM_AI_REPORTS_ENABLED,
+          ANTHROPIC_API_KEY:env.ANTHROPIC_API_KEY, INSTAGRAM_AI_MODEL:env.INSTAGRAM_AI_MODEL,
+        }});
+      },
     },
   });
   console.log(JSON.stringify(outcome));
