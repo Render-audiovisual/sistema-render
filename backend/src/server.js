@@ -74,6 +74,7 @@ import { createProjectsRouter } from "./projects.js";
 import { createClientOperationRouter } from "./client-operation.js";
 import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
 import { createTeamPaymentsRouter } from './team-payments.js';
+import { createInstagramPanelRouter } from './instagram-panel.js';
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
@@ -295,6 +296,7 @@ router.use('/clientes', createClientOperationRouter({ express, pool }));
 router.use('/clientes', createMonthlyAgreementRouter({ express, pool }));
 router.use('/finanzas/pagos', createTeamPaymentsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
+router.use('/instagram', createInstagramPanelRouter({ express, pool }));
 router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   try { res.json(await readFeedbackTaskInventory(pool, req.auth, req.query)); }

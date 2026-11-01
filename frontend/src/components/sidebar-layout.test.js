@@ -158,10 +158,10 @@ test("collapse never filters navigation destinations or expands employee permiss
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), shared);
-    assert.equal(links.some(link => ["/sueldos", "/empleados", "/clientes?gestion=1"].includes(link.href)), false);
+    assert.equal(links.some(link => ["/instagram", "/sueldos", "/empleados", "/clientes?gestion=1"].includes(link.href)), false);
   }
   const admin = getNavigationGroups("admin").flatMap(group => group.links);
-  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/sueldos", "/empleados", "/clientes?gestion=1"].sort());
+  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/instagram", "/sueldos", "/empleados", "/clientes?gestion=1"].sort());
   assert.equal(getNavigationGroups("admin").find(group => group.id === "account").links.find(link => link.href === "/clientes?gestion=1")?.label, "Gestionar clientes");
   assert.equal(isNavigationActive("/feedback", "/bloc-notas"), true);
   assert.equal(isNavigationActive("/planificacion-historias", "/calendario-estructura"), true);
