@@ -59,7 +59,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, observeMoodboardHttp = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {}, deferProductionResultsMigration = false, deferTaskCommentActorMigration = false, deferPersonalListBlockCreateReceiptsMigration = false, deferEditingProgressMigration = false } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, observeMoodboardHttp = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {}, deferProductionResultsMigration = false, deferTaskCommentActorMigration = false, deferPersonalListBlockCreateReceiptsMigration = false, deferEditingProgressMigration = false, postgres18 = false } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
@@ -80,10 +80,12 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
   if (browserPort !== undefined && (!browserSessions || clusterOnly || !Number.isInteger(browserPort)
     || browserPort < 1024 || browserPort > 65535 || browserPort === port)) throw new Error('Invalid browser HTTP fixture port');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
+  if (typeof postgres18 !== 'boolean') throw new Error('Invalid local PostgreSQL fixture version');
   const root = await mkdtemp('/private/tmp/render2-local-');
   const data = `${root}/data`;
   const env = cleanEnvironment();
-  const command = (name, args) => execFileSync(`/opt/homebrew/bin/${name}`, args,
+  const binaryRoot = postgres18 ? '/opt/homebrew/opt/postgresql@18/bin' : '/opt/homebrew/bin';
+  const command = (name, args) => execFileSync(`${binaryRoot}/${name}`, args,
     { env, cwd: root, timeout: 35000, stdio: 'pipe' });
   let child;
   let startAttempted = false;

@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -10,6 +12,18 @@ const hash = x => createHash('sha256').update(x).digest('hex');
 const canonical = v => Array.isArray(v) ? '['+v.map(canonical).join(',')+']'
   : v && typeof v === 'object' ? '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}' : JSON.stringify(v);
 const H = 'a'.repeat(64), directory = new URL('../migrations/', import.meta.url);
+// Historical unit fixture: replay the exact filesystem inventory of the sealed
+// 41-file release. This is NOT a runtime migration exemption. The Instagram
+// upgrade is verified independently against the real, unmodified inventory.
+const listDirectory = fs.readdirSync.bind(fs);
+mock.method(fs, 'readdirSync', (path, ...args) => {
+  const names = listDirectory(path, ...args);
+  const location = path instanceof URL ? path.href : String(path);
+  return location.replace(/\/$/, '').endsWith('/migrations')
+    ? names.filter(name => !/^09[45]_instagram_/.test(name)) : names;
+});
+syncBuiltinESMExports();
+test.after(() => { mock.restoreAll(); syncBuiltinESMExports(); });
 const all = readdirSync(directory).filter(n=>n.endsWith('.sql')).sort();
 const migrationNames = all.filter(n=>n>='054_' && !n.startsWith('053_'));
 const oldNames = [...all.filter(n=>n<'054_'), ...Object.keys(DEPLOYED_MIGRATION_HISTORY)].sort();
@@ -159,4 +173,15 @@ test('identity mismatch fails before SQL and intent rejects overlap/name inferen
   assert.equal(h.consumed,0);
   assert.throws(()=>productionAssignmentIntentHash({choices:[{task_id:1,owner_id:'Luciano',collaborator_ids:[]}],exceptions:[]}));
   assert.throws(()=>productionAssignmentIntentHash({choices:[{task_id:1,owner_id:2,collaborator_ids:[]}],exceptions:[{task_id:1,reason:'overlap'}]}));
+});
+
+test('historical publicator still rejects appending either Instagram migration before connection', async () => {
+  for (const name of ['094_instagram_metricas.sql', '095_instagram_reportes.sql']) {
+    const h = harness();
+    const bytes = readFileSync(new URL(name, directory));
+    h.value.migrations.push({ name, bytes });
+    h.value.approval.sql.push({ name, sha256: hash(bytes) }); resign(h.value);
+    await assert.rejects(executeProductionRelease(h.pool, h.value, h.dependencies), { code: 'SQL_CHANGED' });
+    assert.equal(h.connected, 0); assert.equal(h.consumed, 0);
+  }
 });
