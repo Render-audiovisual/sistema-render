@@ -80,3 +80,43 @@ test('query/commit faults roll back and release once; failed rollback discards c
     }
   }
 });
+
+function feedSnapshot(extra={}) {
+  return {version:1,source:'meta_graph_feed',clientId:19,igUserId:'119',username:'synthetic',period:'2026-10',
+    windowStart:'2026-09-01T03:00:00.000Z',checkedAt:'2026-10-29T15:00:00.000Z',
+    posts:[{id:'900',kind:'reel',publishedAt:'2026-10-05T15:00:00.000Z',financial_canary:'never return'}],
+    financial_canary:'never return',...extra};
+}
+test('feed evidence is part of the same catalog query and ties system actor, client, account and month',()=>{
+  assert.match(CLIENT_CATALOG_SQL,/LEFT JOIN instagram_cuentas instagram_account ON instagram_account.cliente_id=c.id/);
+  for(const condition of ["ia.integracion='instagram_graph'","ia.canal='system'","ia.actor_id='render-worker'","ia.accion='feed_snapshot_v1'","ia.resultado='ok'","ia.detalles->>'clientId'=c.id::text","ia.detalles->>'igUserId'=instagram_account.ig_user_id","ia.detalles->>'period'=to_char($1::date,'YYYY-MM')"])
+    assert.ok(CLIENT_CATALOG_SQL.includes(condition));
+  assert.match(CLIENT_CATALOG_SQL,/ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1\s*\) instagram_feed ON TRUE/);
+});
+test('new feed fields are closed after DTO without changing existing financial role projection',async()=>{
+  for(const rol of ['admin','edicion']){
+    const actor={id:7,rol,activo:true,session_version:3};
+    const raw={...row(),instagram_account_id:'119',instagram_account_active:true,instagram_feed_snapshot:feedSnapshot()};
+    const f=fixture({actor,rows:[raw]});
+    const [result]=await loadClientCatalogSnapshot(f.pool,actor,'2026-10-01');
+    const clean=result.instagram_feed_snapshot;
+    assert.equal(clean.posts.length,1);assert.equal(clean.financial_canary,undefined);assert.equal(clean.posts[0].financial_canary,undefined);
+    assert.equal(result.instagram_account_id,'119');assert.equal(result.instagram_account_active,true);
+    const baseline=clientOperationalDto(raw,actor);
+    for(const field of ['instagram_account_id','instagram_account_active','instagram_feed_snapshot']){delete result[field];delete baseline[field];}
+    assert.deepEqual(result,baseline);
+    assert.equal(Object.hasOwn(result,'abono_mensual'),rol==='admin');
+    assert.equal(Object.hasOwn(result,'agreement_revision'),rol==='admin');
+    assert.equal(f.calls.length,4);assert.equal(f.calls.filter(c=>c.sql===CLIENT_CATALOG_SQL).length,1);
+  }
+});
+test('wrong account, client, month or malformed feed never leaves raw audit data in admin DTO',async()=>{
+  for(const change of [{igUserId:'120'},{clientId:20},{period:'2026-09'},{version:2},{source:'manual'},{posts:[{id:'bad'}]}]){
+    const raw={...row(),instagram_account_id:'119',instagram_account_active:true,instagram_feed_snapshot:feedSnapshot(change)};
+    const [result]=await loadClientCatalogSnapshot(fixture({rows:[raw]}).pool,auth(),'2026-10-01');
+    assert.equal(Object.hasOwn(result,'instagram_feed_snapshot'),false);
+  }
+  const raw={...row(),instagram_account_id:null,instagram_account_active:null,instagram_feed_snapshot:feedSnapshot()};
+  const [result]=await loadClientCatalogSnapshot(fixture({rows:[raw]}).pool,auth(),'2026-10-01');
+  assert.equal(Object.hasOwn(result,'instagram_feed_snapshot'),false);assert.equal(Object.hasOwn(result,'instagram_account_id'),false);
+});

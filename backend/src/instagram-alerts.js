@@ -35,18 +35,21 @@ export function computeAlerts(panel, { now = new Date(), rules = ALERT_RULES } =
 
   for (const cliente of panel.clientes) {
     const hasAccount = cliente.instagram.length > 0;
-    if (cliente.cupo && hasAccount && progress.day >= rules.ritmoMinimoDia) {
+    const countTrustworthy=!cliente.format_counts||['current','historical','confirmed'].includes(cliente.format_counts.status);
+    if (cliente.cupo && hasAccount && countTrustworthy && progress.day >= rules.ritmoMinimoDia) {
       const cupo = cliente.cupo.reels + cliente.cupo.carruseles;
-      const hechas = cliente.actual.reels + cliente.actual.carruseles;
+      const counts=cliente.format_counts??cliente.actual;
+      const hechas = Math.min(counts.reels,cliente.cupo.reels)+Math.min(counts.carruseles,cliente.cupo.carruseles);
       const esperadas = Math.floor(cupo * progress.fraction);
-      if (cupo > 0 && hechas < esperadas - rules.ritmoTolerancia) {
-        const faltan = cupo - hechas;
+      const missingReels=Math.max(0,cliente.cupo.reels-counts.reels),missingCarousels=Math.max(0,cliente.cupo.carruseles-counts.carruseles);
+      if (cupo > 0 && (progress.current?hechas < esperadas-rules.ritmoTolerancia:missingReels+missingCarousels>0)) {
+        const faltan = missingReels+missingCarousels;
         const diasRestantes = progress.days - progress.day;
         push(cliente, 'cupo_atrasado', progress.current ? 'alta' : 'media',
           progress.current ? 'Atrasado con el cupo del mes' : 'Cupo del mes sin cumplir',
           progress.current
             ? `Lleva ${hechas} de ${cupo} piezas al día ${progress.day}; a esta altura deberían ser ${esperadas}. Faltan ${faltan} en ${diasRestantes} días.`
-            : `Cerró con ${hechas} de ${cupo} piezas.`);
+            : `Reels: ${counts.reels} de ${cliente.cupo.reels}; carruseles: ${counts.carruseles} de ${cliente.cupo.carruseles}. Pendientes: ${missingReels} reels y ${missingCarousels} carruseles.`);
       }
     }
     const base = cliente.base;

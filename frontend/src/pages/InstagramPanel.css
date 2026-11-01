@@ -34,6 +34,9 @@
 .ig-bar{display:block;height:6px;border-radius:3px;background:var(--render-surface-muted);overflow:hidden}
 .ig-bar b{display:block;height:100%;background:var(--render-accent);border-radius:3px}
 .ig-bar b.is-done{background:var(--render-success)}
+.ig-format-progress{display:grid;gap:4px;padding:4px 0;min-width:0}
+.ig-format-progress>span{font-size:11px;color:var(--render-muted)}
+.ig-format-progress strong{font-size:12px;overflow-wrap:anywhere}
 .ig-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .ig-pieces{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .ig-piece{min-width:0;border:1px solid var(--render-line);border-radius:12px;padding:14px;display:grid;gap:10px;align-content:start}

@@ -79,7 +79,11 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
     let next = url;
     for (let page = 0; next && page < maxPages; page += 1) {
       const body = await request(next);
-      yield Array.isArray(body.data) ? body.data : [];
+      if (!Array.isArray(body.data) || (body.paging != null &&
+        (typeof body.paging !== 'object' || Array.isArray(body.paging))) ||
+        (body.paging?.next != null && (typeof body.paging.next !== 'string' || !body.paging.next)))
+        throw new GraphError('pagination');
+      yield body.data;
       next = typeof body.paging?.next === 'string' ? new URL(body.paging.next) : null;
     }
     // A partial account inventory must never deactivate unseen accounts.
@@ -119,24 +123,36 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
       return [...byId.values()];
     },
 
-    // Publicaciones del feed desde `since` (más nuevas primero). Las historias no se incluyen.
-    async listMedia(igUserId, since) {
-      const items = [];
+    // Complete bounded traversal: pinned/out-of-order old posts do not prove
+    // the rest of the window is exhausted. Stories are intentionally excluded.
+    async listMedia(igUserId, since, until = null) {
+      if (!(since instanceof Date) || !Number.isFinite(+since) ||
+        (until !== null && (!(until instanceof Date) || !Number.isFinite(+until) || +until < +since)))
+        throw new GraphError('config');
+      const items = new Map(), seen = new Map();
       const sinceSeconds = Math.floor(since.getTime() / 1000);
       const url = build(`${igUserId}/media`, {
         fields: 'id,media_type,media_product_type,permalink,timestamp,caption', limit: 50, since: sinceSeconds,
       });
       for await (const rows of pages(url)) {
-        let older = false;
         for (const row of rows) {
+          if (row?.media_product_type === 'STORY') continue;
+          const publishedAt = typeof row?.timestamp === 'string' ? new Date(row.timestamp) : null;
+          if (!publishedAt || !Number.isFinite(+publishedAt)) throw new GraphError('inventory');
+          // Timestamp alone can exclude legacy/IGTV or newly published items.
+          // Keep traversing: no ordering assumption and no normalization of
+          // irrelevant historical formats. Invalid timestamps cannot be excluded.
+          if (+publishedAt < +since || (until !== null && +publishedAt > +until)) continue;
           const media = normalizeMedia(row);
-          if (!media) continue;
-          if (media.publishedAt < since) { older = true; continue; }
-          items.push(media);
+          // Silently dropping a malformed feed item would certify a false zero.
+          if (!media) throw new GraphError('inventory');
+          const serialized = JSON.stringify(media), prior = seen.get(media.igMediaId);
+          if (prior !== undefined && prior !== serialized) throw new GraphError('inventory');
+          seen.set(media.igMediaId, serialized);
+          items.set(media.igMediaId, media);
         }
-        if (older) break;
       }
-      return items;
+      return [...items.values()];
     },
 
     // Métricas de una pieza. Prueba conjuntos más chicos si Meta rechaza alguna métrica.

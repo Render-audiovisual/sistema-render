@@ -1,6 +1,7 @@
 import { clientAgreementRevisionSql } from './client-agreement.js';
 import { clientOperationalDto } from './operational-dto.js';
 import { validateInstagramMonthlyObservation } from '../../shared/instagram-monthly-observation.mjs';
+import { validateFeedCountSnapshot } from '../../shared/instagram-feed-counts.mjs';
 import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -19,6 +20,8 @@ export const CLIENT_CATALOG_SQL = `
     gf.cuota_reels AS cuota_feed_reels,gf.cuota_carruseles AS cuota_feed_carruseles,
     (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida,
     instagram_observation.detalles AS instagram_monthly_observation,
+    instagram_account.ig_user_id AS instagram_account_id,instagram_account.activa AS instagram_account_active,
+    instagram_feed.detalles AS instagram_feed_snapshot,
     branding.detalles->>'logo' AS logo
   FROM clientes c
   LEFT JOIN LATERAL (
@@ -32,6 +35,16 @@ export const CLIENT_CATALOG_SQL = `
     ORDER BY ca.vigente_desde DESC LIMIT 1
   ) abono ON TRUE
   LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
+  LEFT JOIN instagram_cuentas instagram_account ON instagram_account.cliente_id=c.id
+  LEFT JOIN LATERAL (
+    SELECT ia.detalles FROM integracion_auditoria ia
+    WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
+      AND ia.accion='feed_snapshot_v1' AND ia.resultado='ok'
+      AND ia.detalles->>'clientId'=c.id::text
+      AND ia.detalles->>'igUserId'=instagram_account.ig_user_id
+      AND ia.detalles->>'period'=to_char($1::date,'YYYY-MM')
+    ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+  ) instagram_feed ON TRUE
   LEFT JOIN LATERAL (
     SELECT ia.detalles FROM integracion_auditoria ia
     WHERE ia.integracion='client_branding' AND ia.canal='web' AND ia.accion='logo_updated'
@@ -65,6 +78,18 @@ export async function loadClientCatalogSnapshot(pool, auth, periodo) {
     const result = await db.query(CLIENT_CATALOG_SQL, [periodo]);
     const rows = result.rows.map(row => {
       const dto = { ...clientOperationalDto(row, actor) };
+      // Audit payloads never bypass a closed evidence projection, even for admin.
+      delete dto.instagram_feed_snapshot;
+      delete dto.instagram_account_id;
+      delete dto.instagram_account_active;
+      if (typeof row.instagram_account_id === 'string' && /^[1-9]\d{0,39}$/.test(row.instagram_account_id)) {
+        dto.instagram_account_id = row.instagram_account_id;
+        dto.instagram_account_active = row.instagram_account_active === true;
+        const feed = validateFeedCountSnapshot(row.instagram_feed_snapshot, {
+          clientId: row.id, igUserId: row.instagram_account_id, period: periodo.slice(0, 7),
+        });
+        if (feed) dto.instagram_feed_snapshot = feed;
+      }
       delete dto.instagram_monthly_observation;
       const snapshot = validateInstagramMonthlyObservation(row.instagram_monthly_observation, { clientId: row.id, period: periodo.slice(0, 7) });
       if (snapshot) dto.instagram_monthly_observation = snapshot;

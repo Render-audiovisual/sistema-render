@@ -2,10 +2,12 @@
 // database URL: these tests deliberately truncate Instagram test records.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { access } from 'node:fs/promises';
 import pg from 'pg';
 import { runInstagramSync } from '../src/instagram-sync.js';
 import { linkInstagramAccount } from '../src/instagram-accounts.js';
 import { GraphError } from '../src/instagram-graph.js';
+import { FEED_SNAPSHOT_ACTION, validateFeedCountSnapshot } from '../../shared/instagram-feed-counts.mjs';
 import { startLocalHarness, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 
 const enabled = process.env.RENDER2_RUN_LOCAL_INTEGRATION === 'true';
@@ -18,7 +20,10 @@ test.before(async () => {
     host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
   assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port: 55993, url, identity });
 });
-test.after(async () => { await fixture?.cleanup(); });
+test.after(async () => {
+  await fixture?.cleanup();
+  if (fixture) await assert.rejects(access(fixture.root), { code: 'ENOENT' });
+});
 const H = 3600000;
 
 function fakeGraph(state) {
@@ -234,6 +239,8 @@ test('account reassignment during a Graph read cannot restore the previous clien
       VALUES('IG Test Reassigned',4,2) RETURNING id`)).rows[0].id;
     const old = (await pool.query("SELECT cliente_id FROM instagram_cuentas WHERE ig_user_id='111'")).rows[0].cliente_id;
     const taskCount = (await pool.query('SELECT count(*)::int AS n FROM tareas')).rows[0].n;
+    const proofCount = (await pool.query('SELECT count(*)::int AS n FROM integracion_auditoria WHERE integracion=$1 AND accion=$2',
+      ['instagram_graph', FEED_SNAPSHOT_ACTION])).rows[0].n;
     let changed = false;
     const graph = {
       async listInstagramAccounts() { return [{ igUserId: '111', username: 'bohle_test', pageId: '900', followers: 5000 }]; },
@@ -249,6 +256,67 @@ test('account reassignment during a Graph read cannot restore the previous clien
     assert.equal((await pool.query("SELECT cliente_id FROM instagram_cuentas WHERE ig_user_id='111'")).rows[0].cliente_id, next);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM instagram_media WHERE ig_user_id=$1 AND cliente_id<>$2', ['111', next])).rows[0].n, 0);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM instagram_media WHERE ig_media_id='7001'")).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM tareas')).rows[0].n, taskCount);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM integracion_auditoria WHERE integracion=$1 AND accion=$2',
+      ['instagram_graph', FEED_SNAPSHOT_ACTION])).rows[0].n, proofCount, 'reassignment cannot publish coverage');
+  } finally { await pool.end(); }
+});
+
+test('complete 90-day snapshots reconcile counts without deleting history; partial sync rejects with durable successful accounts', { skip: !enabled }, async () => {
+  const pool = new pg.Pool({ connectionString: url, max: 3 });
+  try {
+    // The gated harness above creates a disposable database and verifies its
+    // identity. Never use environment/database URLs for this fixture.
+    const clients = [];
+    for (const name of ['IG Coverage Complete', 'IG Coverage Partial']) {
+      clients.push((await pool.query('INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES($1,4,4) RETURNING id', [name])).rows[0].id);
+    }
+    for (const [i, id] of ['88111', '88222'].entries()) {
+      await pool.query('INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES($1,$2,$3)', [id, `coverage${i}`, clients[i]]);
+    }
+    const account = id => ({ igUserId: id, username: id === '88111' ? 'coverage0' : 'coverage1', pageId: null, followers: null });
+    const at = new Date('2026-11-01T12:00:00Z'), reads = [];
+    const media = { igMediaId: '88501', tipo: 'reel', permalink: 'https://www.instagram.com/reel/coverage/',
+      caption: 'observed', publishedAt: new Date('2026-10-20T12:00:00Z') };
+    let listed = [media], partial = false;
+    const graph = {
+      async listInstagramAccounts() { return [account('88111'), account('88222')]; },
+      async listMedia(id, from) { reads.push({ id, from }); if (partial && id === '88222') throw new GraphError('pagination'); return id === '88111' ? listed : []; },
+      async mediaInsights() { throw new GraphError('permission'); },
+    };
+    const latestProof = async () => (await pool.query(`SELECT detalles FROM integracion_auditoria
+      WHERE integracion='instagram_graph' AND canal='system' AND actor_id='render-worker'
+        AND actor_nombre='Render · Instagram' AND resultado='ok' AND accion=$1 AND detalles->>'igUserId'='88111'
+        AND detalles->>'clientId'=$2
+        AND detalles->>'period'='2026-10' ORDER BY id DESC LIMIT 1`, [FEED_SNAPSHOT_ACTION, String(clients[0])])).rows[0].detalles;
+    const taskCount = (await pool.query('SELECT count(*)::int AS n FROM tareas')).rows[0].n;
+    await runInstagramSync(pool, { now: at, env: {}, graph });
+    const initial = await latestProof();
+    assert.ok(validateFeedCountSnapshot(initial));
+    assert.equal(initial.posts.length, 1);
+    assert.equal(initial.checkedAt, at.toISOString());
+    listed = [{ ...media, tipo: 'carrusel', caption: 'edited' }];
+    await runInstagramSync(pool, { now: new Date(+at + 3600000), env: {}, graph });
+    assert.equal((await latestProof()).posts[0].kind, 'carrusel');
+    listed = []; partial = true;
+    await assert.rejects(runInstagramSync(pool, { now: new Date(+at + 7200000), env: {}, graph }), /parcial/);
+    assert.deepEqual((await latestProof()).posts, [], 'fresh complete inventory replaces count evidence, not stored media');
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM instagram_media WHERE ig_media_id='88501'")).rows[0].n, 1);
+    assert.ok(reads.every(r => +r.from === +at - 90 * 86400000 || +r.from === +at + 3600000 - 90 * 86400000 || +r.from === +at + 7200000 - 90 * 86400000));
+    const summary = (await pool.query(`SELECT resultado,detalles FROM integracion_auditoria
+      WHERE integracion='instagram_graph' AND accion='sync_resumen' ORDER BY id DESC LIMIT 1`)).rows[0];
+    assert.equal(summary.resultado, 'parcial');
+    assert.equal(summary.detalles.ok, 1);
+    assert.equal(summary.detalles.errores, 1);
+    // Exercise the real catalog reader's SQL contract without changing its
+    // owner files: actor, client/account/month and canonical proof all match.
+    const { CLIENT_CATALOG_SQL } = await import('../src/client-catalog.js');
+    const catalog = (await pool.query(CLIENT_CATALOG_SQL, ['2026-10-01'])).rows.find(c => c.id === clients[0]);
+    assert.equal(catalog.instagram_account_id, '88111');
+    assert.ok(validateFeedCountSnapshot(catalog.instagram_feed_snapshot, {
+      clientId: clients[0], igUserId: '88111', period: '2026-10',
+    }));
+    assert.deepEqual(catalog.instagram_feed_snapshot.posts, []);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM tareas')).rows[0].n, taskCount);
   } finally { await pool.end(); }
 });

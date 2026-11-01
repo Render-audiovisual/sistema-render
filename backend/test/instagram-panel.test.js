@@ -49,7 +49,7 @@ test('buildPanel groups shared feeds, compares months and credits people', () =>
   assert.equal(bohle.actual.piezas, 2);
   assert.equal(bohle.actual.alcance, 1500);
   assert.equal(bohle.anterior.alcance, 500);
-  assert.equal(bohle.cumplimiento, 25);
+  assert.equal(bohle.cumplimiento, null, 'legacy observations do not certify complete monthly counts');
   assert.equal(bohle.crecimiento_seguidores, 100);
   assert.equal(bohle.sin_vincular, 1);
   assert.equal(bohle.actual.tasa_interaccion, 10);

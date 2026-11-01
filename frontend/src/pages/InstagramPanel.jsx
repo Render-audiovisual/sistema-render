@@ -64,6 +64,7 @@ function InstagramPanelContent({ sesion }) {
   }, [capture, period]);
 
   const reload = useCallback(() => setVersion(v => v + 1), []);
+  const visibleAlerts=(data?.alertas||[]).filter(a=>a.tipo!=='sin_vincular');
 
   return <main className="page-shell ig-panel">
     <section className="salary-hero ig-hero">
@@ -83,7 +84,7 @@ function InstagramPanelContent({ sesion }) {
 
     <nav className="ig-tabs" aria-label="Secciones del panel">
       {[['clientes', 'Clientes'], ['equipo', 'Equipo'], ['reportes', 'Reportes'], ['cuentas', 'Cuentas']].map(([id, label]) =>
-        <button key={id} type="button" className={tab === id ? 'is-active' : ''} aria-pressed={tab === id} onClick={() => { setTab(id); setSelected(null); }}>{label}{id === 'clientes' && data?.alertas?.length ? <span className="ig-badge" aria-label={`${data.alertas.length} alertas`}>{data.alertas.length}</span> : null}</button>)}
+        <button key={id} type="button" className={tab === id ? 'is-active' : ''} aria-pressed={tab === id} onClick={() => { setTab(id); setSelected(null); }}>{label}{id === 'clientes' && visibleAlerts.length ? <span className="ig-badge" aria-label={`${visibleAlerts.length} alertas`}>{visibleAlerts.length}</span> : null}</button>)}
     </nav>
 
     {loading && data?.periodo !== period && <div className="salary-state">Cargando {labelPeriod(period)}…</div>}
@@ -100,12 +101,27 @@ function InstagramPanelContent({ sesion }) {
 
 function Totals({ data }) {
   const t = data.totales;
+  const counts=data.format_totals,known=counts?.current>0;
   return <section className="ig-metrics" aria-label={`Totales de ${labelPeriod(data.periodo)}`}>
-    <article><span>Piezas publicadas</span><strong>{fmt(t.piezas)}</strong><small>{t.reels} reels · {t.carruseles} carruseles</small></article>
+    <article><span>Reels</span><strong>{known?fmt(counts.reels):'—'}</strong><small>{known?`${counts.current} de ${counts.total} clientes con datos comprobados`:'Sin información comprobada para este mes'}</small></article>
+    <article><span>Carruseles</span><strong>{known?fmt(counts.carruseles):'—'}</strong><small>{known&&counts.current<counts.total?'Conteo parcial: faltan cuentas por comprobar':'Las imágenes sueltas no cuentan como carruseles'}</small></article>
     <article><span>Alcance total</span><strong>{short(t.alcance)}</strong><small>Promedio por pieza: {fmt(t.alcance_promedio)}</small></article>
     <article><span>Reproducciones</span><strong>{short(t.vistas)}</strong><small>Promedio por pieza: {fmt(t.vistas_promedio)}</small></article>
     <article><span>Tasa de interacción</span><strong>{pct(t.tasa_interaccion)}</strong><small>Interacciones / alcance</small></article>
   </section>;
+}
+
+function FormatProgress({label,format,status}) {
+  const count=format?.cantidad,quota=format?.cuota,known=Number.isSafeInteger(count),included=format?.incluido;
+  const trusted=['current','historical','confirmed'].includes(status);
+  return <div className="ig-format-progress">
+    <span>{label}</span><strong>{included===false?`${known&&count>0?`${count} registrados · `:''}No incluido`:`${known?fmt(count):'—'} / ${quota===null||quota===undefined?'—':fmt(quota)}`}</strong>
+    {included!==false&&<i className="ig-bar" role={known&&trusted&&quota>0?'progressbar':undefined}
+      aria-label={`${label}: ${known?`${count} registrados`:'sin información comprobada'}`}
+      aria-valuemin={known&&trusted&&quota>0?0:undefined} aria-valuemax={known&&trusted&&quota>0?quota:undefined}
+      aria-valuenow={known&&trusted&&quota>0?Math.min(count,quota):undefined}>
+      <b style={{width:`${known&&quota>0?Math.min(100,count/quota*100):0}%`}}/></i>}
+  </div>;
 }
 
 const NIVEL = { alta: 'Alta', media: 'Media', baja: 'Baja' };
@@ -203,7 +219,7 @@ function ClientsView({ data, onOpen }) {
   const maxReach = Math.max(1, ...rows.map(r => r.actual.alcance));
   if (!rows.length) return <div className="salary-state">No hay clientes con cuenta vinculada ni objetivos para {labelPeriod(data.periodo)}.</div>;
   return <>
-    <Alerts alerts={data.alertas || []} onOpen={onOpen} />
+    <Alerts alerts={(data.alertas || []).filter(a=>a.tipo!=='sin_vincular')} onOpen={onOpen} />
     <Totals data={data} />
     <section className="ig-card">
       <header className="ig-card-head"><h2>Clientes · {labelPeriod(data.periodo)}</h2>
@@ -220,15 +236,16 @@ function ClientsView({ data, onOpen }) {
           <span role="cell" className="ig-client">
             <strong>{c.nombre}</strong>
             <small>{c.instagram.length ? c.instagram.map(a => `@${a.username}`).join(' · ') : 'Sin cuenta vinculada'}</small>
-            {c.sin_vincular > 0 && <small className="ig-warn">{c.sin_vincular} sin vincular a una pieza</small>}
+            {c.format_counts?.status==='unavailable'&&<small>Sin información comprobada</small>}
+            {c.format_counts?.status==='stale'&&<small className="ig-warn">Último dato: {dateLabel.format(new Date(c.format_counts.checkedAt))}</small>}
+            {c.format_counts?.status==='owner_record'&&<small>Registrado por dirección · {dateLabel.format(new Date(c.format_counts.checkedAt))}</small>}
+            {c.format_counts?.status==='historical'&&<small>Cierre comprobado · {dateLabel.format(new Date(c.format_counts.checkedAt))}</small>}
           </span>
           <span role="cell" className="ig-quota">
             <em className="ig-cell-label">Cupo</em>
-            {c.cupo ? <>
-              <strong>{c.actual.reels + c.actual.carruseles}/{c.cupo.reels + c.cupo.carruseles}</strong>
-              <small>{c.actual.reels}/{c.cupo.reels} reels · {c.actual.carruseles}/{c.cupo.carruseles} carr.</small>
-              <i className="ig-bar" aria-hidden="true"><b className={c.cumplimiento >= 100 ? 'is-done' : ''} style={{ width: `${Math.min(100, c.cumplimiento ?? 0)}%` }} /></i>
-            </> : <small>Sin objetivo del mes</small>}
+            <FormatProgress label="Reels" format={c.fulfillment?.reels} status={c.format_counts?.status}/>
+            <FormatProgress label="Carruseles" format={c.fulfillment?.carruseles} status={c.format_counts?.status}/>
+            {!c.cupo&&<small>Cuota sin configurar</small>}
           </span>
           <span role="cell" className="ig-reach">
             <em className="ig-cell-label">Alcance</em>

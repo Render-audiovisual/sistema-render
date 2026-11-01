@@ -24,10 +24,12 @@ import { CLIENT_CREATE_MODES, createClientCreation, hasNoConfiguredMonthlyAgreem
 import './ClientesCreate.css';
 import './ClientesProgress.css';
 import { instagramMonthlyGroupObservation } from '../../../shared/instagram-monthly-observation.mjs';
+import { instagramFeedGroupCounts } from '../../../shared/instagram-feed-counts.mjs';
 
-// Publication evidence only. Shared-feed quotas and progress appear once;
+// Complete Meta feed or labelled internal evidence, never task completion.
+// Shared-feed quotas and progress appear once;
 // member names remain recognizable without multiplying the agreement.
-export function clientMonthlyProgressRows(clients, publicaciones, period) {
+export function clientMonthlyProgressRows(clients, publicaciones, period, {now=new Date()}={}) {
   const unique = [...new Map((Array.isArray(clients) ? clients : []).filter(client =>
     Number.isSafeInteger(client?.id) && client.id > 0 && typeof client.nombre === 'string').map(client => [client.id, client])).values()];
   const summary = getResumenClientes(unique, [], Array.isArray(publicaciones) ? publicaciones : [], {mes:period,avanceDelMes:0});
@@ -39,34 +41,56 @@ export function clientMonthlyProgressRows(clients, publicaciones, period) {
   }
   const rows = [...groups].map(([key, members]) => {
     const first = members[0], grouped = Boolean(first.grupo_feed_id);
-    const observation = instagramMonthlyGroupObservation(grouped ? unique.filter(client => client.grupo_feed_id === first.grupo_feed_id) : members, period);
-    const quota = read => { const quantities = members.map(read); return quantities.every(n => Number.isSafeInteger(n) && n >= 0 && n === quantities[0]) ? quantities[0] : null; };
+    const allMembers = grouped ? unique.filter(client => client.grupo_feed_id === first.grupo_feed_id) : members;
+    const observed = instagramMonthlyGroupObservation(allMembers, period);
+    const observation = observed?.agencyConfirmed === true && !(Date.parse(observed.checkedAt) <= +now) ? null : observed;
+    const feed = instagramFeedGroupCounts(allMembers, period, {now});
+    const sharedOwnerReview = allMembers.length > 1 && allMembers.some(client =>
+      instagramMonthlyGroupObservation([client], period)?.agencyConfirmed === true);
+    // An owner's explicit agency attribution is not a profile-total observation.
+    // A member's aggregate attribution cannot establish a union for shared accounts.
+    const selected = sharedOwnerReview ? null : observation?.agencyConfirmed === true ? observation : feed.status !== 'unavailable' ? feed : observation;
+    const quota = format => {
+      const quantities = members.map(client => {
+        const value = client[grouped ? `cuota_feed_${format}` : `cuota_${format}`];
+        return typeof value === 'number' || typeof value === 'string' && value.trim() !== '' ? Number(value) : null;
+      });
+      return quantities.every(n => Number.isSafeInteger(n) && n >= 0 && n === quantities[0]) ? quantities[0] : null;
+    };
     const publications = getPublicacionesDelMismoFeed(first, unique, Array.isArray(publicaciones) ? publicaciones : [])
       .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
+    const internal = selected || first.reelsPublicados + first.carruselesPublicados + first.reelsSinConfirmacion + first.carruselesSinConfirmacion > 0;
+    const source = sharedOwnerReview ? 'shared_review' : observation?.agencyConfirmed === true ? 'owner' : feed.status !== 'unavailable' ? 'meta' : internal ? 'internal' : 'unavailable';
+    const unknown = source === 'unavailable' || sharedOwnerReview;
     return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
       memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
-      observation, logo: first.logo || null,
-      reels:{count:observation ? observation.reels : first.reelsPublicados,historicalCount:observation ? 0 : first.reelsSinConfirmacion,quota:quota(getCuotaReelsMensual)},
-      carruseles:{count:observation ? observation.carruseles : first.carruselesPublicados,historicalCount:observation ? 0 : first.carruselesSinConfirmacion,quota:quota(getCuotaCarruselesMensual)}, noActivity:observation ? observation.totalPosts===0 : publications.length===0};
+      observation, feed, source, checkedAt:selected?.checkedAt || null, logo: first.logo || null,
+      reels:{count:selected ? selected.reels : unknown ? null : first.reelsPublicados,historicalCount:selected || unknown ? 0 : first.reelsSinConfirmacion,quota:quota('reels')},
+      carruseles:{count:selected ? selected.carruseles : unknown ? null : first.carruselesPublicados,historicalCount:selected || unknown ? 0 : first.carruselesSinConfirmacion,quota:quota('carruseles')},
+      noActivity:sharedOwnerReview ? null : selected ? (selected.totalPosts ?? selected.posts?.length)===0 : publications.length===0};
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
 function ClientMonthlyFormatBar({label,count,historicalCount=0,quota}) {
   const known = Number.isSafeInteger(quota) && quota > 0;
-  const total = count + historicalCount;
-  const percent = known ? Math.min(100, total / quota * 100) : 0;
-  return <div className={`client-monthly-format${known ? '' : ' client-monthly-format-disabled'}`}><div><span>{label}</span><strong>{known ? `${total} / ${quota}` : <span role="img" aria-label={`${label}: no incluido`}>🔒</span>}</strong></div>
-    <div className="client-monthly-track" role={known?'progressbar':undefined} aria-disabled={known?undefined:true} aria-label={known?`${label}: contenido registrado`:`${label}: no incluido`}
-      aria-valuemin={known?0:undefined} aria-valuemax={known?quota:undefined} aria-valuenow={known?Math.min(total,quota):undefined}
-      aria-valuetext={known?`${total} de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
+  const notIncluded = quota === 0;
+  const total = Number.isSafeInteger(count) && count >= 0 ? count + historicalCount : null;
+  const measurable = known && total !== null;
+  const percent = measurable ? Math.min(100, total / quota * 100) : 0;
+  const unavailableLabel = notIncluded ? 'no incluido' : 'sin configuración';
+  return <div className={`client-monthly-format${!known ? ' client-monthly-format-disabled' : total===null ? ' client-monthly-format-unknown' : ''}`}><div><span>{label}</span><strong>{known ? `${total ?? '—'} / ${quota}` : notIncluded ? <><span role="img" aria-label={`${label}: no incluido`}>🔒</span>{total>0 && <span className="client-monthly-extra">{total} fuera del acuerdo</span>}</> : <>{total!==null && <span>{total} · </span>}Sin configuración</>}</strong></div>
+    <div className="client-monthly-track" role={measurable?'progressbar':undefined} aria-disabled={measurable?undefined:true} aria-label={known?`${label}: ${total===null?'sin datos':'contenido registrado'}`:`${label}: ${unavailableLabel}`}
+      aria-valuemin={measurable?0:undefined} aria-valuemax={measurable?quota:undefined} aria-valuenow={measurable?Math.min(total,quota):undefined}
+      aria-valuetext={measurable?`${total} de ${quota}`:undefined}><span style={{width:`${percent}%`}} /></div></div>;
 }
-export function ClientMonthlyProgressList({clients,publicaciones,period,onEdit}) {
-  const rows = clientMonthlyProgressRows(clients,publicaciones,period);
+export function ClientMonthlyProgressList({clients,publicaciones,period,onEdit,now}) {
+  const rows = clientMonthlyProgressRows(clients,publicaciones,period,{now});
   return <section className="client-monthly-list" aria-label="Avance mensual de clientes activos">
     {rows.length===0 ? <p className="client-monthly-empty">No hay clientes activos registrados.</p> : <ul>{rows.map(row=><li key={row.key}>
       {onEdit && <button type="button" className="client-card-edit" aria-label={`Editar ${row.name}`} onClick={()=>onEdit(row.clientIds)}>✎</button>}
       <div className="client-monthly-name"><span className="client-monthly-avatar" aria-hidden="true">{row.logo ? <img src={row.logo} alt=""/> : row.name.split(/\s+/).filter(Boolean).slice(0,2).map(word=>word[0]).join('').toUpperCase()}</span><h2>{row.name}</h2>{row.memberNames.length>0&&<small>Cuota compartida · {row.memberNames.join(' · ')}</small>}</div>
-      <ClientMonthlyFormatBar label="Reels" {...row.reels} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles} observed={Boolean(row.observation)} agencyConfirmed={row.observation?.agencyConfirmed===true}/>
+      <ClientMonthlyFormatBar label="Reels" {...row.reels}/><ClientMonthlyFormatBar label="Carruseles" {...row.carruseles}/>
+      <small className="client-monthly-source">{row.source==='shared_review' ? 'Revisar cuentas compartidas' : row.source==='owner' ? `Registrado por dirección · ${new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Cordoba'}).format(new Date(row.checkedAt))}` : row.source==='meta' ? row.feed.status==='historical' ? `Cierre comprobado · ${new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Cordoba'}).format(new Date(row.checkedAt))}` : row.feed.status==='stale' ? `Instagram · Última comprobación: ${new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Cordoba'}).format(new Date(row.checkedAt))}` : 'Instagram' : row.source==='internal' ? 'Registro interno' : 'Sin conexión'}</small>
     </li>)}</ul>}
   </section>;
 }

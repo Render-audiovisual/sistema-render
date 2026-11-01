@@ -45,7 +45,7 @@ test('Graph redirects are disabled and incomplete inventories fail closed', asyn
   assert.equal(calls, 20);
 });
 
-test('client sends token only in header, follows paging on graph host and stops at since', async () => {
+test('client sends token only in header, follows paging on graph host and filters since', async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, auth: init.headers.Authorization });
@@ -146,4 +146,79 @@ test('business ID is strictly validated and cannot inject a Graph path', () => {
     assert.throws(() => resolveGraphConfig({ META_SYSTEM_USER_TOKEN: TOKEN, META_BUSINESS_ID: businessId }), { kind: 'config' });
     assert.throws(() => createGraphClient({ token: TOKEN, version: 'v23.0', businessId }), { kind: 'config' });
   }
+});
+
+const feedRow = (id, timestamp = '2026-10-20T00:00:00Z', extra = {}) => ({
+  id, timestamp, media_type: 'VIDEO', media_product_type: 'REELS',
+  permalink: `https://www.instagram.com/reel/${id}/`, caption: '', ...extra,
+});
+const feedClient = bodies => {
+  let calls = 0;
+  return { client: createGraphClient({ token: TOKEN, version: 'v23.0' }, {
+    fetchImpl: async () => json(bodies[calls++]),
+  }), calls: () => calls };
+};
+
+test('feed completes pagination past old pinned posts and deduplicates identical IDs', async () => {
+  const row = feedRow('11');
+  const { client, calls } = feedClient([
+    { data: [feedRow('10', '2026-01-01T00:00:00Z'), row], paging: { next: 'https://graph.facebook.com/v23.0/9/media?after=2' } },
+    { data: [row, feedRow('12')] },
+  ]);
+  assert.deepEqual((await client.listMedia('9', new Date('2026-10-01T00:00:00Z'))).map(m => m.igMediaId), ['11', '12']);
+  assert.equal(calls(), 2);
+});
+
+test('feed rejects conflicting duplicate types, dates and metadata inside the window', async () => {
+  for (const extra of [
+    { media_type: 'CAROUSEL_ALBUM', media_product_type: 'FEED' },
+    { timestamp: '2026-10-21T00:00:00Z' }, { caption: 'edited mid-read' },
+  ]) {
+    const { client } = feedClient([
+      { data: [feedRow('11')], paging: { next: 'https://graph.facebook.com/v23.0/9/media?after=2' } },
+      { data: [feedRow('11', undefined, extra)] },
+    ]);
+    await assert.rejects(client.listMedia('9', new Date('2026-10-01T00:00:00Z')), { kind: 'inventory' });
+  }
+});
+
+test('feed skips legacy malformed items with known dates outside exact window but keeps traversing', async () => {
+  const from = new Date('2026-10-01T00:00:00Z'), to = new Date('2026-10-31T15:00:00Z');
+  const { client, calls } = feedClient([
+    { data: [{ id: 'legacy', timestamp: '2020-01-01T00:00:00Z', media_type: 'IGTV' },
+      { timestamp: '2026-10-31T15:00:00.001Z', permalink: 'invalid' }],
+      paging: { next: 'https://graph.facebook.com/v23.0/9/media?after=2' } },
+    { data: [feedRow('11', from.toISOString()), feedRow('12', to.toISOString())] },
+  ]);
+  assert.deepEqual((await client.listMedia('9', from, to)).map(m => m.igMediaId), ['11', '12']);
+  assert.equal(calls(), 2);
+});
+
+test('feed rejects unknown timestamps and in-window malformed legacy items instead of hiding them', async () => {
+  for (const timestamp of ['invalid', null, undefined, 0, '2026-10-20T00:00:00Z']) {
+    const { client } = feedClient([{ data: [{ id: 'legacy', timestamp, media_type: 'IGTV' }] }]);
+    await assert.rejects(client.listMedia('9', new Date('2026-10-01T00:00:00Z'), new Date('2026-11-01T00:00:00Z')), { kind: 'inventory' });
+  }
+});
+
+test('feed rejects incomplete or malformed pages and malformed feed items instead of certifying zero', async () => {
+  for (const body of [{}, { data: null }, { data: [], paging: [] }, { data: [], paging: { next: 2 } },
+    { data: [], paging: { next: '' } }, { data: [feedRow('11', 'invalid')] },
+    { data: [feedRow('11', undefined, { permalink: 'https://evil.example/' })] }]) {
+    const { client } = feedClient([body]);
+    await assert.rejects(client.listMedia('9', new Date(0)), GraphError);
+  }
+  const { client } = feedClient([{ data: [feedRow('11', undefined, { media_product_type: 'STORY' })] }]);
+  assert.deepEqual(await client.listMedia('9', new Date(0)), []);
+});
+
+test('feed page limit rejects the entire inventory even when every page contains old posts', async () => {
+  let calls = 0;
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async () => {
+    calls++;
+    return json({ data: [feedRow('11', '2026-01-01T00:00:00Z')],
+      paging: { next: `https://graph.facebook.com/v23.0/9/media?after=${calls}` } });
+  } });
+  await assert.rejects(client.listMedia('9', new Date('2026-10-01T00:00:00Z')), { kind: 'pagination' });
+  assert.equal(calls, 20);
 });

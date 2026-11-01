@@ -1,7 +1,8 @@
 import { createGraphClient, resolveGraphConfig, GraphError } from './instagram-graph.js';
+import { buildFeedCountSnapshots, FEED_SNAPSHOT_ACTION } from '../../shared/instagram-feed-counts.mjs';
 
 // Sincronización programada de Instagram (job 'instagram' del ejecutor).
-// Lee de Meta fuera de transacciones y escribe solo en las tablas instagram_*,
+// Lee de Meta fuera de transacciones y escribe en instagram_* y su auditoría,
 // una transacción por cuenta. No toca publicaciones, tareas ni objetivos.
 
 const HOUR = 3600000, DAY = 24 * HOUR;
@@ -105,7 +106,7 @@ UPDATE instagram_media m SET
   actualizada_at = clock_timestamp()
 FROM decision d WHERE d.ig_media_id=m.ig_media_id`;
 
-async function storeAccountData(pool, account, media, metrics, now) {
+async function storeAccountData(pool, account, media, metrics, snapshots, now) {
   return withTransaction(pool, async db => {
     // Graph reads happen outside the transaction. A leader may have reassigned
     // the account meanwhile; never overwrite the new client's links with an
@@ -114,6 +115,11 @@ async function storeAccountData(pool, account, media, metrics, now) {
       [account.ig_user_id])).rows[0];
     if (!current || !current.activa || current.cliente_id !== account.cliente_id)
       throw new Error('La vinculación de Instagram cambió durante la lectura');
+    // Coverage is committed atomically with this account's data, never before
+    // the current assignment has been checked under its row lock.
+    for (const snapshot of snapshots) {
+      await db.query(auditSQL, [FEED_SNAPSHOT_ACTION, 'ok', JSON.stringify(snapshot)]);
+    }
     for (const item of media) {
       await db.query(`INSERT INTO instagram_media
         (ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at)
@@ -141,12 +147,20 @@ async function storeAccountData(pool, account, media, metrics, now) {
 }
 
 async function syncAccount(pool, graph, account, now) {
+  // One exact boundary for the stored inventory, Graph read and shared proof.
+  // The 35-day window controls metric refresh only, never feed coverage.
+  const from = new Date(now - BACKFILL_DAYS * DAY);
   const existing = (await pool.query(`SELECT m.ig_media_id, m.publicado_at,
       (SELECT max(medido_at) FROM instagram_media_metricas x WHERE x.ig_media_id=m.ig_media_id) AS ultima
     FROM instagram_media m WHERE m.ig_user_id=$1 AND m.publicado_at >= $2`,
-  [account.ig_user_id, new Date(now - BACKFILL_DAYS * DAY)])).rows;
-  const days = existing.length ? SYNC_WINDOW_DAYS : BACKFILL_DAYS;
-  const media = await graph.listMedia(account.ig_user_id, new Date(now - days * DAY));
+  [account.ig_user_id, from])).rows;
+  const listed = await graph.listMedia(account.ig_user_id, from, now);
+  // Graph can observe posts published while its pages are being read. Keep
+  // this observation as-of the captured now, including for injected adapters.
+  // Malformed dates remain for the shared builder to reject, not hide.
+  const media = listed.filter(item => !(item?.publishedAt instanceof Date && +item.publishedAt > +now));
+  const snapshots = buildFeedCountSnapshots({ clientId: account.cliente_id,
+    igUserId: account.ig_user_id, username: account.username, from, to: now, media });
 
   const known = new Map(existing.map(row => [row.ig_media_id, row]));
   const metrics = new Map();
@@ -162,7 +176,7 @@ async function syncAccount(pool, graph, account, now) {
       throw error;
     }
   }
-  const stored = await storeAccountData(pool, account, media, metrics, now);
+  const stored = await storeAccountData(pool, account, media, metrics, snapshots, now);
   return { media: media.length, metricas: stored };
 }
 
@@ -182,17 +196,20 @@ export async function runInstagramSync(pool, { now = new Date(), env = process.e
       summary.ok += 1; summary.media += result.media; summary.metricas += result.metricas;
     } catch (error) {
       const kind = error instanceof GraphError ? error.kind : 'interno';
+      summary.errores += 1;
       // Token inválido o límite de Meta: cortar y reintentar en la próxima corrida.
       if (kind === 'auth' || kind === 'rate') {
         await pool.query(auditSQL, ['sync_detenida', 'error', JSON.stringify({ version: 1, motivo: kind })]);
+        await pool.query(auditSQL, ['sync_resumen', 'parcial', JSON.stringify(summary)]);
         throw error;
       }
-      summary.errores += 1;
       await pool.query(auditSQL, ['sync_cuenta', 'error',
         JSON.stringify({ version: 1, ig_user_id: account.ig_user_id, motivo: kind })]);
     }
   }
   await pool.query(auditSQL, ['sync_resumen', summary.errores ? 'parcial' : 'ok', JSON.stringify(summary)]);
   if (accounts.length && summary.ok === 0) throw new Error('Ninguna cuenta de Instagram se pudo sincronizar');
+  // A partial result must not earn the runner's hourly completion checkpoint.
+  if (summary.errores) throw new Error('La sincronización de Instagram quedó parcial');
   return summary;
 }

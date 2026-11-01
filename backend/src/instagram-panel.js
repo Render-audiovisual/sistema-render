@@ -4,6 +4,9 @@ import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority,
 import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
 import { computeAlerts } from './instagram-alerts.js';
 import { num, interactions, responsablesDe } from './instagram-metrics.js';
+import { loadGoalClients } from './client-goals.js';
+import { instagramFeedGroupCounts, validateFeedCountSnapshot,feedCountsAreTrusted } from '../../shared/instagram-feed-counts.mjs';
+import { validateInstagramMonthlyObservation } from '../../shared/instagram-monthly-observation.mjs';
 export { interactions, responsablesDe };
 
 // Panel de rendimiento de Instagram (solo Líder). Lecturas en una instantánea
@@ -97,7 +100,23 @@ export function finishTotals(totals) {
     tasa_interaccion: totals.alcance ? Math.round((totals.interacciones / totals.alcance) * 10000) / 100 : null };
 }
 
-export function buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines = [], lastPosts = [], now = new Date() }) {
+export function formatFulfillment(counts,quota) {
+  const trusted=feedCountsAreTrusted(counts?.status);
+  const format=key=>{
+    const limit=quota?.[key],count=counts?.[key];
+    const configured=Number.isSafeInteger(limit)&&limit>=0,known=Number.isSafeInteger(count)&&count>=0;
+    return {cantidad:known?count:null,cuota:configured?limit:null,incluido:configured?limit>0:null,
+      porcentaje:configured&&limit>0&&known?Math.min(100,Math.floor(count/limit*100)):null,
+      pendientes:configured&&known?Math.max(0,limit-count):null,
+      completo:trusted&&configured&&known&&count>=limit};
+  };
+  const reels=format('reels'),carruseles=format('carruseles'),total=(quota?.reels??0)+(quota?.carruseles??0);
+  const known=reels.cantidad!==null&&carruseles.cantidad!==null&&reels.cuota!==null&&carruseles.cuota!==null;
+  return {reels,carruseles,completo:known&&total>0&&reels.completo&&carruseles.completo,
+    porcentaje:trusted&&known&&total>0?Math.floor((Math.min(reels.cantidad,reels.cuota)+Math.min(carruseles.cantidad,carruseles.cuota))/total*100):null};
+}
+
+export function buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines = [], lastPosts = [], snapshots=[],manualObservations=[],effectiveQuotas,now = new Date() }) {
   const previous = previousPeriod(period);
   const groups = new Map();
   for (const client of clients) {
@@ -164,12 +183,26 @@ export function buildPanel({ period, clients, accounts, media, objectives, follo
     }
   }
   const clientes = [...groups.values()]
-    .filter(group => group.instagram.length || group.cupo || group.sistema.piezas)
+    .filter(group => group.instagram.length || group.cupo || group.sistema.piezas || effectiveQuotas?.some(q=>q.clave===group.clave))
     .map(group => {
       const actual = finishTotals(group.actual), anterior = finishTotals(group.anterior);
-      const cupoTotal = group.cupo ? group.cupo.reels + group.cupo.carruseles : null;
-      return { ...group, actual, anterior,
-        cumplimiento: cupoTotal ? Math.round(((actual.reels + actual.carruseles) / cupoTotal) * 100) : null,
+      const inputs=group.cuentas.map(c=>{
+        const account=accounts.find(a=>a.cliente_id===c.id);
+        return {...c,instagram_account_id:account?.ig_user_id,instagram_account_active:account?.activa,
+          instagram_feed_snapshot:snapshots.find(s=>s.clientId===c.id&&s.igUserId===account?.ig_user_id&&s.period===period)};
+      });
+      let format_counts=instagramFeedGroupCounts(inputs,period,{now});
+      // Explicit owner attribution (e.g. Estudiantil) is not replaced by the
+      // total content on a profile. Never guess overlap in a shared feed.
+      const manual=group.cuentas.length===1?manualObservations.find(s=>s.clientId===group.cuentas[0].id&&s.period===period)?.agencyAttribution:null;
+      if(group.cuentas.length>1&&manualObservations.some(s=>s.period===period&&s.agencyAttribution&&group.cuentas.some(c=>c.id===s.clientId)))format_counts={status:'unavailable',reason:'owner_group_ambiguous',reels:null,carruseles:null,checkedAt:null};
+      if(manual&&Date.parse(manual.confirmedAt)<=+now)format_counts={status:'owner_record',source:'owner_confirmation',reels:manual.reels,carruseles:manual.carruseles,checkedAt:manual.confirmedAt};
+      const effective=effectiveQuotas?.find(q=>q.clave===group.clave);
+      const cupo=effectiveQuotas===undefined?group.cupo:effective?{reels:effective.reels,carruseles:effective.carruseles}:null;
+      const fulfillment=formatFulfillment(format_counts,cupo);
+      return { ...group,cupo,actual, anterior,format_counts,fulfillment,
+        objetivo_desactualizado:Boolean(group.cupo&&cupo&&(group.cupo.reels!==cupo.reels||group.cupo.carruseles!==cupo.carruseles)),
+        cumplimiento: fulfillment.porcentaje,
         crecimiento_seguidores: group.seguidores !== null && group.seguidores_inicio !== null ? group.seguidores - group.seguidores_inicio : null };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
@@ -186,6 +219,10 @@ export function buildPanel({ period, clients, accounts, media, objectives, follo
     cuentas_sin_cliente: accounts.filter(a => a.activa && !a.cliente_id).length,
     ultima_sincronizacion: accounts.reduce((last, a) => (a.sincronizada_at && (!last || a.sincronizada_at > last) ? a.sincronizada_at : last), null),
   };
+  const currentCounts=clientes.filter(c=>feedCountsAreTrusted(c.format_counts.status));
+  panel.format_totals={reels:currentCounts.reduce((n,c)=>n+(c.format_counts.reels??0),0),
+    carruseles:currentCounts.reduce((n,c)=>n+(c.format_counts.carruseles??0),0),
+    current:currentCounts.length,total:clientes.length};
   panel.alertas = computeAlerts(panel, { now });
   return panel;
 }
@@ -249,7 +286,22 @@ export async function readInstagramPanel(pool, auth, query) {
     const baselines = (await db.query(BASELINE_SQL, [`${period}-01`])).rows;
     const lastPosts = (await db.query(`SELECT ig_user_id, max(publicado_at) AS ultima FROM instagram_media
       WHERE tipo IN ('reel','carrusel') GROUP BY ig_user_id`)).rows;
-    return buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts });
+    const snapshots=(await db.query(`SELECT a.ig_user_id,a.cliente_id,s.detalles
+      FROM instagram_cuentas a LEFT JOIN LATERAL (
+        SELECT ia.detalles FROM integracion_auditoria ia
+        WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
+          AND ia.accion='feed_snapshot_v1' AND ia.resultado='ok'
+          AND ia.detalles->>'igUserId'=a.ig_user_id AND ia.detalles->>'clientId'=a.cliente_id::text
+          AND ia.detalles->>'period'=$1 ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+      ) s ON TRUE WHERE a.cliente_id IS NOT NULL`,[period])).rows
+      .map(r=>validateFeedCountSnapshot(r.detalles,{igUserId:r.ig_user_id,clientId:r.cliente_id,period})).filter(Boolean);
+    const manualObservations=(await db.query(`SELECT DISTINCT ON (ia.detalles->>'clientId') ia.detalles
+      FROM integracion_auditoria ia WHERE ia.integracion='instagram_manual_review' AND ia.canal='web'
+        AND ia.accion='monthly_publications_observed' AND ia.resultado='ok' AND ia.detalles->>'period'=$1
+      ORDER BY ia.detalles->>'clientId',ia.created_at DESC,ia.id DESC`,[period])).rows
+      .map(r=>validateInstagramMonthlyObservation(r.detalles,{period})).filter(Boolean);
+    const effectiveQuotas=await loadGoalClients(db,period);
+    return buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts,snapshots,manualObservations,effectiveQuotas });
   });
 }
 

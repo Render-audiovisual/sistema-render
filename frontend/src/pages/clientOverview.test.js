@@ -8,6 +8,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as clientStats from '../clientesStats.js';
 import { instagramMonthlyGroupObservation } from '../../../shared/instagram-monthly-observation.mjs';
+import { instagramFeedGroupCounts } from '../../../shared/instagram-feed-counts.mjs';
 
 const monthlySource = readFileSync(new URL('./Clientes.jsx', import.meta.url), 'utf8');
 const monthlyTree = ts.createSourceFile('Clientes.jsx', monthlySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -16,7 +17,7 @@ const monthlyDeclarations = monthlyTree.statements.filter(node => ts.isFunctionD
 assert.equal(monthlyDeclarations.length, 3);
 const monthlyCode = ts.transpileModule(monthlyDeclarations.map(node => node.getText(monthlyTree).replace(/^export\s+/, '')).join('\n'),
   { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText;
-const monthly = Function('React', 'instagramMonthlyGroupObservation', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, ...Object.values(clientStats));
+const monthly = Function('React', 'instagramMonthlyGroupObservation', 'instagramFeedGroupCounts', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, instagramFeedGroupCounts, ...Object.values(clientStats));
 const monthClient = { id: 1, nombre: 'Cliente QA', activo: true, cuota_reels: 4, cuota_carruseles: 2 };
 const monthPiece = (id, extra = {}) => ({ id, cliente_id: 1, tipo: 'reel', estado: 'publicada', fecha_programada: '2026-10-05', ...extra });
 test('client cards offer named edit actions only when authorized by the parent and display stored logos',()=>{
@@ -57,6 +58,8 @@ test('owner attribution displays Render 3/4 reels and 1/2 carousels, keeping pro
  const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[{...monthClient,instagram_monthly_observation:snapshot}],publicaciones:[],period:'2026-10'}));
  assert.doesNotMatch(html,/Hecho por Render|confirmado por dirección|Faltan|Total del perfil|verificadas/);
  assert.match(html,/3 \/ 4/);assert.match(html,/1 \/ 2/);
+ const recordedAt=new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Cordoba'}).format(new Date(snapshot.agencyAttribution.confirmedAt));
+ assert.ok(html.includes(`Registrado por dirección · ${recordedAt}`));assert.doesNotMatch(html,/Confirmado por dirección|Cierre comprobado/);
 });
 function confirmedMonthPiece(id, extra = {}) {
   return monthPiece(id, { 'fecha_publicación_real': '2026-11-01T12:00:00Z', publicacion_evidencia: {
@@ -87,7 +90,137 @@ test('shared feed quota and historical progress appear once, with no task-derive
   assert.equal(rows.length, 1); assert.deepEqual(rows[0].clientIds, [1, 2]);
   assert.deepEqual(rows[0].reels, { count: 0, historicalCount: 2, quota: 8 });
   const [empty] = monthly.clientMonthlyProgressRows(clients, [], '2026-10');
-  assert.equal(empty.noActivity, true); assert.equal(empty.reels.count + empty.reels.historicalCount, 0);
+  assert.equal(empty.noActivity, true); assert.equal(empty.reels.count, null); assert.equal(empty.reels.historicalCount, 0);
+});
+
+const feedNow = new Date('2026-10-29T16:00:00.000Z');
+const feedPost = (id,kind='reel') => ({id,kind,publishedAt:'2026-10-05T15:00:00.000Z'});
+function feedClient(id=1,posts=[],extra={}) {
+  return {...monthClient,id,instagram_account_id:String(100+id),instagram_account_active:true,
+    instagram_feed_snapshot:{version:1,source:'meta_graph_feed',clientId:id,igUserId:String(100+id),username:`qa_${id}`,period:'2026-10',
+      windowStart:'2026-09-01T03:00:00.000Z',checkedAt:'2026-10-29T15:00:00.000Z',posts},...extra};
+}
+test('Meta complete feed counts real formats without adding manual or historical publications',()=>{
+  const c=feedClient(1,[feedPost('1'),feedPost('2','carrusel'),feedPost('3','imagen')]);
+  const before=JSON.stringify(c);
+  const [row]=monthly.clientMonthlyProgressRows([c],[monthPiece(7),confirmedMonthPiece(8)],'2026-10',{now:feedNow});
+  assert.equal(row.source,'meta');assert.equal(row.feed.status,'current');
+  assert.deepEqual(row.reels,{count:1,historicalCount:0,quota:4});assert.deepEqual(row.carruseles,{count:1,historicalCount:0,quota:2});
+  assert.equal(JSON.stringify(c),before);
+});
+test('unknown feed is not verified zero; a complete empty feed is exactly zero',()=>{
+  const props={publicaciones:[],period:'2026-10',now:feedNow};
+  const unknown=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{...props,clients:[monthClient]}));
+  assert.match(unknown,/Sin conexión/);assert.match(unknown,/— \/ 4/);assert.doesNotMatch(unknown,/0 \/ 4|role="progressbar"/);
+  const zero=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{...props,clients:[feedClient()]}));
+  assert.match(zero,/Instagram/);assert.match(zero,/0 \/ 4/);assert.match(zero,/0 \/ 2/);assert.equal((zero.match(/role="progressbar"/g)||[]).length,2);
+});
+test('unknown, inactive, other-account and other-month feeds fall back only to labelled internal records',()=>{
+  for(const mutate of [c=>delete c.instagram_feed_snapshot,c=>c.instagram_account_active=false,c=>c.instagram_feed_snapshot.igUserId='999',c=>c.instagram_feed_snapshot.period='2026-09']){
+    const c=feedClient();mutate(c);
+    const [row]=monthly.clientMonthlyProgressRows([c],[monthPiece(1)],'2026-10',{now:feedNow});
+    assert.equal(row.source,'internal');assert.equal(row.feed.status,'unavailable');assert.equal(row.reels.count+row.reels.historicalCount,1);
+    const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[c],publicaciones:[monthPiece(1)],period:'2026-10',now:feedNow}));
+    assert.match(html,/Registro interno/);assert.doesNotMatch(html,/confirmadas|verificadas|Instagram ·/);
+  }
+});
+test('stale complete feed preserves observed counts and displays last check date, not manual additions',()=>{
+  const c=feedClient(1,[feedPost('1')]),now=new Date('2026-10-30T15:00:00.000Z');
+  const [row]=monthly.clientMonthlyProgressRows([c],[monthPiece(7)],'2026-10',{now});
+  assert.equal(row.feed.status,'stale');assert.equal(row.reels.count,1);assert.equal(row.reels.historicalCount,0);
+  const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[c],publicaciones:[],period:'2026-10',now}));
+  assert.match(html,/Última comprobación/);assert.match(html,/29\/10\/26/);assert.match(html,/1 \/ 4/);
+});
+test('closed month covered at its end stays historical after three hours and shows checked closure date',()=>{
+  const c=feedClient(1,[feedPost('1'),feedPost('2','carrusel')]);
+  c.instagram_feed_snapshot.checkedAt='2026-11-01T03:00:00.000Z';
+  for(const now of [new Date('2026-11-01T03:00:00.000Z'),new Date('2026-11-05T15:00:00.000Z')]){
+    const [row]=monthly.clientMonthlyProgressRows([c],[monthPiece(7)],'2026-10',{now});
+    assert.equal(row.source,'meta');assert.equal(row.feed.status,'historical');assert.equal(row.reels.count,1);assert.equal(row.carruseles.count,1);assert.equal(row.reels.historicalCount,0);
+    const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[c],publicaciones:[],period:'2026-10',now}));
+    assert.match(html,/Cierre comprobado · 1\/11\/26/);assert.doesNotMatch(html,/Última comprobación|>Instagram</);
+  }
+});
+test('closed month with only pre-end feed reading is incomplete, never a verified closed zero',()=>{
+  const c=feedClient(),now=new Date('2026-11-01T03:00:00.000Z');
+  c.instagram_feed_snapshot.checkedAt='2026-11-01T02:59:59.999Z';
+  const [row]=monthly.clientMonthlyProgressRows([c],[],'2026-10',{now});
+  assert.equal(row.feed.status,'unavailable');assert.equal(row.feed.reason,'month_incomplete');assert.equal(row.reels.count,null);assert.equal(row.carruseles.count,null);
+  const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients:[c],publicaciones:[],period:'2026-10',now}));
+  assert.match(html,/Sin conexión/);assert.doesNotMatch(html,/Cierre comprobado|0 \/ 4|role="progressbar"/);
+});
+test('shared feed requires every account and deduplicates shared post IDs with one pair of quotas',()=>{
+  const group={grupo_feed_id:9,grupo_feed_nombre:'Shared',cuota_feed_reels:8,cuota_feed_carruseles:2};
+  const clients=[feedClient(1,[feedPost('1'),feedPost('2','carrusel')],group),feedClient(2,[feedPost('1'),feedPost('3')],group)];
+  const [row]=monthly.clientMonthlyProgressRows(clients,[monthPiece(9)],'2026-10',{now:feedNow});
+  assert.equal(row.source,'meta');assert.equal(row.reels.count,2);assert.equal(row.carruseles.count,1);assert.equal(row.reels.quota,8);
+  assert.equal(monthly.clientMonthlyProgressRows(clients,[],'2026-10',{now:feedNow}).length,1);
+  delete clients[1].instagram_feed_snapshot;
+  const [partial]=monthly.clientMonthlyProgressRows(clients,[],'2026-10',{now:feedNow});
+  assert.equal(partial.feed.status,'unavailable');assert.equal(partial.reels.count,null);
+});
+test('owner agency attribution keeps priority over a larger current Meta profile inventory',()=>{
+  const posts=Array.from({length:11},(_,i)=>({url:`https://www.instagram.com/reel/Owner${i}/`,kind:'reel',publishedAt:'2026-10-05T15:00:00Z'}));
+  posts.push({url:'https://www.instagram.com/p/OwnerCarousel/',kind:'carrusel',publishedAt:'2026-10-05T15:00:00Z'});
+  const c=feedClient(1,Array.from({length:12},(_,i)=>feedPost(String(i+1))));
+  c.instagram_monthly_observation={...observation(1,posts),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-29T15:30:00Z',reels:3,carruseles:1,carouselUrls:['https://www.instagram.com/p/OwnerCarousel/']}};
+  const [row]=monthly.clientMonthlyProgressRows([c],[],'2026-10',{now:feedNow});
+  assert.equal(row.feed.status,'current');assert.equal(row.source,'owner');assert.equal(row.reels.count,3);assert.equal(row.carruseles.count,1);
+});
+test('shared member owner attribution blocks profile totals and internal fallback without changing stored data',()=>{
+  const group={grupo_feed_id:9,grupo_feed_nombre:'Shared',cuota_feed_reels:8,cuota_feed_carruseles:2};
+  const ownerPost={url:'https://www.instagram.com/reel/SharedOwner/',kind:'reel',publishedAt:'2026-10-05T15:00:00Z'};
+  for(const status of ['current','stale','historical','unavailable'])for(const otherObserved of [false,true]){
+    const clients=[feedClient(1,[feedPost('1'),feedPost('2','carrusel')],group),feedClient(2,[feedPost('3')],group)];
+    clients[0].instagram_monthly_observation={...observation(1,[ownerPost]),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-29T15:30:00Z',reels:1,carruseles:0,carouselUrls:[]}};
+    if(otherObserved)clients[1].instagram_monthly_observation=observation(2,[]);
+    const now=status==='historical'?new Date('2026-11-05T15:00:00.000Z'):status==='stale'?new Date('2026-10-30T15:00:00.000Z'):feedNow;
+    if(status==='historical')for(const c of clients)c.instagram_feed_snapshot.checkedAt='2026-11-01T03:00:00.000Z';
+    if(status==='unavailable')delete clients[1].instagram_feed_snapshot;
+    const publicaciones=[monthPiece(7),confirmedMonthPiece(8),monthPiece(9,{cliente_id:2,tipo:'carrusel'})];
+    const before=JSON.stringify({clients,publicaciones});
+    assert.equal(instagramMonthlyGroupObservation(clients,'2026-10'),null);
+    const rows=monthly.clientMonthlyProgressRows(clients,publicaciones,'2026-10',{now}),row=rows[0];
+    assert.equal(rows.length,1);assert.equal(row.feed.status,status);assert.equal(row.source,'shared_review');
+    assert.equal(row.reels.count,null);assert.equal(row.carruseles.count,null);assert.equal(row.reels.historicalCount,0);assert.equal(row.carruseles.historicalCount,0);assert.equal(row.noActivity,null);
+    const html=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyProgressList,{clients,publicaciones,period:'2026-10',now}));
+    assert.match(html,/Revisar cuentas compartidas/);assert.match(html,/— \/ 8/);assert.match(html,/— \/ 2/);assert.doesNotMatch(html,/role="progressbar"|Registro interno|Cierre comprobado|Confirmado por dirección|Registrado por dirección/);
+    assert.equal(JSON.stringify({clients,publicaciones}),before);
+  }
+});
+test('invalid member attribution is not treated as validated owner evidence',()=>{
+  const group={grupo_feed_id:9,cuota_feed_reels:8,cuota_feed_carruseles:2};
+  const clients=[feedClient(1,[feedPost('1')],group),feedClient(2,[feedPost('2')],group)];
+  clients[0].instagram_monthly_observation={...observation(999,[]),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-29T15:30:00Z',reels:0,carruseles:0,carouselUrls:[]}};
+  const [row]=monthly.clientMonthlyProgressRows(clients,[],'2026-10',{now:feedNow});
+  assert.equal(row.source,'meta');assert.equal(row.reels.count,2);
+});
+test('future owner confirmation cannot gain priority or reappear as fallback; exact now remains eligible',()=>{
+  const posts=Array.from({length:3},(_,i)=>({url:`https://www.instagram.com/reel/FutureOwner${i}/`,kind:'reel',publishedAt:'2026-10-05T15:00:00Z'}));
+  const c=feedClient(1,Array.from({length:5},(_,i)=>feedPost(String(i+1))));
+  c.instagram_monthly_observation={...observation(1,posts),agencyAttribution:{source:'owner_confirmation',confirmedAt:'2026-10-29T16:00:00.001Z',reels:3,carruseles:0,carouselUrls:[]}};
+  const [future]=monthly.clientMonthlyProgressRows([c],[],'2026-10',{now:feedNow});
+  assert.equal(future.source,'meta');assert.equal(future.reels.count,5);assert.equal(future.observation,null);
+  const withoutFeed={...c,instagram_feed_snapshot:undefined};
+  const [fallback]=monthly.clientMonthlyProgressRows([withoutFeed],[monthPiece(1)],'2026-10',{now:feedNow});
+  assert.equal(fallback.source,'internal');assert.equal(fallback.observation,null);assert.equal(fallback.reels.count+fallback.reels.historicalCount,1);
+  const [unknown]=monthly.clientMonthlyProgressRows([withoutFeed],[],'2026-10',{now:feedNow});
+  assert.equal(unknown.source,'unavailable');assert.equal(unknown.reels.count,null);
+  c.instagram_monthly_observation.agencyAttribution.confirmedAt=feedNow.toISOString();
+  const [present]=monthly.clientMonthlyProgressRows([c],[],'2026-10',{now:feedNow});
+  assert.equal(present.source,'owner');assert.equal(present.reels.count,3);
+});
+test('format bars distinguish null quota from explicit zero and retain extras without unlocking zero quota',()=>{
+  const noConfig=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,{label:'Reels',count:3,quota:null}));
+  assert.match(noConfig,/Sin configuración/);assert.match(noConfig,/3/);assert.doesNotMatch(noConfig,/no incluido|🔒|role="progressbar"/);
+  const extras=renderToStaticMarkup(React.createElement(monthly.ClientMonthlyFormatBar,{label:'Carruseles',count:2,quota:0}));
+  assert.match(extras,/no incluido/);assert.match(extras,/2 fuera del acuerdo/);assert.match(extras,/aria-disabled="true"/);assert.doesNotMatch(extras,/role="progressbar"/);
+  const [row]=monthly.clientMonthlyProgressRows([{...monthClient,cuota_reels:null,cuota_carruseles:0}],[],'2026-10',{now:feedNow});
+  assert.equal(row.reels.quota,null);assert.equal(row.carruseles.quota,0);
+  for(const invalid of [undefined,'',' ',false,-1,1.5]){
+    const [unconfigured]=monthly.clientMonthlyProgressRows([{...monthClient,cuota_reels:invalid}],[],'2026-10',{now:feedNow});
+    assert.equal(unconfigured.reels.quota,null);
+  }
 });
 
 test('client cards show only two registered-content bars without claiming confirmed publication', () => {

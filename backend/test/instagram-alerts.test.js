@@ -40,5 +40,5 @@ test('rules respect minimums: early month, small samples, no account', () => {
 test('past months report unmet quota without pace or recency alerts', () => {
   const alerts = computeAlerts({ periodo: '2026-09', clientes: [client({ actual: totals(2, 2, 4000), ultima_publicacion: null })] }, { now });
   assert.deepEqual(kinds(alerts), ['cupo_atrasado']);
-  assert.match(alerts[0].detalle, /Cerró con 4 de 8/);
+  assert.match(alerts[0].detalle, /Reels: 2 de 4; carruseles: 2 de 4/);
 });
