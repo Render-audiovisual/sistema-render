@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSesion } from '../utils.jsx';
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
+import { hasWeeklyReportCoverage } from '../shared/instagram-report-coverage.js';
 import './InstagramPanel.css';
 
 // Panel de rendimiento de Instagram. Solo Líder; el servidor vuelve a verificarlo.
@@ -162,6 +163,7 @@ function ReportsView({ sesion }) {
 }
 
 function WeeklyReport({ report }) {
+  if (!hasWeeklyReportCoverage(report)) return <div className="salary-state" role="status">Este reporte se generó sin datos de cuentas suficientes. No representa los resultados de la semana. Consultá las publicaciones sincronizadas en Clientes.</div>;
   const h = report.hechos;
   return <div className="ig-report-week">
     {report.estado === 'ia' && <article className="ig-conclusions"><h3>Conclusiones</h3><div>{report.conclusiones}</div></article>}
