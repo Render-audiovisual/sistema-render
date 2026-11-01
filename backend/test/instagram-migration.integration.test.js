@@ -20,7 +20,7 @@ const migrationNames = INSTAGRAM_MIGRATIONS.map(m => m.name);
 test('Instagram-only atomic migration on a restored archived copy, including a postbackup task', {
   skip: !enabled, timeout: 240000,
 }, async t => {
-  // This is the explicitly identified old local archive, not a configured URL,
+  // This is an explicitly identified local archive, not a configured URL,
   // live database or replacement of production. All private SQL errors are hidden.
   const backup = process.env.RENDER2_INSTAGRAM_REHEARSAL_ARCHIVE;
   assert.match(backup || '', /^\/private\/tmp\/render-production-snapshot-[A-Za-z0-9-]+\/[A-Za-z0-9-]+\/database-public\.dump$/);
@@ -51,7 +51,8 @@ test('Instagram-only atomic migration on a restored archived copy, including a p
   const status = await readMigrationStatus(pool);
   assert.equal(status.unknownApplied.length, 0);
   const historical = status.pending.filter(m => !migrationNames.includes(m.name));
-  assert.equal(historical.length, 41, 'Archive must be the known pre-Render2 baseline');
+  assert.ok([0, 41].includes(historical.length), 'Archive must be the deployed baseline or the known pre-Render2 baseline');
+  t.diagnostic(`Archived baseline: ${originalTasks} tasks; ${historical.length} historical migrations pending in this disposable copy.`);
   const db = await pool.connect();
   try {
     await db.query('BEGIN'); const inventory = await readApplicationObjectInventory(db);

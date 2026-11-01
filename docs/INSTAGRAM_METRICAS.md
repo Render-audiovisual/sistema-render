@@ -48,6 +48,17 @@ META_BUSINESS_ID=1034453457860259 # portfolio de Render, fallback de descubrimie
 RENDER_AUTOMATION_JOBS=editorial,wilson,supervisor,instagram
 ```
 
+El descubrimiento usa primero `me/accounts`. Si esa fuente no está disponible
+por permisos o devuelve un inventario vacío, consulta **ambas** listas del
+portfolio: `owned_pages` y `client_pages`, con paginación y deduplicación. No
+devuelve un inventario parcial si falla alguna de esas listas. Los errores de
+autenticación, límite o conexión no se interpretan como cuentas eliminadas.
+
+No agregar `instagram` ni `instagram_reporte` a un ejecutor antiguo: primero
+publicar el código compatible y verificar 094/095. Conservar los trabajos que
+ya estén configurados, sin reemplazar su lista. La IA semanal es opcional y no
+es necesaria para sincronizar cuentas o generar los hechos del reporte.
+
 ## Puertas antes de activar en producción
 
 - Las migraciones 094/095 quedan fuera del tren cerrado de release 2026-10-29.
@@ -114,8 +125,10 @@ La prueba opt-in `backend/test/instagram-migration.integration.test.js` acepta
 No acepta DATABASE_URL ni utiliza producción. Se habilita con
 `RENDER2_RUN_INSTAGRAM_ARCHIVE_REHEARSAL=true` y usa PostgreSQL 18 descartable.
 
-Restaura el respaldo sin cambiar sus bytes, prepara en esa copia la línea base
-ya publicada y ensaya **por separado** la actualización de Instagram. Comprueba
+Restaura el respaldo sin cambiar sus bytes. Acepta la línea base publicada sin
+migraciones históricas pendientes o el archivo histórico conocido que requiere
+41 migraciones de preparación; rechaza otros inventarios. Prepara esa línea base
+solo cuando corresponde y ensaya **por separado** Instagram. Comprueba
 rechazo de planes obsoletos, una tarea posterior al respaldo, rollback de ambos
 SQL ante un fallo tardío, preservación de filas y generadores de IDs, cierre de
 permisos incluso con defaults públicos permisivos, y acceso de dueño/empleado.
