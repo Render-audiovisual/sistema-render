@@ -250,11 +250,11 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/planificacion-historias", "/reportes-historias", "/perfil"];
+  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/reportes-historias", "/perfil"];
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());
-    for (const href of ["/sueldos", "/empleados", "/clientes?gestion=1"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
+    for (const href of ["/instagram", "/sueldos", "/empleados", "/clientes?gestion=1"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
     assert.equal(links.some(link => link.href === "/wilson-conversaciones" || link.href.includes("wilson=open")), false);
     assert.equal(links.some(link => ["/drive", "/moodboards"].includes(link.href)), false);
   }

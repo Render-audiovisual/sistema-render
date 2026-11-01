@@ -12,6 +12,11 @@ test('explicit isolated worker has immutable closed policy', () => {
   assert.deepEqual(policy.jobs,['editorial','wilson','supervisor']);
   assert.ok(Object.isFrozen(policy)&&Object.isFrozen(policy.jobs)&&Object.isFrozen(policy.target));
 });
+test('instagram job is opt-in and keeps canonical order', () => {
+  assert.deepEqual(resolve({...base(),RENDER_AUTOMATION_JOBS:'instagram,editorial'}).jobs,['editorial','instagram']);
+  assert.deepEqual(resolve(base()).jobs.includes('instagram'),false);
+  assert.deepEqual(resolve({...base(),RENDER_AUTOMATION_JOBS:'instagram_reporte,instagram'}).jobs,['instagram','instagram_reporte']);
+});
 for(const [key,value] of [
   ['RENDER_AUTOMATIONS_MODE',''],['RENDER_AUTOMATION_CONNECTION_MODE','transaction'],
   ['RENDER_AUTOMATION_JOBS','editorial,editorial'],['RENDER_AUTOMATION_JOBS','trash'],

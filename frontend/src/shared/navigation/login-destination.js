@@ -7,7 +7,7 @@ const paths = new Set([
   '/inicio', '/workspace/tareas', '/calendario', '/calendario-estructura',
   '/producciones', '/clientes', '/clientes/operacion', '/proyectos', '/planificacion-historias',
   '/planificacion-publicaciones', '/lista', '/feedback', '/bloc-notas',
-  '/reportes-historias', '/drive', '/moodboards', '/sueldos', '/empleados', '/perfil',
+  '/reportes-historias', '/drive', '/moodboards', '/instagram', '/sueldos', '/empleados', '/perfil',
 ]);
 const pathname = value => value.split(/[?#]/, 1)[0];
 export function normalizeLoginDestination(value) {
@@ -37,7 +37,7 @@ export function resolveLoginDestination(value, user) {
   if (!next || !Number.isSafeInteger(user?.id) || user.id <= 0 || user.activo === false
     || !canUseSharedCalendarRole(user.rol)) return '/inicio';
   const path = pathname(next);
-  if (['/sueldos', '/empleados'].includes(path) && user.rol !== 'admin') return '/inicio';
+  if (['/instagram', '/sueldos', '/empleados'].includes(path) && user.rol !== 'admin') return '/inicio';
   if (path === '/clientes' && user.rol !== 'admin'
     && new URL(next, 'https://render.local').searchParams.getAll('gestion').includes('1')) return '/clientes';
   return next;
