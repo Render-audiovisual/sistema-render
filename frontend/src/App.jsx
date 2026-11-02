@@ -20,6 +20,7 @@ import { sectionFocusKey } from './shared/navigation/section-focus.js';
 import { GoalDraftMemoryProvider } from './components/GoalDraftMemoryProvider.jsx';
 import { createRememberedViewOwner } from './shared/navigation/rememberedViewOwner.js';
 import { SectionErrorBoundary } from './components/SectionErrorBoundary.jsx';
+import { loadInstagramReportModule, warmInstagramReportModule } from './pages/instagramReportModule.js';
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
@@ -33,7 +34,7 @@ const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "
 const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
 const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
 const InstagramPanelPage = lazyNamed(() => import("./pages/InstagramPanel.jsx"), "InstagramPanelPage");
-const InstagramClientReportPage = lazyNamed(() => import("./pages/InstagramClientReport.jsx"), "InstagramClientReportPage");
+const InstagramClientReportPage = lazyNamed(loadInstagramReportModule, "InstagramClientReportPage");
 const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.jsx"), "WorkspaceReadOnlyPage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
 const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
@@ -48,6 +49,7 @@ export function App() {
   const [navigationTick, setNavigationTick] = React.useState(0);
   const navigationEpoch = React.useRef(0);
   const path = route.split(/[?#]/, 1)[0];
+  React.useEffect(() => { warmInstagramReportModule(path); }, [path]);
   const sessionSnapshot = useApplicationSession();
   const sesion = sessionSnapshot.session;
   const legacyDestination = canonicalLegacyRoute(route);

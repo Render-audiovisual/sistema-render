@@ -329,6 +329,13 @@ async function readFeedSnapshotsFromDb(db, period) {
 // A single client's report does not need the whole team's assignments, alert
 // baselines or every client's media. Bundle independent reads into one database
 // round trip, on the SAME authorized read-only snapshot (no shared data cache).
+const COVER_ROWS_SQL = `SELECT a.ig_user_id,a.cliente_id,c.detalles AS cover_details
+    FROM instagram_cuentas a LEFT JOIN LATERAL (
+      SELECT ia.detalles FROM integracion_auditoria ia
+      WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
+        AND ia.accion=$2 AND ia.resultado='ok' AND ia.detalles->>'clientId'=a.cliente_id::text
+        AND ia.detalles->>'igUserId'=a.ig_user_id ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+    ) c ON TRUE WHERE a.cliente_id=ANY($1::int[])`;
 const REPORT_INPUTS_SQL = `WITH ig_report_clients AS (
     SELECT * FROM (${CLIENTS_SQL}) c WHERE c.clave=$3
   ), ig_report_accounts AS (
@@ -341,6 +348,8 @@ const REPORT_INPUTS_SQL = `WITH ig_report_clients AS (
   SELECT
     (SELECT COALESCE(jsonb_agg(to_jsonb(c)),'[]'::jsonb) FROM ig_report_clients c) AS clients,
     (SELECT COALESCE(jsonb_agg(to_jsonb(a)),'[]'::jsonb) FROM ig_report_accounts a) AS accounts,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(cv)),'[]'::jsonb) FROM
+      (${COVER_ROWS_SQL.replace('=ANY($1::int[])',' IN (SELECT id FROM ig_report_clients)').replaceAll('$2','$5')}) cv) AS covers,
     (SELECT COALESCE(jsonb_agg(to_jsonb(m)),'[]'::jsonb) FROM ig_report_media m) AS media,
     (SELECT COALESCE(jsonb_agg(to_jsonb(f)),'[]'::jsonb) FROM ig_report_followers f
       WHERE f.ig_user_id IN (SELECT ig_user_id FROM ig_report_accounts)) AS followers,
@@ -357,7 +366,7 @@ const REPORT_INPUTS_SQL = `WITH ig_report_clients AS (
     ) r) AS manual`;
 
 async function readReportPanelFromDb(db, key, period, now = new Date()) {
-  const inputs = (await db.query(REPORT_INPUTS_SQL, [`${previousPeriod(period)}-01`, `${period}-01`, key, period])).rows[0];
+  const inputs = (await db.query(REPORT_INPUTS_SQL, [`${previousPeriod(period)}-01`, `${period}-01`, key, period, MEDIA_COVERS_ACTION])).rows[0];
   const clients = inputs.clients.filter(c => c.clave === key);
   if (!clients.length) throw fail(404, 'No hay datos de este cliente para el mes.');
   const accounts = inputs.accounts.filter(a => clients.some(c => c.id === a.cliente_id));
@@ -367,7 +376,10 @@ async function readReportPanelFromDb(db, key, period, now = new Date()) {
   const effectiveQuotas = await loadGoalClients(db, period);
   const panel = buildPanel({ period, clients, accounts, media: inputs.media, objectives: inputs.objectives,
     followers: inputs.followers, pieces: [], snapshots, manualObservations, effectiveQuotas, now });
-  return { panel, clients, accounts, snapshots, now };
+  return { panel, clients, accounts, snapshots, now, coverRows:inputs.covers,
+    reportMedia:inputs.media.filter(row=>row.periodo===period).map(row=>({...row,
+      publicado_at:new Date(row.publicado_at),medido_at:row.medido_at?new Date(row.medido_at):null}))
+      .sort((a,b)=>+b.publicado_at-+a.publicado_at) };
 }
 
 function clientKey(value) {
@@ -385,7 +397,7 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
   const clients = (evidence?.clients ?? (await db.query(CLIENTS_SQL)).rows).filter(c => c.clave === key);
   if (!clients.length) throw fail(404, 'Cliente no encontrado.');
   const ids = clients.map(c => c.id);
-  const observed = (await db.query(`${MEDIA_SQL} AND m.cliente_id = ANY($3::int[]) ORDER BY m.publicado_at DESC`,
+  const observed = evidence?.reportMedia ?? (await db.query(`${MEDIA_SQL} AND m.cliente_id = ANY($3::int[]) ORDER BY m.publicado_at DESC`,
     [`${period}-01`, `${period}-01`, ids])).rows;
   const accounts = evidence?.accounts ?? (await db.query('SELECT ig_user_id, username, cliente_id, activa, sincronizada_at FROM instagram_cuentas')).rows;
   const snapshots = evidence?.snapshots ?? await readFeedSnapshotsFromDb(db, period);
@@ -396,13 +408,7 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
       instagram_feed_snapshot: snapshots.find(s => s.clientId === c.id && s.igUserId === account?.ig_user_id && s.period === period) };
   });
   const counts = instagramFeedGroupCounts(inputs, period, { now });
-  const coverRows = (await db.query(`SELECT a.ig_user_id,a.cliente_id,c.detalles AS cover_details
-    FROM instagram_cuentas a LEFT JOIN LATERAL (
-      SELECT ia.detalles FROM integracion_auditoria ia
-      WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
-        AND ia.accion=$2 AND ia.resultado='ok' AND ia.detalles->>'clientId'=a.cliente_id::text
-        AND ia.detalles->>'igUserId'=a.ig_user_id ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
-    ) c ON TRUE WHERE a.cliente_id=ANY($1::int[])`, [ids, MEDIA_COVERS_ACTION])).rows;
+  const coverRows = evidence?.coverRows ?? (await db.query(COVER_ROWS_SQL, [ids, MEDIA_COVERS_ACTION])).rows;
   const covers = new Map();
   for (const row of coverRows) {
     if (!ids.includes(row.cliente_id) || !accounts.some(a => a.ig_user_id === row.ig_user_id && a.cliente_id === row.cliente_id)) continue;

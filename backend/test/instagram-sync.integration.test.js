@@ -407,7 +407,7 @@ test('client report reads one authorized RR with closed counts, current quotas a
     assert.equal(connects, 1);
     assert.equal(calls.filter(sql => sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY').length, 1);
     assert.equal(calls.filter(sql => sql === 'COMMIT').length, 1);
-    assert.equal(calls.length,7,'one authorized snapshot with only four data reads');
+    assert.equal(calls.length,5,'one authorized snapshot with only two data reads');
     assert.deepEqual(report.format_counts, { status: 'historical', reels: 1, carruseles: 0, checkedAt });
     assert.deepEqual(report.cupo, { reels: 2, carruseles: 1 });
     assert.equal(report.fulfillment.reels.pendientes, 1);

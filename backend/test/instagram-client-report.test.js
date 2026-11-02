@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { MEDIA_COVERS_ACTION } from '../src/instagram-graph.js';
 import { readInstagramClientReport, readInstagramClientPieces, readInstagramPanel, buildPanel,
   readInstagramAccounts,readInstagramReports,writeInstagramAccountLink,writeInstagramMediaLink } from '../src/instagram-panel.js';
 
@@ -27,7 +28,7 @@ function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot =
     assert.equal(active, true, 'all reads stay on the authorized transaction');
     if (sql === 'COMMIT' || sql === 'ROLLBACK') { active = false; return { rows: [] }; }
     if (sql.includes('FROM usuarios WHERE id=')) return { rows: [{ ...auth, rol: role, activo: activeUser, session_version:sessionVersion }] };
-    if (sql.startsWith('WITH ig_report_clients')) return { rows: [{ clients,accounts,media:rows,
+    if (sql.startsWith('WITH ig_report_clients')) return { rows: [{ clients,accounts,media:rows,covers:coverRows,
       followers:[],snapshots:snapshot?[{ig_user_id:'111',cliente_id:1,detalles:snapshot}]:[],
       objectives:[{clave:'cliente-1',reels:9,carruseles:9}],manual:manual.map(detalles=>({detalles})) }] };
     if (sql.startsWith('SELECT c.id, c.nombre')) return { rows: clients };
@@ -77,9 +78,9 @@ test('client report shares one authorized RR, isolates A from B and strips all p
   assertClosed(report);
   assert.doesNotMatch(JSON.stringify(report), /account_b|Client B|Public21/);
   assert.equal(h.calls.some(c => /^(INSERT|UPDATE|DELETE|ALTER|CREATE)\b/.test(c.sql)), false);
-  assert.equal(h.calls.length, 7, 'authorization, four data reads and transaction boundaries only');
+  assert.equal(h.calls.length, 5, 'authorization, two data reads and transaction boundaries only');
   const batch=h.calls.find(c=>c.sql.startsWith('WITH ig_report_clients'));
-  assert.deepEqual(batch.params, ['2020-09-01','2020-10-01','cliente-1','2020-10']);
+  assert.deepEqual(batch.params, ['2020-09-01','2020-10-01','cliente-1','2020-10',MEDIA_COVERS_ACTION]);
   assert.match(batch.sql,/c\.clave=\$3/);
   assert.match(batch.sql,/m\.cliente_id IN \(SELECT id FROM ig_report_clients\)/);
   assert.match(batch.sql,/s\.fecha < \(\$2::date \+ interval '1 month'\)/);
