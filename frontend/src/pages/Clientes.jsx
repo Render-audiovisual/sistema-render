@@ -15,6 +15,7 @@ import {
   getTotalesCartera,
 } from "../clientesStats.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
+import {groupMonthlyAdjustment} from '../../../shared/client-monthly-adjustment.mjs';
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
@@ -49,7 +50,9 @@ export function clientMonthlyProgressRows(clients, publicaciones, period, {now=n
       instagramMonthlyGroupObservation([client], period)?.agencyConfirmed === true);
     // An owner's explicit agency attribution is not a profile-total observation.
     // A member's aggregate attribution cannot establish a union for shared accounts.
-    const selected = sharedOwnerReview ? null : observation?.agencyConfirmed === true ? observation : feed.status !== 'unavailable' ? feed : observation;
+    const storedCorrection=groupMonthlyAdjustment(allMembers,period);
+    const correction=storedCorrection&&Date.parse(storedCorrection.checkedAt)<=+now?storedCorrection:null;
+    const selected = correction?.mode==='manual'?{...correction,totalPosts:correction.reels+correction.carruseles}:sharedOwnerReview ? null : observation?.agencyConfirmed === true ? observation : feed.status !== 'unavailable' ? feed : observation;
     const quota = format => {
       const quantities = members.map(client => {
         const value = client[grouped ? `cuota_feed_${format}` : `cuota_${format}`];
@@ -60,14 +63,14 @@ export function clientMonthlyProgressRows(clients, publicaciones, period, {now=n
     const publications = getPublicacionesDelMismoFeed(first, unique, Array.isArray(publicaciones) ? publicaciones : [])
       .filter(piece => esDelMes(piece.fecha_programada, period) && ['reel','video','carrusel'].includes(piece.tipo));
     const internal = selected || first.reelsPublicados + first.carruselesPublicados + first.reelsSinConfirmacion + first.carruselesSinConfirmacion > 0;
-    const source = sharedOwnerReview ? 'shared_review' : observation?.agencyConfirmed === true ? 'owner' : feed.status !== 'unavailable' ? 'meta' : internal ? 'internal' : 'unavailable';
-    const unknown = source === 'unavailable' || sharedOwnerReview;
+    const source = correction?.mode==='manual'?'owner':sharedOwnerReview ? 'shared_review' : observation?.agencyConfirmed === true ? 'owner' : feed.status !== 'unavailable' ? 'meta' : internal ? 'internal' : 'unavailable';
+    const unknown = source === 'unavailable' || source==='shared_review';
     return {key, name:grouped && first.grupo_feed_nombre ? first.grupo_feed_nombre : members.map(item=>item.nombre).join(' / '),
       memberNames:grouped ? members.map(item=>item.nombre) : [], clientIds:members.map(item=>item.id),
       observation, feed, source, checkedAt:selected?.checkedAt || null, logo: first.logo || null,
       reels:{count:selected ? selected.reels : unknown ? null : first.reelsPublicados,historicalCount:selected || unknown ? 0 : first.reelsSinConfirmacion,quota:quota('reels')},
       carruseles:{count:selected ? selected.carruseles : unknown ? null : first.carruselesPublicados,historicalCount:selected || unknown ? 0 : first.carruselesSinConfirmacion,quota:quota('carruseles')},
-      noActivity:sharedOwnerReview ? null : selected ? (selected.totalPosts ?? selected.posts?.length)===0 : publications.length===0};
+      noActivity:source==='shared_review' ? null : selected ? (selected.totalPosts ?? selected.posts?.length)===0 : publications.length===0};
   });
   return rows.sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }

@@ -73,6 +73,7 @@ import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
 import { createClientOperationRouter } from "./client-operation.js";
 import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
+import {createClientMonthlyControlRouter,clientMonthlyLegacyOwnerGuard} from './client-monthly-control.js';
 import { createTeamPaymentsRouter } from './team-payments.js';
 import { createInstagramPanelRouter } from './instagram-panel.js';
 import { projectDomainConflict } from "./project-errors.js";
@@ -292,8 +293,10 @@ router.post('/sesion/perfil-dueno', async (req, res, next) => {
 });
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
+router.use('/clientes',clientMonthlyLegacyOwnerGuard(browserSessions?.ownerProfiles));
 router.use('/clientes', createClientOperationRouter({ express, pool }));
 router.use('/clientes', createMonthlyAgreementRouter({ express, pool }));
+router.use('/clientes', createClientMonthlyControlRouter({express,pool,ownerProfiles:browserSessions?.ownerProfiles}));
 router.use('/finanzas/pagos', createTeamPaymentsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
 router.use('/instagram', createInstagramPanelRouter({ express, pool }));

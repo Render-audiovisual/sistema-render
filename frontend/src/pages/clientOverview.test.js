@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as clientStats from '../clientesStats.js';
 import { instagramMonthlyGroupObservation } from '../../../shared/instagram-monthly-observation.mjs';
 import { instagramFeedGroupCounts } from '../../../shared/instagram-feed-counts.mjs';
+import { groupMonthlyAdjustment } from '../../../shared/client-monthly-adjustment.mjs';
 
 const monthlySource = readFileSync(new URL('./Clientes.jsx', import.meta.url), 'utf8');
 const monthlyTree = ts.createSourceFile('Clientes.jsx', monthlySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -17,8 +18,18 @@ const monthlyDeclarations = monthlyTree.statements.filter(node => ts.isFunctionD
 assert.equal(monthlyDeclarations.length, 3);
 const monthlyCode = ts.transpileModule(monthlyDeclarations.map(node => node.getText(monthlyTree).replace(/^export\s+/, '')).join('\n'),
   { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText;
-const monthly = Function('React', 'instagramMonthlyGroupObservation', 'instagramFeedGroupCounts', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, instagramFeedGroupCounts, ...Object.values(clientStats));
+const monthly = Function('React', 'instagramMonthlyGroupObservation', 'instagramFeedGroupCounts', 'groupMonthlyAdjustment', ...Object.keys(clientStats), `${monthlyCode};return {${monthlyFunctions.join(',')}};`)(React, instagramMonthlyGroupObservation, instagramFeedGroupCounts, groupMonthlyAdjustment, ...Object.values(clientStats));
 const monthClient = { id: 1, nombre: 'Cliente QA', activo: true, cuota_reels: 4, cuota_carruseles: 2 };
+test('owner corrections override monthly totals, preserve zero and reset without changing publications',()=>{
+ const correction={version:1,key:'cliente-1',period:'2026-10',memberIds:[1],revision:'f0fffb33-439c-402e-a914-43455e7a3ccc',checkedAt:'2026-11-02T20:00:00.000Z',mode:'manual',reels:3,carruseles:0};
+ const now=new Date('2026-11-02T21:00:00.000Z');
+ const rows=monthly.clientMonthlyProgressRows([{...monthClient,instagram_monthly_adjustment:correction}],[],'2026-10',{now});
+ assert.equal(rows[0].reels.count,3);assert.equal(rows[0].carruseles.count,0);assert.equal(rows[0].source,'owner');
+ for(const value of [{...correction,mode:'automatic'},{...correction,period:'2026-09'},{...correction,checkedAt:'2026-11-03T00:00:00.000Z'}]){
+  const [row]=monthly.clientMonthlyProgressRows([{...monthClient,instagram_monthly_adjustment:value}],[],'2026-10',{now});
+  assert.equal(row.reels.count,null);assert.equal(row.source,'unavailable');
+ }
+});
 const monthPiece = (id, extra = {}) => ({ id, cliente_id: 1, tipo: 'reel', estado: 'publicada', fecha_programada: '2026-10-05', ...extra });
 test('client cards offer named edit actions only when authorized by the parent and display stored logos',()=>{
  const props={clients:[{...monthClient,logo:'data:image/png;base64,QA'}],publicaciones:[],period:'2026-10'};

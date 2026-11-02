@@ -2,6 +2,7 @@ import { clientAgreementRevisionSql } from './client-agreement.js';
 import { clientOperationalDto } from './operational-dto.js';
 import { validateInstagramMonthlyObservation } from '../../shared/instagram-monthly-observation.mjs';
 import { validateFeedCountSnapshot } from '../../shared/instagram-feed-counts.mjs';
+import {monthlyAdjustment} from '../../shared/client-monthly-adjustment.mjs';
 import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -22,6 +23,7 @@ export const CLIENT_CATALOG_SQL = `
     instagram_observation.detalles AS instagram_monthly_observation,
     instagram_account.ig_user_id AS instagram_account_id,instagram_account.activa AS instagram_account_active,
     instagram_feed.detalles AS instagram_feed_snapshot,
+    count_adjustment.detalles AS instagram_monthly_adjustment,
     branding.detalles->>'logo' AS logo
   FROM clientes c
   LEFT JOIN LATERAL (
@@ -59,6 +61,12 @@ export const CLIENT_CATALOG_SQL = `
       AND ia.detalles->>'period'=to_char($1::date,'YYYY-MM')
     ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
   ) instagram_observation ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT ia.detalles FROM integracion_auditoria ia WHERE ia.integracion='client_monthly_control'
+      AND ia.canal='web' AND ia.accion='monthly_count_adjustment_v1' AND ia.resultado='ok'
+      AND ia.detalles->>'key'=(CASE WHEN c.grupo_feed_id IS NULL THEN 'cliente-'||c.id ELSE 'grupo-'||c.grupo_feed_id END)
+      AND ia.detalles->>'period'=to_char($1::date,'YYYY-MM') ORDER BY ia.id DESC LIMIT 1
+  ) count_adjustment ON TRUE
   ORDER BY c.id`;
 
 // Authorization and commercial rows share the first repeatable-read snapshot.
@@ -93,6 +101,9 @@ export async function loadClientCatalogSnapshot(pool, auth, periodo) {
       delete dto.instagram_monthly_observation;
       const snapshot = validateInstagramMonthlyObservation(row.instagram_monthly_observation, { clientId: row.id, period: periodo.slice(0, 7) });
       if (snapshot) dto.instagram_monthly_observation = snapshot;
+      delete dto.instagram_monthly_adjustment;
+      const adjustment=monthlyAdjustment(row.instagram_monthly_adjustment,{key:row.grupo_feed_id?`grupo-${row.grupo_feed_id}`:`cliente-${row.id}`,period:periodo.slice(0,7)});
+      if(adjustment)dto.instagram_monthly_adjustment=adjustment;
       return dto;
     });
     await db.query('COMMIT');

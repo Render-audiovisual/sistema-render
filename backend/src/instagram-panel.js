@@ -8,12 +8,16 @@ import { loadGoalClients } from './client-goals.js';
 import { instagramFeedGroupCounts, validateFeedCountSnapshot,feedCountsAreTrusted } from '../../shared/instagram-feed-counts.mjs';
 import { validateInstagramMonthlyObservation } from '../../shared/instagram-monthly-observation.mjs';
 import { MEDIA_COVERS_ACTION, COVER_MAX_AGE_MS, normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
+import {monthlyAdjustment} from '../../shared/client-monthly-adjustment.mjs';
 export { interactions, responsablesDe };
 
 // Instagram reports are shared with authenticated active users. Administrative
 // reads and all writes remain Leader-only; every read revalidates the session.
 
 const TIME_ZONE = 'America/Argentina/Cordoba';
+const MONTHLY_ADJUSTMENTS_SQL=`SELECT DISTINCT ON(ia.detalles->>'key') ia.detalles FROM integracion_auditoria ia
+ WHERE ia.integracion='client_monthly_control' AND ia.canal='web' AND ia.accion='monthly_count_adjustment_v1'
+ AND ia.resultado='ok' AND ia.detalles->>'period'=$1 ORDER BY ia.detalles->>'key',ia.id DESC`;
 const fail = (status, message, code) => Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 const forbidden = () => fail(403, 'El panel de Instagram está disponible solo para Líder.', 'INSTAGRAM_PANEL_FORBIDDEN');
 
@@ -121,7 +125,7 @@ export function formatFulfillment(counts,quota) {
     porcentaje:trusted&&known&&total>0?Math.floor((Math.min(reels.cantidad,reels.cuota)+Math.min(carruseles.cantidad,carruseles.cuota))/total*100):null};
 }
 
-export function buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines = [], lastPosts = [], snapshots=[],manualObservations=[],effectiveQuotas,now = new Date() }) {
+export function buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines = [], lastPosts = [], snapshots=[],manualObservations=[],monthlyAdjustments=[],effectiveQuotas,now = new Date() }) {
   const previous = previousPeriod(period);
   const groups = new Map();
   for (const client of clients) {
@@ -203,6 +207,8 @@ export function buildPanel({ period, clients, accounts, media, objectives, follo
       const manual=group.cuentas.length===1?manualObservations.find(s=>s.clientId===group.cuentas[0].id&&s.period===period)?.agencyAttribution:null;
       if(group.cuentas.length>1&&manualObservations.some(s=>s.period===period&&s.agencyAttribution&&group.cuentas.some(c=>c.id===s.clientId)))format_counts={status:'unavailable',reason:'owner_group_ambiguous',reels:null,carruseles:null,checkedAt:null};
       if(manual&&Date.parse(manual.confirmedAt)<=+now)format_counts={status:'owner_record',source:'owner_confirmation',reels:manual.reels,carruseles:manual.carruseles,checkedAt:manual.confirmedAt};
+      const correction=monthlyAdjustments.map(value=>monthlyAdjustment(value,{key:group.clave,period,memberIds:group.cuentas.map(c=>c.id)})).find(Boolean);
+      if(correction?.mode==='manual'&&Date.parse(correction.checkedAt)<=+now)format_counts={status:'owner_record',source:'owner_correction',reels:correction.reels,carruseles:correction.carruseles,checkedAt:correction.checkedAt};
       const effective=effectiveQuotas?.find(q=>q.clave===group.clave);
       const cupo=effectiveQuotas===undefined?group.cupo:effective?{reels:effective.reels,carruseles:effective.carruseles}:null;
       const fulfillment=formatFulfillment(format_counts,cupo);
@@ -308,7 +314,8 @@ async function readPanelFromDb(db, period, now = new Date()) {
     ORDER BY ia.detalles->>'clientId',ia.created_at DESC,ia.id DESC`,[period])).rows
     .map(r=>validateInstagramMonthlyObservation(r.detalles,{period})).filter(Boolean);
   const effectiveQuotas=await loadGoalClients(db,period);
-  return { panel: buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts,snapshots,manualObservations,effectiveQuotas,now }),
+  const monthlyAdjustments=(await db.query(MONTHLY_ADJUSTMENTS_SQL,[period])).rows.map(r=>r.detalles);
+  return { panel: buildPanel({ period, clients, accounts, media, objectives, followers, pieces, baselines, lastPosts,snapshots,manualObservations,monthlyAdjustments,effectiveQuotas,now }),
     clients, accounts, snapshots, now };
 }
 
@@ -348,6 +355,7 @@ const REPORT_INPUTS_SQL = `WITH ig_report_clients AS (
   SELECT
     (SELECT COALESCE(jsonb_agg(to_jsonb(c)),'[]'::jsonb) FROM ig_report_clients c) AS clients,
     (SELECT COALESCE(jsonb_agg(to_jsonb(a)),'[]'::jsonb) FROM ig_report_accounts a) AS accounts,
+    (SELECT COALESCE(jsonb_agg(adj.detalles),'[]'::jsonb) FROM (${MONTHLY_ADJUSTMENTS_SQL.replaceAll('$1','$4')}) adj WHERE adj.detalles->>'key'=$3) AS adjustments,
     (SELECT COALESCE(jsonb_agg(to_jsonb(cv)),'[]'::jsonb) FROM
       (${COVER_ROWS_SQL.replace('=ANY($1::int[])',' IN (SELECT id FROM ig_report_clients)').replaceAll('$2','$5')}) cv) AS covers,
     (SELECT COALESCE(jsonb_agg(to_jsonb(m)),'[]'::jsonb) FROM ig_report_media m) AS media,
@@ -375,7 +383,7 @@ async function readReportPanelFromDb(db, key, period, now = new Date()) {
   const manualObservations = inputs.manual.map(r => validateInstagramMonthlyObservation(r.detalles, { period })).filter(Boolean);
   const effectiveQuotas = await loadGoalClients(db, period);
   const panel = buildPanel({ period, clients, accounts, media: inputs.media, objectives: inputs.objectives,
-    followers: inputs.followers, pieces: [], snapshots, manualObservations, effectiveQuotas, now });
+    followers: inputs.followers, pieces: [], snapshots, manualObservations,monthlyAdjustments:inputs.adjustments??[], effectiveQuotas, now });
   return { panel, clients, accounts, snapshots, now, coverRows:inputs.covers,
     reportMedia:inputs.media.filter(row=>row.periodo===period).map(row=>({...row,
       publicado_at:new Date(row.publicado_at),medido_at:row.medido_at?new Date(row.medido_at):null}))
