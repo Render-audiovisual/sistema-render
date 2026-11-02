@@ -45,12 +45,39 @@ function MediaIcon({ type }) {
   </svg>;
 }
 
+// Carrusel (diseño "Feed"): portada 4:5 sin etiquetas encima, las tres métricas
+// que importan en un carrusel y el resto en una línea secundaria.
+export const CAROUSEL_KPIS = Object.freeze([['Alcance', 'alcance'], ['Guardados', 'guardados'], ['Compartidos', 'compartidos']]);
+function CarouselCard({ piece, cover, href, date, title, failed, setFailed }) {
+  const m = piece.metricas || {};
+  const secondary = [['me gusta', 'likes'], ['comentarios', 'comentarios']].map(([label, key]) => `${mediaNumber(m[key])} ${label}`).join(' · ');
+  const image = <div className="ig-carousel-cover">
+    {cover && !failed ? <img src={cover} alt={`Portada: ${title.slice(0, 120)}`} width="480" height="600" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)}/> :
+      <div className="ig-media-no-cover"><MediaIcon type="carrusel"/><span>Portada no disponible</span></div>}
+  </div>;
+  return <article className="ig-media-card ig-carousel-card">
+    {href ? <a className="ig-media-preview" href={href} target="_blank" rel="noopener noreferrer" aria-label={`Ver carrusel en Instagram: ${title.slice(0, 120)}`}>{image}</a> : <div className="ig-media-preview">{image}</div>}
+    <div className="ig-carousel-meta">
+      <span><MediaIcon type="carrusel"/>Carrusel · <time dateTime={piece.publicado_at}>{date}</time></span>
+      {href && <a href={href} target="_blank" rel="noopener noreferrer">Ver en IG ↗</a>}
+    </div>
+    <h3 className="ig-carousel-title">{title}</h3>
+    <dl className="ig-carousel-kpis">
+      {CAROUSEL_KPIS.map(([label, key]) => <div key={key}><dd>{mediaNumber(m[key])}</dd><dt>{label}</dt></div>)}
+    </dl>
+    <p className="ig-carousel-secondary">{secondary}</p>
+    {typeof piece.caption === 'string' && piece.caption.trim() &&
+      <details className="ig-media-copy ig-carousel-copy"><summary>Ver copy completo</summary><p>{piece.caption}</p></details>}
+  </article>;
+}
+
 export function InstagramMediaCard({ piece }) {
   const [failed, setFailed] = useState(false);
   const cover = mediaCoverUrl(piece.portada_url), href = mediaPostUrl(piece.permalink);
   const date = Number.isFinite(Date.parse(piece.publicado_at)) ? new Intl.DateTimeFormat('es-AR',
     { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Cordoba' }).format(new Date(piece.publicado_at)) : 'Sin fecha';
   const title = typeof piece.caption === 'string' && piece.caption.trim() ? piece.caption.trim() : `${formats[piece.tipo] || 'Publicación'} del ${date}`;
+  if (piece.tipo === 'carrusel') return <CarouselCard piece={piece} cover={cover} href={href} date={date} title={title} failed={failed} setFailed={setFailed}/>;
   const visual = <><div className="ig-media-cover">
     {cover && !failed ? <img src={cover} alt={`Portada: ${title.slice(0, 120)}`} width="480" height="600" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)}/> :
       <div className="ig-media-no-cover"><MediaIcon type={piece.tipo}/><span>Portada no disponible</span><small>Ver en Instagram ↗</small></div>}

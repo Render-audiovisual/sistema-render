@@ -89,7 +89,7 @@ test('simple report shows only formats and media, without advanced blocks or dup
   data.destacadas=[{...data.piezas[0],caption:'Texto de prueba'}];
   const html=render(api.ClientReportDocument,{data});
   assert.doesNotMatch(html,/Más estadísticas|Sobre estos datos|Mes anterior|Ordenar por|Ver resultados/);assert.doesNotMatch(html,/<details[^>]* open/);
-  assert.match(html,/Post30/);assert.equal((html.match(/class="ig-media-card"/g)||[]).length,31);
+  assert.match(html,/Post30/);assert.equal((html.match(/class="ig-media-card[" ]/g)||[]).length,31);
   for(const label of ['Reproducciones','Alcance','Me gusta','Comentarios','Guardados','Compartidos'])assert.match(html,new RegExp(`<dt>${label}</dt>`));
   assert.doesNotMatch(source,/p\.ig_media_id|responsables|publicacion_id/);
 });

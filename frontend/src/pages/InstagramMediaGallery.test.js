@@ -54,7 +54,8 @@ test('printed gallery explicitly identifies the active format and sort instead o
 test('simple gallery keeps formats and visible metrics without a sort menu or nested results',()=>{
   const html=render(api.InstagramMediaGallery,{pieces:[piece('reel',0),piece('carrusel',null)]});
   assert.doesNotMatch(html,/Ordenar por|Qué contenido funciona mejor|Ver resultados|<select/);
-  for(const label of ['Reproducciones','Alcance','Me gusta','Comentarios','Guardados','Compartidos'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,2);
+  for(const label of ['Reproducciones','Me gusta','Comentarios'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,1);
+  for(const label of ['Alcance','Guardados','Compartidos'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,2);
   assert.match(html,/<dd>0<\/dd>/);assert.match(html,/<dd>—<\/dd>/);
   assert.match(html,/aria-pressed="true">Todo/);
 });
@@ -63,13 +64,22 @@ test('reels and carousels expose the entire original copy outside the Instagram 
   for (const tipo of ['reel', 'carrusel']) {
     const caption = `Primer párrafo\n\n${'Texto completo '.repeat(60)}\n#Contenido <script>no ejecutar</script>`;
     const html = render(api.InstagramMediaCard, { piece: { ...piece(tipo, 1), caption } });
-    assert.match(html, /<details class="ig-media-copy"><summary>Ver copy completo<\/summary><p>Primer párrafo\n\n/);
+    assert.match(html, /<details class="ig-media-copy[^"]*"><summary>Ver copy completo<\/summary><p>Primer párrafo\n\n/);
     assert.match(html, /#Contenido &lt;script&gt;no ejecutar&lt;\/script&gt;/);
-    assert.ok(html.indexOf('</a>') < html.indexOf('class="ig-media-copy"'));
+    assert.ok(html.lastIndexOf('</a>', html.indexOf('class="ig-media-copy')) > -1 && html.indexOf('</a>') < html.indexOf('class="ig-media-copy'));
     assert.doesNotMatch(html, /<script>/);
   }
   const missing = render(api.InstagramMediaCard, { piece: { ...piece('reel', 1), caption: '' } });
   assert.match(missing, /Sin copy disponible/); assert.doesNotMatch(missing, /Ver copy completo/);
   const css = readFileSync(new URL('./InstagramMediaGallery.css', import.meta.url), 'utf8');
   assert.match(css, /\.ig-media-copy p\{[^}]*white-space:pre-wrap/);
+});
+
+test('carousel uses the Feed card: uncovered 4:5 cover, three carousel KPIs and secondary likes/comments',()=>{
+  const html=render(api.InstagramMediaCard,{piece:{...piece('carrusel',900),metricas:{vistas:900,alcance:2719,guardados:3,compartidos:8,likes:108,comentarios:5}}});
+  assert.match(html,/ig-carousel-card/);assert.doesNotMatch(html,/ig-media-type|ig-media-open|Reproducciones/);
+  assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(m=>m[1]),['Alcance','Guardados','Compartidos']);
+  assert.match(html,/<dd>2\.719<\/dd>/);assert.match(html,/108 me gusta · 5 comentarios/);
+  assert.match(html,/Ver en IG ↗/);assert.match(html,/loading="lazy"/);
+  const reel=render(api.InstagramMediaCard,{piece:piece('reel',10)});assert.match(reel,/ig-media-type/);assert.doesNotMatch(reel,/ig-carousel-card/);
 });
