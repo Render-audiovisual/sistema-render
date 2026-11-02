@@ -5,6 +5,7 @@ import { isSessionFailure } from '../shared/session/captured-request.js';
 import { hasWeeklyReportCoverage } from '../shared/instagram-report-coverage.js';
 import { readInstagramLocation,instagramPanelHref,instagramReportHref } from './instagramNavigation.js';
 import { needsInstagramOverview } from './instagramLoading.js';
+import { handleAppLinkClick } from '../shared/navigation/location.js';
 import './InstagramPanel.css';
 
 // Panel de rendimiento de Instagram. Solo Líder; el servidor vuelve a verificarlo.
@@ -229,7 +230,7 @@ function ClientReportCard({client:c,period,onOpen}) {
       <FormatProgress label="Carruseles" format={c.fulfillment?.carruseles} status={state}/>
     </div>
     <p className={`ig-client-card-note${state==='stale'?' is-stale':''}`}>{note}{c.format_counts?.checkedAt&&<> · <time dateTime={c.format_counts.checkedAt}>{dateLabel.format(new Date(c.format_counts.checkedAt))}</time></>}</p>
-    <footer><a className="ig-client-report-link" href={instagramReportHref(c.clave,period)} aria-label={`Ver reporte de ${c.nombre}`}>Ver reporte <span aria-hidden="true">↗</span></a>
+    <footer><a className="ig-client-report-link" onClick={event => handleAppLinkClick(window, event)} href={instagramReportHref(c.clave,period)} aria-label={`Ver reporte de ${c.nombre}`}>Ver reporte <span aria-hidden="true">↗</span></a>
       <button type="button" className="ig-client-posts-link" onClick={()=>onOpen(c.clave)} aria-label={`Ver publicaciones de ${c.nombre}`}>Publicaciones</button></footer>
   </article>;
 }
@@ -291,7 +292,7 @@ function ClientDetail({ sesion, clave, period, onBack, onChanged }) {
     <header className="ig-card-head">
       <button type="button" className="btn" onClick={onBack}>← Clientes</button>
       <h2>{data?.nombre ?? 'Cliente'} · {labelPeriod(period)}</h2>
-      <a className="btn" href={instagramReportHref(clave,period)}>Ver reporte del cliente ↗</a>
+      <a className="btn" onClick={event => handleAppLinkClick(window, event)} href={instagramReportHref(clave,period)}>Ver reporte del cliente ↗</a>
     </header>
     {state.loading && !data && <div className="salary-state">Cargando piezas…</div>}
     {state.error && <div className="salary-state is-error" role="alert">{state.error}</div>}

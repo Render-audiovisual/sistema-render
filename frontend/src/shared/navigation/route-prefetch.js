@@ -7,6 +7,8 @@ const loaders = {
   '/producciones': () => import('../../pages/Productions.jsx'),
   '/lista': () => import('../../pages/PersonalLists.jsx'),
   '/feedback': () => import('../../pages/Feedback.jsx'),
+  '/instagram': () => import('../../pages/InstagramPanel.jsx'),
+  '/instagram/reporte': () => import('../../pages/InstagramClientReport.jsx'),
 };
 export function createRoutePrefetch(routeLoaders) {
   const pending = new Map();

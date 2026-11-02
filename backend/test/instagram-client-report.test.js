@@ -26,6 +26,9 @@ function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot =
     assert.equal(active, true, 'all reads stay on the authorized transaction');
     if (sql === 'COMMIT' || sql === 'ROLLBACK') { active = false; return { rows: [] }; }
     if (sql.includes('FROM usuarios WHERE id=')) return { rows: [{ ...auth, rol: role, activo: true }] };
+    if (sql.startsWith('WITH ig_report_clients')) return { rows: [{ clients,accounts,media:rows,
+      followers:[],snapshots:snapshot?[{ig_user_id:'111',cliente_id:1,detalles:snapshot}]:[],
+      objectives:[{clave:'cliente-1',reels:9,carruseles:9}],manual:manual.map(detalles=>({detalles})) }] };
     if (sql.startsWith('SELECT c.id, c.nombre')) return { rows: clients };
     if (sql.startsWith('SELECT ig_user_id, username')) return { rows: accounts };
     if (sql.startsWith('SELECT m.ig_media_id')) return { rows }; // deliberately includes B and wrong months
@@ -73,6 +76,13 @@ test('client report shares one authorized RR, isolates A from B and strips all p
   assertClosed(report);
   assert.doesNotMatch(JSON.stringify(report), /account_b|Client B|Public21/);
   assert.equal(h.calls.some(c => /^(INSERT|UPDATE|DELETE|ALTER|CREATE)\b/.test(c.sql)), false);
+  assert.equal(h.calls.length, 7, 'authorization, four data reads and transaction boundaries only');
+  const batch=h.calls.find(c=>c.sql.startsWith('WITH ig_report_clients'));
+  assert.deepEqual(batch.params, ['2020-09-01','2020-10-01','cliente-1','2020-10']);
+  assert.match(batch.sql,/c\.clave=\$3/);
+  assert.match(batch.sql,/m\.cliente_id IN \(SELECT id FROM ig_report_clients\)/);
+  assert.match(batch.sql,/s\.fecha < \(\$2::date \+ interval '1 month'\)/);
+  assert.equal(h.calls.some(c=>c.sql.includes('AS medidas')||c.sql.includes('max(publicado_at)')),false);
 });
 
 test('gallery captions and safe persisted covers are closed, account-bound and expire after 24h without Graph calls', async () => {

@@ -34,6 +34,18 @@ export function navigateWithinApp(win, href) {
   return target ? commitNavigation(win, target) : false;
 }
 
+// Keep normal link semantics (copy/open in a new tab), but avoid rebooting the
+// application and its authenticated session on an ordinary same-origin click.
+export function handleAppLinkClick(win, event) {
+  const link = event.currentTarget;
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+    || !link || (link.target && link.target !== '_self') || link.hasAttribute('download')) return false;
+  const target = navigationTarget(win, link.href);
+  if (!target) return false;
+  event.preventDefault(); // Also prevent a full reload if a navigation guard cancels.
+  return commitNavigation(win, target);
+}
+
 export function navigateWithConfirmation(win, href, { present, isCurrent } = {}) {
   const target = navigationTarget(win, href);
   if (!target) return Promise.resolve(false);

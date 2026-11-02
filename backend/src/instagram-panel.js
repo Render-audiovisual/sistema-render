@@ -308,16 +308,62 @@ async function readPanelFromDb(db, period, now = new Date()) {
     clients, accounts, snapshots, now };
 }
 
-async function readFeedSnapshotsFromDb(db, period) {
-  return (await db.query(`SELECT a.ig_user_id,a.cliente_id,s.detalles
+const FEED_SNAPSHOTS_SQL = `SELECT a.ig_user_id,a.cliente_id,s.detalles
       FROM instagram_cuentas a LEFT JOIN LATERAL (
         SELECT ia.detalles FROM integracion_auditoria ia
         WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
           AND ia.accion='feed_snapshot_v1' AND ia.resultado='ok'
           AND ia.detalles->>'igUserId'=a.ig_user_id AND ia.detalles->>'clientId'=a.cliente_id::text
           AND ia.detalles->>'period'=$1 ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
-      ) s ON TRUE WHERE a.cliente_id IS NOT NULL`,[period])).rows
+      ) s ON TRUE WHERE a.cliente_id IS NOT NULL`;
+
+async function readFeedSnapshotsFromDb(db, period) {
+  return (await db.query(FEED_SNAPSHOTS_SQL,[period])).rows
       .map(r=>validateFeedCountSnapshot(r.detalles,{igUserId:r.ig_user_id,clientId:r.cliente_id,period})).filter(Boolean);
+}
+
+// A single client's report does not need the whole team's assignments, alert
+// baselines or every client's media. Bundle independent reads into one database
+// round trip, on the SAME authorized read-only snapshot (no shared data cache).
+const REPORT_INPUTS_SQL = `WITH ig_report_clients AS (
+    SELECT * FROM (${CLIENTS_SQL}) c WHERE c.clave=$3
+  ), ig_report_accounts AS (
+    SELECT ig_user_id,username,cliente_id,activa,sincronizada_at FROM instagram_cuentas
+    WHERE cliente_id IN (SELECT id FROM ig_report_clients)
+  ), ig_report_media AS (
+    ${MEDIA_SQL} AND m.cliente_id IN (SELECT id FROM ig_report_clients)
+  ), ig_report_followers AS (${FOLLOWERS_SQL.replaceAll('$1', '$2')}),
+  ig_report_snapshots AS (${FEED_SNAPSHOTS_SQL.replaceAll('$1', '$4')})
+  SELECT
+    (SELECT COALESCE(jsonb_agg(to_jsonb(c)),'[]'::jsonb) FROM ig_report_clients c) AS clients,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(a)),'[]'::jsonb) FROM ig_report_accounts a) AS accounts,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(m)),'[]'::jsonb) FROM ig_report_media m) AS media,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(f)),'[]'::jsonb) FROM ig_report_followers f
+      WHERE f.ig_user_id IN (SELECT ig_user_id FROM ig_report_accounts)) AS followers,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(s)),'[]'::jsonb) FROM ig_report_snapshots s
+      WHERE s.cliente_id IN (SELECT id FROM ig_report_clients)) AS snapshots,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(o)),'[]'::jsonb) FROM
+      (SELECT clave,reels,carruseles FROM cliente_objetivos_mensuales WHERE periodo=$2::date AND clave=$3) o) AS objectives,
+    (SELECT COALESCE(jsonb_agg(to_jsonb(r)),'[]'::jsonb) FROM (
+      SELECT DISTINCT ON (ia.detalles->>'clientId') ia.detalles FROM integracion_auditoria ia
+      WHERE ia.integracion='instagram_manual_review' AND ia.canal='web'
+        AND ia.accion='monthly_publications_observed' AND ia.resultado='ok'
+        AND ia.detalles->>'period'=$4 AND ia.detalles->>'clientId' IN (SELECT id::text FROM ig_report_clients)
+      ORDER BY ia.detalles->>'clientId',ia.created_at DESC,ia.id DESC
+    ) r) AS manual`;
+
+async function readReportPanelFromDb(db, key, period, now = new Date()) {
+  const inputs = (await db.query(REPORT_INPUTS_SQL, [`${previousPeriod(period)}-01`, `${period}-01`, key, period])).rows[0];
+  const clients = inputs.clients.filter(c => c.clave === key);
+  if (!clients.length) throw fail(404, 'No hay datos de este cliente para el mes.');
+  const accounts = inputs.accounts.filter(a => clients.some(c => c.id === a.cliente_id));
+  const snapshots = inputs.snapshots.map(r => validateFeedCountSnapshot(r.detalles,
+    { igUserId: r.ig_user_id, clientId: r.cliente_id, period })).filter(Boolean);
+  const manualObservations = inputs.manual.map(r => validateInstagramMonthlyObservation(r.detalles, { period })).filter(Boolean);
+  const effectiveQuotas = await loadGoalClients(db, period);
+  const panel = buildPanel({ period, clients, accounts, media: inputs.media, objectives: inputs.objectives,
+    followers: inputs.followers, pieces: [], snapshots, manualObservations, effectiveQuotas, now });
+  return { panel, clients, accounts, snapshots, now };
 }
 
 function clientKey(value) {
@@ -469,7 +515,7 @@ export async function readInstagramClientReport(pool, auth, clave, query) {
   const key = clientKey(clave);
   const period = panelPeriod(query);
   return withLeaderRead(pool, auth, async db => {
-    const evidence = await readPanelFromDb(db, period);
+    const evidence = await readReportPanelFromDb(db, key, period);
     const { panel } = evidence;
     const client = panel.clientes.find(c => c.clave === key);
     if (!client) throw fail(404, 'No hay datos de este cliente para el mes.');

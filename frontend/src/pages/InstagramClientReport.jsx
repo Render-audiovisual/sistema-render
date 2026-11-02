@@ -3,6 +3,7 @@ import { getSesion } from '../utils.jsx';
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { InstagramMediaGallery } from './InstagramMediaGallery.jsx';
+import { handleAppLinkClick } from '../shared/navigation/location.js';
 import './InstagramClientReport.css';
 
 // Private Leader view; the existing API independently enforces authorization.
@@ -212,7 +213,7 @@ function InstagramClientReportContent({ sesion, params, onPeriodChange }) {
   useEffect(() => prepareClientReportPrint(page, window), []);
   return <main className="ig-client-report-page" ref={page}>
     <div className="ig-client-report-toolbar">
-      <a className="ig-client-report-back" href={`/instagram?periodo=${encodeURIComponent(params.periodo)}`}>← Volver a Clientes</a>
+      <a className="ig-client-report-back" onClick={event => handleAppLinkClick(window, event)} href={`/instagram?periodo=${encodeURIComponent(params.periodo)}`}>← Volver a Clientes</a>
       <div className="ig-client-report-controls"><label><span>Mes del reporte</span><input type="month" value={params.periodo} onChange={event => onPeriodChange(event.target.value)} /></label>
         <button type="button" onClick={() => window.print()} disabled={!state.data || state.loading || Boolean(state.error)}>Imprimir / Guardar PDF</button></div>
     </div>
@@ -240,6 +241,6 @@ export function InstagramClientReportPage({ sesion }) {
     setSearch(window.location.search);
   };
   if (view.role !== 'admin') return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">Disponible solo para Líder.</div></main>;
-  if (!params) return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">El cliente o el mes del reporte no son válidos.</div><a className="ig-client-report-back" href="/instagram">Volver a Clientes</a></main>;
+  if (!params) return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">El cliente o el mes del reporte no son válidos.</div><a className="ig-client-report-back" onClick={event => handleAppLinkClick(window, event)} href="/instagram">Volver a Clientes</a></main>;
   return <InstagramClientReportContent key={`${view.key}:${epoch}:${params.cliente}:${params.periodo}`} sesion={view.session} params={params} onPeriodChange={changePeriod} />;
 }

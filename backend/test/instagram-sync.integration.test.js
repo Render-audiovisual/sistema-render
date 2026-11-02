@@ -330,7 +330,7 @@ test('complete 90-day snapshots reconcile counts without deleting history; parti
 
 test('client report reads one authorized RR with closed counts, current quotas and no cross-client detail', { skip: !enabled }, async () => {
   const { AuthorityBoundPool } = await import('../src/database-authority-context.js');
-  const { readInstagramClientReport } = await import('../src/instagram-panel.js');
+  const { readInstagramClientReport,readInstagramPanel } = await import('../src/instagram-panel.js');
   const pool = new AuthorityBoundPool({ connectionString: url, max: 3 });
   try {
     const clients = [];
@@ -341,6 +341,8 @@ test('client report reads one authorized RR with closed counts, current quotas a
     for (const [i, id] of ['99111', '99222'].entries()) {
       await pool.query('INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES($1,$2,$3)', [id, `report_scope_${i}`, clients[i]]);
     }
+    await pool.query(`INSERT INTO instagram_cuenta_seguidores(ig_user_id,fecha,seguidores,medido_at)
+      VALUES('99111','2026-09-30',100,$1),('99111','2026-10-31',120,$1),('99111','2026-11-02',140,$1)`,[checkedAt]);
     for (const [id, account, client] of [['99501', '99111', clients[0]], ['99502', '99111', clients[0]], ['99503', '99222', clients[1]]]) {
       await pool.query(`INSERT INTO instagram_media(ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at)
         VALUES($1,$2,$3,'reel',$4,'profile observation',$5)`, [id, account, client, `https://www.instagram.com/reel/Public${id}/`, at]);
@@ -365,6 +367,7 @@ test('client report reads one authorized RR with closed counts, current quotas a
     assert.equal(connects, 1);
     assert.equal(calls.filter(sql => sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY').length, 1);
     assert.equal(calls.filter(sql => sql === 'COMMIT').length, 1);
+    assert.equal(calls.length,7,'one authorized snapshot with only four data reads');
     assert.deepEqual(report.format_counts, { status: 'historical', reels: 1, carruseles: 0, checkedAt });
     assert.deepEqual(report.cupo, { reels: 2, carruseles: 1 });
     assert.equal(report.fulfillment.reels.pendientes, 1);
@@ -374,8 +377,20 @@ test('client report reads one authorized RR with closed counts, current quotas a
     assert.equal(report.piezas[0].permalink, 'https://www.instagram.com/reel/Public99501/');
     assert.equal(report.logo, 'https://example.test/report-logo.png');
     assert.equal(report.dataFecha, checkedAt);
+    assert.equal(report.seguidores,120,'month-end followers, not previous month or current day');
+    assert.equal(report.crecimiento_seguidores,20);
+    const baseline=(await readInstagramPanel(pool,leader,{periodo:'2026-10'})).clientes.find(c=>c.clave===report.clave);
+    for(const field of ['actual','anterior','cupo','seguidores','crecimiento_seguidores'])
+      assert.deepEqual(report[field],baseline[field],`optimized report preserves ${field}`);
     assert.doesNotMatch(JSON.stringify(report), /Scoped B|report_scope_1|Public99502|Public99503|NOT PUBLIC|ig_media_id|publicacion_id|responsables|vinculo|abono_mensual|"posts"/);
     await assert.rejects(readInstagramClientReport(pool, designer, `cliente-${clients[0]}`, { periodo: '2026-10' }), { status: 403 });
+    const group=(await pool.query("INSERT INTO grupos_feed(nombre,cuota_mensual) VALUES('IG Report Shared',6) RETURNING id")).rows[0].id;
+    await pool.query('UPDATE clientes SET grupo_feed_id=$1 WHERE id=ANY($2::int[])',[group,clients]);
+    const groupReport=await readInstagramClientReport(pool,leader,`grupo-${group}`,{periodo:'2026-10'});
+    const groupBaseline=(await readInstagramPanel(pool,leader,{periodo:'2026-10'})).clientes.find(c=>c.clave===groupReport.clave);
+    assert.equal(groupReport.cuentas.length,2);
+    for(const field of ['actual','anterior','cupo','seguidores','crecimiento_seguidores'])
+      assert.deepEqual(groupReport[field],groupBaseline[field],`shared report preserves ${field}`);
   } finally { await pool.end(); }
 });
 

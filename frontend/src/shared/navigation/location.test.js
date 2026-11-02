@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readRouteKey, navigateWithinApp } from "./location.js";
+import { readRouteKey, navigateWithinApp, handleAppLinkClick } from "./location.js";
 
 // Self-contained protocol doubles, not a browser/jsdom or mounted App test.
 class FakeEvent {
@@ -52,6 +52,22 @@ class FakeWindow extends FakeEventTarget {
   }
   scrollTo(options) { this.trace.push({ kind: "scroll", options }); }
 }
+
+test('ordinary report links reuse the application and canceled guards cannot fall through to a reload', () => {
+  const win=new FakeWindow('https://render.test/instagram?periodo=2026-10');
+  const link={href:'https://render.test/instagram/reporte?cliente=cliente-1&periodo=2026-10',target:'',hasAttribute:()=>false};
+  const click=(extra={})=>({button:0,currentTarget:link,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;},...extra});
+  for(const extra of [{metaKey:true},{ctrlKey:true},{shiftKey:true},{altKey:true},{button:1},{defaultPrevented:true},
+    {currentTarget:{...link,target:'_blank'}},{currentTarget:{...link,hasAttribute:()=>true}},
+    {currentTarget:{...link,href:'https://other.test/report'}}]) {
+    assert.equal(handleAppLinkClick(win,click(extra)),false);assert.equal(win.entries.length,1);
+  }
+  const event=click();assert.equal(handleAppLinkClick(win,event),true);assert.equal(event.defaultPrevented,true);
+  assert.equal(readRouteKey(win),'/instagram/reporte?cliente=cliente-1&periodo=2026-10');
+  win.addEventListener('render:before-navigation',e=>e.preventDefault());
+  const blocked=click({currentTarget:{...link,href:'https://render.test/instagram'}});
+  assert.equal(handleAppLinkClick(win,blocked),false);assert.equal(blocked.defaultPrevented,true);assert.equal(win.entries.length,2);
+});
 
 test("readRouteKey includes pathname, query and hash without changing history or notifying", () => {
   const win = new FakeWindow();
