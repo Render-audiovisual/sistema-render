@@ -71,40 +71,31 @@ function InstagramPanelContent({ sesion }) {
   }, [capture, period,needsOverview]);
 
   const reload = useCallback(() => setVersion(v => v + 1), []);
-  const visibleAlerts=(data?.alertas||[]).filter(a=>a.tipo!=='sin_vincular');
 
   return <main className="page-shell ig-panel">
     <section className="salary-hero ig-hero">
       <div>
         <h1>Instagram</h1>
-        <p>Un espacio para cada cliente. Reels, carruseles y reportes mensuales.</p>
       </div>
       <label className="ig-period"><span>Mes</span>
         <input type="month" value={period} min="2026-01" onChange={e => { if (/^20\d{2}-(0[1-9]|1[0-2])$/.test(e.target.value)) navigate({period:e.target.value}); }} />
       </label>
     </section>
 
-    {data && <p className="ig-sync-note">
-      {data.ultima_sincronizacion ? `Última sincronización con Meta: ${dateLabel.format(new Date(data.ultima_sincronizacion))}` : 'Todavía no hay datos sincronizados desde Meta.'}
-      {canManage && data.cuentas_sin_cliente > 0 && <> · <button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>{data.cuentas_sin_cliente} cuenta{data.cuentas_sin_cliente === 1 ? '' : 's'} sin cliente asignado</button></>}
-    </p>}
-
-    <nav className="ig-tabs" aria-label="Secciones del panel">
-      {[['clientes', 'Clientes'], ['equipo', 'Equipo'], ['reportes', 'Reportes'], ...(canManage ? [['cuentas', 'Cuentas']] : [])].map(([id, label]) =>
-        <button key={id} type="button" className={tab === id ? 'is-active' : ''} aria-pressed={tab === id} onClick={() => navigate({tab:id,selected:null})}>{label}{id === 'clientes' && visibleAlerts.length ? <span className="ig-badge" aria-label={`${visibleAlerts.length} alertas`}>{visibleAlerts.length}</span> : null}</button>)}
-    </nav>
+    {(tab !== 'clientes' || selected) && <button type="button" className="ig-link" onClick={() => navigate({tab:'clientes',selected:null})}>← Volver a clientes</button>}
 
     {navigation.error&&<div className="salary-state is-error" role="alert">{navigation.error}<button type="button" className="btn" onClick={()=>navigate({period:currentPeriod(),tab:'clientes',selected:null})}>Volver a clientes</button></div>}
     {needsOverview&&loading && data?.periodo !== period && <div className="salary-state">Cargando {labelPeriod(period)}…</div>}
     {needsOverview&&error && <div className="salary-state is-error" role="alert"><strong>No se pudo cargar el panel.</strong><span>{error}</span>
       <button type="button" className="btn" onClick={reload}>Reintentar</button></div>}
 
-    {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} onOpen={canManage ? key=>navigate({selected:key}) : undefined} />}
+    {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} />}
     {!navigation.error&&tab === 'clientes' && selected && (canManage ? <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} /> :
       <a className="btn" href={instagramReportHref(selected,period)} onClick={event=>handleAppLinkClick(window,event)}>Ver reporte del cliente</a>)}
     {!navigation.error&&data?.periodo === period && tab === 'equipo' && <TeamView data={data} />}
     {!navigation.error&&tab === 'reportes' && <ReportsView sesion={sesion} />}
     {!navigation.error&&tab === 'cuentas' && (canManage ? <AccountsView sesion={sesion} onChanged={reload} /> : <p role="alert">Solo Líder puede administrar las cuentas.</p>)}
+    {canManage && tab === 'clientes' && !selected && <footer className="ig-panel-settings"><button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>Configurar cuentas</button></footer>}
   </main>;
 }
 
@@ -237,30 +228,21 @@ function ClientReportCard({client:c,period,onOpen}) {
   </article>;
 }
 
-function ClientsView({ data, onOpen }) {
-  const [sort, setSort] = useState('nombre');
+function ClientsView({ data }) {
   const [search,setSearch]=useState('');
   const rows = useMemo(() => {
     const normalize=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
     const query=normalize(search.trim());
     const list = data.clientes.filter(c=>!query||normalize(`${c.nombre} ${c.instagram.map(a=>a.username).join(' ')}`).includes(query));
-    const by = { nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es'), alcance: (a, b) => b.actual.alcance - a.actual.alcance,
-      tasa: (a, b) => (b.actual.tasa_interaccion ?? -1) - (a.actual.tasa_interaccion ?? -1), cumplimiento: (a, b) => (a.cumplimiento ?? 999) - (b.cumplimiento ?? 999) };
-    return list.sort(by[sort]);
-  }, [data, sort,search]);
-  const alerts=(data.alertas||[]).filter(a=>a.tipo!=='sin_vincular');
+    return list.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  }, [data,search]);
   return <>
     <section className="ig-client-spaces">
-      <header className="ig-client-spaces-head"><div><h2>Reportes por cliente</h2><p>{labelPeriod(data.periodo)} · {data.clientes.length} clientes</p></div>
-        <div className="ig-client-tools"><label className="ig-client-search"><span className="ig-sr">Buscar cliente</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cliente"/></label>
-        <label className="ig-sort"><span>Ordenar</span><select value={sort} onChange={e => setSort(e.target.value)}>
-          <option value="nombre">Nombre</option><option value="alcance">Mayor alcance</option><option value="tasa">Mayor interacción</option><option value="cumplimiento">Menor cumplimiento</option>
-        </select></label></div>
+      <header className="ig-client-spaces-head"><div><h2>Clientes</h2></div>
+        <label className="ig-client-search"><span className="ig-sr">Buscar cliente</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cliente"/></label>
       </header>
-      {rows.length?<div className="ig-client-grid" aria-label="Reportes por cliente">{rows.map(c=><ClientReportCard key={c.clave} client={c} period={data.periodo} onOpen={onOpen}/>)}</div>:<div className="salary-state">{search?'No hay clientes con ese nombre.':'No hay clientes registrados para este mes.'}</div>}
+      {rows.length?<div className="ig-client-grid" aria-label="Reportes por cliente">{rows.map(c=><ClientReportCard key={c.clave} client={c} period={data.periodo}/>)}</div>:<div className="salary-state">{search?'No hay clientes con ese nombre.':'No hay clientes registrados para este mes.'}</div>}
     </section>
-    <details className="ig-overview-details"><summary>Resumen general del mes</summary><Totals data={data}/></details>
-    {alerts.length>0&&<details className="ig-overview-details"><summary>Avisos del mes <span>{alerts.length}</span></summary><Alerts alerts={alerts} onOpen={onOpen}/></details>}
   </>;
 }
 

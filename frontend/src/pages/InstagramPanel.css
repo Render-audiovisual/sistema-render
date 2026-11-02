@@ -4,6 +4,8 @@
 .ig-client-spaces{display:grid;gap:20px;min-width:0}
 .ig-client-spaces-head{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .ig-client-spaces-head h2{font-size:20px;letter-spacing:-.025em;font-weight:650;margin:0 0 5px}
+.ig-panel-settings{display:flex;justify-content:flex-end;padding-top:12px}
+.ig-panel-settings .ig-link{min-height:44px;color:var(--render-muted)}
 .ig-client-spaces-head p{font-size:13px;color:var(--render-muted);margin:0}
 .ig-client-tools{display:flex;align-items:end;gap:12px;flex-wrap:wrap;min-width:0}
 .ig-client-search input{width:220px;max-width:100%;min-height:44px;border:1px solid var(--render-line-strong);border-radius:10px;padding:0 12px;background:var(--render-surface);color:var(--render-ink);font:inherit;font-size:14px}

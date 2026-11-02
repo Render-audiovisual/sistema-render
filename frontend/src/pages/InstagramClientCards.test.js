@@ -30,7 +30,7 @@ test('logo and title are escaped and actions remain distinct, without nested but
 });
 test('client spaces are a responsive grid, not a wide table of mixed reports',()=>{
   const css=readFileSync(new URL('./InstagramPanel.css',import.meta.url),'utf8');assert.match(css,/\.ig-client-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,280px\),1fr\)\)/);
-  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);assert.match(css,/min-height:44px/);assert.match(source,/Resumen general del mes/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);assert.match(css,/min-height:44px/);
 });
 
 test('team cards expose reports without the administrative publication-linking action',()=>{
@@ -38,5 +38,17 @@ test('team cards expose reports without the administrative publication-linking a
   assert.match(html,/Ver reporte/);assert.doesNotMatch(html,/Ver publicaciones|<button/);
   assert.match(source,/canManage \? <AccountsView/);
   assert.match(source,/canManage \? <ClientDetail/);
-  assert.match(source,/canManage \? \[\['cuentas', 'Cuentas'\]\] : \[\]/);
+  assert.match(source,/canManage && tab === 'clientes' && !selected/);
+});
+
+test('home shows client reports only, with alphabetical cards and one action per client',()=>{
+  const declaration=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='ClientsView');
+  const compiled=ts.transpileModule(declaration.getText(tree),{compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022}}).outputText;
+  const ClientsView=Function('React','useMemo','useState','ClientReportCard',`${compiled};return ClientsView;`)(React,React.useMemo,React.useState,ClientReportCard);
+  const html=renderToStaticMarkup(React.createElement(ClientsView,{data:{periodo:'2026-10',clientes:[{...client,clave:'cliente-2',nombre:'Zulu'}, {...client,nombre:'Alfa'}],alertas:[{tipo:'sin_publicar'}]}}));
+  assert.ok(html.indexOf('Alfa')<html.indexOf('Zulu'));
+  assert.equal((html.match(/class="ig-client-report-link"/g)||[]).length,2);
+  assert.match(html,/Buscar cliente/);
+  assert.doesNotMatch(html,/Resumen general|Avisos del mes|Ordenar|Publicaciones|<button|<select/);
+  assert.doesNotMatch(source,/aria-label="Secciones del panel"/);
 });
