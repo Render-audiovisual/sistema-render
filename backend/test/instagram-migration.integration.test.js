@@ -140,12 +140,12 @@ test('Instagram-only atomic migration on a restored archived copy, including a p
     assert.equal(hash(await readFile(backup)), archiveHash);
     t.diagnostic(`Archived copy only: originalTasks=${originalTasks}; finalTasks=${originalTasks + 1}; preservedTables=${result.preservedTables}; no production access.`);
   });
-  await t.test('panel is readable for an existing owner and forbidden for an employee on the upgraded copy', async () => {
+  await t.test('panel is readable for an existing owner and employee on the upgraded copy', async () => {
     const users = (await pool.query('SELECT id,rol,session_version FROM usuarios WHERE activo IS TRUE ORDER BY id')).rows;
     const owner = users.find(u => u.rol === 'admin'), employee = users.find(u => u.rol !== 'admin');
     assert.ok(owner && employee);
     const panel = await readInstagramPanel(pool, owner, { periodo: '2026-10' });
     assert.ok(Array.isArray(panel.clientes));
-    await assert.rejects(readInstagramPanel(pool, employee, { periodo: '2026-10' }), { status: 403 });
+    assert.equal((await readInstagramPanel(pool, employee, { periodo: '2026-10' })).periodo,'2026-10');
   });
 });

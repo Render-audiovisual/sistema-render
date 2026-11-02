@@ -32,3 +32,11 @@ test('client spaces are a responsive grid, not a wide table of mixed reports',()
   const css=readFileSync(new URL('./InstagramPanel.css',import.meta.url),'utf8');assert.match(css,/\.ig-client-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,280px\),1fr\)\)/);
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);assert.match(css,/min-height:44px/);assert.match(source,/Resumen general del mes/);
 });
+
+test('team cards expose reports without the administrative publication-linking action',()=>{
+  const html=renderToStaticMarkup(React.createElement(ClientReportCard,{client,period:'2026-10'}));
+  assert.match(html,/Ver reporte/);assert.doesNotMatch(html,/Ver publicaciones|<button/);
+  assert.match(source,/canManage \? <AccountsView/);
+  assert.match(source,/canManage \? <ClientDetail/);
+  assert.match(source,/canManage \? \[\['cuentas', 'Cuentas'\]\] : \[\]/);
+});

@@ -6,7 +6,7 @@ import { InstagramMediaGallery } from './InstagramMediaGallery.jsx';
 import { handleAppLinkClick } from '../shared/navigation/location.js';
 import './InstagramClientReport.css';
 
-// Private Leader view; the existing API independently enforces authorization.
+// Authenticated team view; the API independently revalidates every session.
 const number = new Intl.NumberFormat('es-AR');
 const fmt = value => typeof value === 'number' && Number.isFinite(value) ? number.format(value) : '—';
 const TIPO = { reel: 'Reel', carrusel: 'Carrusel', imagen: 'Imagen' };
@@ -240,7 +240,7 @@ export function InstagramClientReportPage({ sesion }) {
     window.history.pushState({}, '', href);
     setSearch(window.location.search);
   };
-  if (view.role !== 'admin') return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">Disponible solo para Líder.</div></main>;
+  if (!view.role) return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">Iniciá sesión para consultar Instagram.</div></main>;
   if (!params) return <main className="ig-client-report-page"><div className="ig-client-report-state" role="alert">El cliente o el mes del reporte no son válidos.</div><a className="ig-client-report-back" onClick={event => handleAppLinkClick(window, event)} href="/instagram">Volver a Clientes</a></main>;
   return <InstagramClientReportContent key={`${view.key}:${epoch}:${params.cliente}:${params.periodo}`} sesion={view.session} params={params} onPeriodChange={changePeriod} />;
 }

@@ -193,7 +193,7 @@ export function App() {
 
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/instagram", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
-    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
+    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", "/instagram", "/instagram/reporte", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
     esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 

@@ -146,9 +146,11 @@ test('actual month callback preserves client in URL and popstate listener follow
   const cleanup=evaluate(effect,{window,setSearch:s=>effects.push(s)})();window.location.search='?cliente=cliente-9&periodo=2026-09';listeners.get('popstate')();assert.equal(effects.at(-1),window.location.search);cleanup();assert.equal(listeners.size,0);
 });
 
-test('actual page gates Leader and invalid URL before request component; key scopes identity, client and month',()=>{
-  const denied=compile({useScopedRequest:()=>({view:{role:'edicion',session:{}},epoch:1})});
-  assert.match(render(denied.InstagramClientReportPage,{}),/Disponible solo para Líder/);
+test('actual page allows the team, gates missing session and invalid URL; key scopes identity, client and month',()=>{
+  const employee=compile({useScopedRequest:()=>({view:{role:'edicion',session:{}},epoch:1})});
+  assert.match(render(employee.InstagramClientReportPage,{}),/Cargando el reporte/);
+  const denied=compile({useScopedRequest:()=>({view:{role:null,session:null},epoch:1})});
+  assert.match(render(denied.InstagramClientReportPage,{}),/Iniciá sesión/);
   const invalid=compile({window:{location:{search:'?cliente=cliente-1&periodo=2026-10&periodo=2026-11'}}});
   assert.match(render(invalid.InstagramClientReportPage,{}),/no son válidos/);
   const valid=render(api.InstagramClientReportPage,{});assert.match(valid,/href="\/instagram\?periodo=2026-10"/);assert.match(valid,/type="month"/);assert.match(valid,/disabled=""/);

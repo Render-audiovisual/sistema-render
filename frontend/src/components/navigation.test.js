@@ -13,10 +13,10 @@ const shared = new Map([
   ["/lista", ["Lista", "Mi lista"]],
   ["/feedback", ["Feedback"]],
   ["/reportes-historias", ["Reportes"]],
+  ["/instagram", ["Instagram"]],
   ["/perfil", ["Perfil"]],
 ]);
 const adminOnly = new Map([
-  ["/instagram", "Instagram"],
   ["/sueldos", "Finanzas"],
   ["/empleados", "Usuarios"],
   ["/clientes?gestion=1", "Gestionar clientes"],

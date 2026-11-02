@@ -10,8 +10,8 @@ import { validateInstagramMonthlyObservation } from '../../shared/instagram-mont
 import { MEDIA_COVERS_ACTION, COVER_MAX_AGE_MS, normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
 export { interactions, responsablesDe };
 
-// Panel de rendimiento de Instagram (solo Líder). Lecturas en una instantánea
-// read-only; escrituras limitadas a vínculos cuenta↔cliente y post↔pieza.
+// Instagram reports are shared with authenticated active users. Administrative
+// reads and all writes remain Leader-only; every read revalidates the session.
 
 const TIME_ZONE = 'America/Argentina/Cordoba';
 const fail = (status, message, code) => Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
@@ -31,15 +31,19 @@ export function previousPeriod(period) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-async function verifyLeader(db, observed, lock) {
+async function verifyLeader(db, observed, lock, leaderOnly = true) {
   const actor = (await db.query(`SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1${lock ? ' FOR SHARE' : ''}`,
     [observed.id])).rows[0];
   if (!actor || actor.id !== observed.id || actor.activo !== true || actor.session_version !== observed.session_version)
     throw fail(401, 'La sesión cambió. Volvé a iniciar sesión.');
-  if (actor.rol !== 'admin') throw forbidden();
+  if (leaderOnly && actor.rol !== 'admin') throw forbidden();
 }
 
 export async function withLeaderRead(pool, auth, read) {
+  return withInstagramRead(pool, auth, read, true);
+}
+
+export async function withInstagramRead(pool, auth, read, leaderOnly = false) {
   const observed = captureFinanceActor(auth);
   const delegation = captureOwnerProfileWriteAuthority(observed);
   const db = await pool.connect();
@@ -47,7 +51,7 @@ export async function withLeaderRead(pool, auth, read) {
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await checkCapturedOwnerProfileAuthority(db, delegation);
-    await verifyLeader(db, observed, false);
+    await verifyLeader(db, observed, false, leaderOnly);
     const result = await read(db);
     await db.query('COMMIT');
     return result;
@@ -280,7 +284,7 @@ const BASELINE_SQL = `SELECT m.ig_user_id, count(u.alcance)::int AS medidas, COA
 
 export async function readInstagramPanel(pool, auth, query) {
   const period = panelPeriod(query);
-  return withLeaderRead(pool, auth, async db => (await readPanelFromDb(db, period)).panel);
+  return withInstagramRead(pool, auth, async db => (await readPanelFromDb(db, period)).panel);
 }
 
 async function readPanelFromDb(db, period, now = new Date()) {
@@ -494,7 +498,7 @@ export async function writeInstagramMediaLink(pool, auth, igMediaId, body) {
 }
 
 export async function readInstagramReports(pool, auth) {
-  return withLeaderRead(pool, auth, async db => ({
+  return withInstagramRead(pool, auth, async db => ({
     reportes: (await db.query(`SELECT id, tipo, desde::text, hasta::text, estado, generado_at FROM instagram_reportes
       ORDER BY desde DESC LIMIT 26`)).rows.map(r => ({ ...r, id: Number(r.id) })),
   }));
@@ -502,7 +506,7 @@ export async function readInstagramReports(pool, auth) {
 
 export async function readInstagramReport(pool, auth, id) {
   if (typeof id !== 'string' || !/^[1-9]\d{0,15}$/.test(id)) throw fail(400, 'Reporte inválido.');
-  return withLeaderRead(pool, auth, async db => {
+  return withInstagramRead(pool, auth, async db => {
     const row = (await db.query(`SELECT id, tipo, desde::text, hasta::text, estado, generado_at, hechos, conclusiones, modelo
       FROM instagram_reportes WHERE id=$1`, [id])).rows[0];
     if (!row) throw fail(404, 'Reporte no encontrado.');
@@ -514,7 +518,7 @@ export async function readInstagramReport(pool, auth, id) {
 export async function readInstagramClientReport(pool, auth, clave, query) {
   const key = clientKey(clave);
   const period = panelPeriod(query);
-  return withLeaderRead(pool, auth, async db => {
+  return withInstagramRead(pool, auth, async db => {
     const evidence = await readReportPanelFromDb(db, key, period);
     const { panel } = evidence;
     const client = panel.clientes.find(c => c.clave === key);
@@ -546,7 +550,7 @@ export async function readInstagramClientReport(pool, auth, clave, query) {
 }
 
 // Explicit allowlists: adding fields to the leader's panel/detail must never
-// widen this client-facing report (the route remains admin-only).
+// widen this report shared with the authenticated team.
 function publicFormatCounts(counts) {
   return { status: counts.status, reels: counts.reels, carruseles: counts.carruseles, checkedAt: counts.checkedAt,
     ...(counts.source ? { source: counts.source } : {}), ...(counts.reason ? { reason: counts.reason } : {}) };

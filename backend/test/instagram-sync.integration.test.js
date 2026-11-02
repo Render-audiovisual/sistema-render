@@ -130,7 +130,7 @@ test('instagram sync stores accounts, media, metrics and links pieces conservati
 });
 
 // Continúa sobre los datos que dejó la prueba anterior (mismo archivo, en orden).
-test('instagram panel aggregates per client and person; only Líder can read or write', { skip: !enabled }, async () => {
+test('instagram panel is shared with active team members; only Leader can change bindings', { skip: !enabled }, async () => {
   const { AuthorityBoundPool } = await import('../src/database-authority-context.js');
   const { readInstagramPanel, readInstagramClientPieces, writeInstagramMediaLink, writeInstagramAccountLink } = await import('../src/instagram-panel.js');
   const pool = new AuthorityBoundPool({ connectionString: url, max: 3 });
@@ -141,7 +141,7 @@ test('instagram panel aggregates per client and person; only Líder can read or 
     const designer = await user('ig_test_diseno', 'diseno');
     await pool.query(`UPDATE publicaciones SET "responsable_diseño"='Augusto' WHERE id=(SELECT publicacion_id FROM instagram_media WHERE ig_media_id='5001')`);
 
-    await assert.rejects(readInstagramPanel(pool, designer, { periodo: '2026-10' }), { status: 403 });
+    assert.equal((await readInstagramPanel(pool, designer, { periodo: '2026-10' })).periodo,'2026-10');
     await assert.rejects(readInstagramPanel(pool, leader, { periodo: '2026-13' }), { status: 400 });
     await assert.rejects(readInstagramPanel(pool, leader, { periodo: '2026-10', extra: '1' }), { status: 400 });
 
@@ -232,8 +232,8 @@ test('weekly report stores facts, optional AI conclusions and retries AI errors;
       assert.ok(!('responsables' in piece) && !('vinculo' in piece) && !('publicacion_id' in piece));
     }
     const designer = (await pool.query(`SELECT id, session_version FROM usuarios WHERE usuario='ig_test_diseno'`)).rows[0];
-    await assert.rejects(readInstagramClientReport(pool, designer, clave, { periodo: '2026-10' }), { status: 403 });
-    await assert.rejects(readInstagramReports(pool, designer), { status: 403 });
+    assert.equal((await readInstagramClientReport(pool, designer, clave, { periodo: '2026-10' })).clave,clave);
+    assert.ok(Array.isArray((await readInstagramReports(pool, designer)).reportes));
   } finally {
     await pool.end();
   }
@@ -383,7 +383,7 @@ test('client report reads one authorized RR with closed counts, current quotas a
     for(const field of ['actual','anterior','cupo','seguidores','crecimiento_seguidores'])
       assert.deepEqual(report[field],baseline[field],`optimized report preserves ${field}`);
     assert.doesNotMatch(JSON.stringify(report), /Scoped B|report_scope_1|Public99502|Public99503|NOT PUBLIC|ig_media_id|publicacion_id|responsables|vinculo|abono_mensual|"posts"/);
-    await assert.rejects(readInstagramClientReport(pool, designer, `cliente-${clients[0]}`, { periodo: '2026-10' }), { status: 403 });
+    assert.equal((await readInstagramClientReport(pool, designer, `cliente-${clients[0]}`, { periodo: '2026-10' })).clave,report.clave);
     const group=(await pool.query("INSERT INTO grupos_feed(nombre,cuota_mensual) VALUES('IG Report Shared',6) RETURNING id")).rows[0].id;
     await pool.query('UPDATE clientes SET grupo_feed_id=$1 WHERE id=ANY($2::int[])',[group,clients]);
     const groupReport=await readInstagramClientReport(pool,leader,`grupo-${group}`,{periodo:'2026-10'});

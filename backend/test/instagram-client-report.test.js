@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readInstagramClientReport, readInstagramClientPieces, readInstagramPanel, buildPanel } from '../src/instagram-panel.js';
+import { readInstagramClientReport, readInstagramClientPieces, readInstagramPanel, buildPanel,
+  readInstagramAccounts,readInstagramReports,writeInstagramAccountLink,writeInstagramMediaLink } from '../src/instagram-panel.js';
 
 const period = '2020-10', auth = { id: 1, session_version: 1 };
 const published = '2020-10-20T15:00:00.000Z', checked = '2020-11-01T04:00:00.000Z';
@@ -14,7 +15,7 @@ const proof = (extra = {}) => ({ version: 1, source: 'meta_graph_feed', clientId
   username: 'account_a', period, windowStart: '2020-08-03T15:00:00.000Z', checkedAt: checked,
   posts: [{ id: '11', kind: 'reel', publishedAt: published }], ...extra });
 
-function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot = proof(), manual = [], role = 'admin', sameName = false, coverRows = [] } = {}) {
+function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot = proof(), manual = [], role = 'admin', activeUser = true, sessionVersion = 1, sameName = false, coverRows = [] } = {}) {
   const calls = []; let connections = 0, releases = 0, active = false;
   const clients = [{ id: 1, nombre: 'Client A', clave: 'cliente-1', logo: 'https://example.test/a.png' },
     { id: 2, nombre: sameName ? 'Client A' : 'Client B', clave: 'cliente-2', logo: 'https://example.test/b.png' }];
@@ -25,7 +26,7 @@ function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot =
     if (sql.startsWith('BEGIN')) { assert.equal(active, false); active = true; return { rows: [] }; }
     assert.equal(active, true, 'all reads stay on the authorized transaction');
     if (sql === 'COMMIT' || sql === 'ROLLBACK') { active = false; return { rows: [] }; }
-    if (sql.includes('FROM usuarios WHERE id=')) return { rows: [{ ...auth, rol: role, activo: true }] };
+    if (sql.includes('FROM usuarios WHERE id=')) return { rows: [{ ...auth, rol: role, activo: activeUser, session_version:sessionVersion }] };
     if (sql.startsWith('WITH ig_report_clients')) return { rows: [{ clients,accounts,media:rows,
       followers:[],snapshots:snapshot?[{ig_user_id:'111',cliente_id:1,detalles:snapshot}]:[],
       objectives:[{clave:'cliente-1',reels:9,carruseles:9}],manual:manual.map(detalles=>({detalles})) }] };
@@ -173,10 +174,16 @@ test('owner record gives Render totals but never chooses which profile videos be
   assertClosed(result);
 });
 
-test('every exported read wrapper retains admin authorization and rejects before client reads', async () => {
-  for (const read of [h => readInstagramClientReport(h.pool, auth, 'cliente-1', { periodo: period }),
-    h => readInstagramClientPieces(h.pool, auth, 'cliente-1', { periodo: period }),
-    h => readInstagramPanel(h.pool, auth, { periodo: period })]) {
+test('all active team roles can read reports but cannot access administration or mutate bindings', async () => {
+  for(const role of ['admin','diseno','edicion','produccion','community','programacion']) {
+    assert.equal((await readInstagramClientReport(harness({role}).pool,auth,'cliente-1',{periodo:period})).clave,'cliente-1');
+    await readInstagramPanel(harness({role}).pool,auth,{periodo:period});
+    await readInstagramReports(harness({role}).pool,auth);
+  }
+  for (const read of [h => readInstagramClientPieces(h.pool, auth, 'cliente-1', { periodo: period }),
+    h=>readInstagramAccounts(h.pool,auth),
+    h=>writeInstagramAccountLink(h.pool,auth,'111',{cliente_id:1}),
+    h=>writeInstagramMediaLink(h.pool,auth,'11',{publicacion_id:null})]) {
     const h = harness({ role: 'diseno' });
     await assert.rejects(read(h), { status: 403 });
     assert.equal(h.calls.at(-1).sql, 'ROLLBACK');
@@ -186,6 +193,16 @@ test('every exported read wrapper retains admin authorization and rejects before
   await assert.rejects(readInstagramClientReport(h.pool, auth, 'cliente-1', { periodo: period, cliente: 2 }), { status: 400 });
   assert.equal(h.connections(), 0);
   await assert.rejects(readInstagramClientReport(h.pool, auth, 'cliente-99', { periodo: period }), { status: 404 });
+});
+
+test('shared reads still reject missing, inactive and revoked sessions before reading client data',async()=>{
+  for(const options of [{activeUser:false},{sessionVersion:2}]) {
+    const h=harness(options);
+    await assert.rejects(readInstagramClientReport(h.pool,auth,'cliente-1',{periodo:period}),{status:401});
+    assert.equal(h.calls.some(c=>c.sql.startsWith('WITH ig_report_clients')),false);
+  }
+  const h=harness();await assert.rejects(readInstagramPanel(h.pool,null,{periodo:period}),{status:401});
+  assert.equal(h.connections(),0);
 });
 
 test('standalone detail uses the same feed membership rules and logo is optional without fallback', async () => {

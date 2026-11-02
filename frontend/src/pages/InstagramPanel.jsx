@@ -8,7 +8,7 @@ import { needsInstagramOverview } from './instagramLoading.js';
 import { handleAppLinkClick } from '../shared/navigation/location.js';
 import './InstagramPanel.css';
 
-// Panel de rendimiento de Instagram. Solo Líder; el servidor vuelve a verificarlo.
+// Shared read-only reports. Administration remains Leader-only on the server.
 const number = new Intl.NumberFormat('es-AR');
 const compact = new Intl.NumberFormat('es-AR', { notation: 'compact', maximumFractionDigits: 1 });
 const monthLabel = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -41,11 +41,12 @@ function Delta({ current, previous }) {
 
 export function InstagramPanelPage({ sesion }) {
   const { view } = useScopedRequest(sesion || getSesion(), 'instagram');
-  if (view.role !== 'admin') return <main className="page-shell ig-panel"><div className="salary-state is-error">El panel de Instagram está disponible solo para Líder.</div></main>;
+  if (!view.role) return <main className="page-shell ig-panel"><div className="salary-state is-error">Iniciá sesión para consultar Instagram.</div></main>;
   return <InstagramPanelContent key={view.key} sesion={view.session} />;
 }
 
 function InstagramPanelContent({ sesion }) {
+  const canManage = sesion?.usuario?.rol === 'admin';
   const [navigation,setNavigation]=useState(()=>readInstagramLocation(window.location.search,currentPeriod()));
   const {period,tab,selected}=navigation;
   const navigate=changes=>{const next={...navigation,...changes,error:''};window.history.pushState({},'',instagramPanelHref(next));setNavigation(next);};
@@ -85,11 +86,11 @@ function InstagramPanelContent({ sesion }) {
 
     {data && <p className="ig-sync-note">
       {data.ultima_sincronizacion ? `Última sincronización con Meta: ${dateLabel.format(new Date(data.ultima_sincronizacion))}` : 'Todavía no hay datos sincronizados desde Meta.'}
-      {data.cuentas_sin_cliente > 0 && <> · <button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>{data.cuentas_sin_cliente} cuenta{data.cuentas_sin_cliente === 1 ? '' : 's'} sin cliente asignado</button></>}
+      {canManage && data.cuentas_sin_cliente > 0 && <> · <button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>{data.cuentas_sin_cliente} cuenta{data.cuentas_sin_cliente === 1 ? '' : 's'} sin cliente asignado</button></>}
     </p>}
 
     <nav className="ig-tabs" aria-label="Secciones del panel">
-      {[['clientes', 'Clientes'], ['equipo', 'Equipo'], ['reportes', 'Reportes'], ['cuentas', 'Cuentas']].map(([id, label]) =>
+      {[['clientes', 'Clientes'], ['equipo', 'Equipo'], ['reportes', 'Reportes'], ...(canManage ? [['cuentas', 'Cuentas']] : [])].map(([id, label]) =>
         <button key={id} type="button" className={tab === id ? 'is-active' : ''} aria-pressed={tab === id} onClick={() => navigate({tab:id,selected:null})}>{label}{id === 'clientes' && visibleAlerts.length ? <span className="ig-badge" aria-label={`${visibleAlerts.length} alertas`}>{visibleAlerts.length}</span> : null}</button>)}
     </nav>
 
@@ -98,11 +99,12 @@ function InstagramPanelContent({ sesion }) {
     {needsOverview&&error && <div className="salary-state is-error" role="alert"><strong>No se pudo cargar el panel.</strong><span>{error}</span>
       <button type="button" className="btn" onClick={reload}>Reintentar</button></div>}
 
-    {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} onOpen={key=>navigate({selected:key})} />}
-    {!navigation.error&&tab === 'clientes' && selected && <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} />}
+    {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} onOpen={canManage ? key=>navigate({selected:key}) : undefined} />}
+    {!navigation.error&&tab === 'clientes' && selected && (canManage ? <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} /> :
+      <a className="btn" href={instagramReportHref(selected,period)} onClick={event=>handleAppLinkClick(window,event)}>Ver reporte del cliente</a>)}
     {!navigation.error&&data?.periodo === period && tab === 'equipo' && <TeamView data={data} />}
     {!navigation.error&&tab === 'reportes' && <ReportsView sesion={sesion} />}
-    {!navigation.error&&tab === 'cuentas' && <AccountsView sesion={sesion} onChanged={reload} />}
+    {!navigation.error&&tab === 'cuentas' && (canManage ? <AccountsView sesion={sesion} onChanged={reload} /> : <p role="alert">Solo Líder puede administrar las cuentas.</p>)}
   </main>;
 }
 
@@ -231,7 +233,7 @@ function ClientReportCard({client:c,period,onOpen}) {
     </div>
     <p className={`ig-client-card-note${state==='stale'?' is-stale':''}`}>{note}{c.format_counts?.checkedAt&&<> · <time dateTime={c.format_counts.checkedAt}>{dateLabel.format(new Date(c.format_counts.checkedAt))}</time></>}</p>
     <footer><a className="ig-client-report-link" onClick={event => handleAppLinkClick(window, event)} href={instagramReportHref(c.clave,period)} aria-label={`Ver reporte de ${c.nombre}`}>Ver reporte <span aria-hidden="true">↗</span></a>
-      <button type="button" className="ig-client-posts-link" onClick={()=>onOpen(c.clave)} aria-label={`Ver publicaciones de ${c.nombre}`}>Publicaciones</button></footer>
+      {onOpen && <button type="button" className="ig-client-posts-link" onClick={()=>onOpen(c.clave)} aria-label={`Ver publicaciones de ${c.nombre}`}>Publicaciones</button>}</footer>
   </article>;
 }
 
