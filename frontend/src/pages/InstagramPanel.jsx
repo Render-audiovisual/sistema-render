@@ -171,10 +171,10 @@ function ReportsView({ sesion }) {
         {list.rows.map(r => <option key={r.id} value={r.id}>{range(r)}</option>)}
       </select></label>}
     </header>
-    <p className="ig-help">Se generan solos cada lunes con los datos de la semana anterior (lunes a domingo). Los números los calcula el sistema; el texto de conclusiones lo redacta la IA solo a partir de esos números.</p>
+    <p className="ig-help">Se generan solos cada sábado a las 9 con los datos de la semana que termina (sábado a viernes). Los números los calcula el sistema; el texto de conclusiones lo redacta la IA solo a partir de esos números.</p>
     {list.loading && <div className="salary-state">Cargando reportes…</div>}
     {list.error && <div className="salary-state is-error" role="alert">{list.error}</div>}
-    {!list.loading && !list.rows.length && !list.error && <div className="salary-state">Todavía no hay reportes. El primero aparece el lunes siguiente a activar el job <code>instagram_reporte</code>.</div>}
+    {!list.loading && !list.rows.length && !list.error && <div className="salary-state">Todavía no hay reportes. El próximo aparece el sábado a las 9.</div>}
     {report && <WeeklyReport report={report} />}
   </section>;
 }

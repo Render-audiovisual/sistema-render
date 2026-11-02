@@ -1,4 +1,5 @@
-// Dedicated cron entrypoint: no editorial work, task writes, WhatsApp or AI.
+// Dedicated Instagram entrypoint: no editorial work, task writes or WhatsApp.
+// Weekly report AI remains optional under its existing explicit configuration.
 async function main(){
   const args=process.argv.slice(2);
   if(args.length===1&&['--help','-h'].includes(args[0])){

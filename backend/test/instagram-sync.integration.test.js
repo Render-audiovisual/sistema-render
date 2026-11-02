@@ -29,6 +29,7 @@ const H = 3600000;
 test('dedicated scheduled Instagram worker renews inventory, captions and covers without operational writes or duplicate hourly runs', { skip: !enabled }, async () => {
   const {AuthorityBoundPool}=await import('../src/database-authority-context.js');
   const {runInstagramScheduled}=await import('../src/instagram-scheduled-worker.js');
+    const {runInstagramWeeklyReport}=await import('../src/instagram-weekly-report.js');
   const pool=new AuthorityBoundPool({connectionString:url,max:4});
   try{
     const client=(await pool.query("INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES('IG Dedicated Worker',4,2) RETURNING id")).rows[0];
@@ -49,14 +50,19 @@ test('dedicated scheduled Instagram worker renews inventory, captions and covers
       (await pool.query(`SELECT count(*)::int AS n,md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY id),'')) AS hash FROM ${name} t`)).rows[0]));
     const before=await fingerprints();
     const env={RENDER_DB_ENVIRONMENT:'test',DATABASE_URL:url,RENDER_AUTOMATIONS_MODE:'scheduled-v1',
-      RENDER_AUTOMATION_CONNECTION_MODE:'direct',RENDER_AUTOMATION_JOBS:'editorial,instagram,wilson'};
+      RENDER_AUTOMATION_CONNECTION_MODE:'direct',RENDER_AUTOMATION_JOBS:'editorial,instagram,wilson,instagram_reporte'};
+    const sequence=[];
     const execute=()=>runInstagramScheduled({env,now:()=>stamp,
       createPool:()=>new AuthorityBoundPool({connectionString:url,max:4}),
-      sync:(owned,{now})=>runInstagramSync(owned,{now,env:{},graph})});
-    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram']});
+      sync:(owned,{now})=>{sequence.push('sync');return runInstagramSync(owned,{now,env:{},graph});},
+      report:(owned,{now,env})=>{sequence.push('report');return runInstagramWeeklyReport(owned,{now,env});}});
+    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram','instagram_reporte']});
+    assert.deepEqual(sequence,['sync','report']);
     const firstReads=reads;assert.deepEqual(await execute(),{state:'COMPLETED',jobs:[]});assert.equal(reads,firstReads);
     revision=2;stamp.setUTCHours(stamp.getUTCHours()+7);
-    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram']});
+    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram','instagram_reporte']});
+    assert.deepEqual(sequence,['sync','report','sync','report']);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM instagram_reportes WHERE tipo='semanal' AND desde='2026-10-24'")).rows[0].n,1);
     const media=(await pool.query("SELECT caption FROM instagram_media WHERE ig_media_id='987654322'")).rows[0];
     assert.equal(media.caption,'Copy 2');
     const cover=(await pool.query(`SELECT detalles FROM integracion_auditoria WHERE accion=$1 AND detalles->>'clientId'=$2 ORDER BY id DESC LIMIT 1`,[MEDIA_COVERS_ACTION,String(client.id)])).rows[0].detalles;
@@ -223,9 +229,9 @@ test('weekly report stores facts, optional AI conclusions and retries AI errors;
   const pool = new AuthorityBoundPool({ connectionString: url, max: 3 });
   try {
     await pool.query('TRUNCATE instagram_reportes');
-    // Semana del 19 al 25/10: incluye 5001 (20/10 21h Córdoba), 5002 (21/10), 6001 (22/10), 5003 (25/10).
-    const now = new Date('2026-10-28T15:00:00Z');
-    assert.deepEqual(lastCompleteWeek(now), { desde: '2026-10-19', hasta: '2026-10-25' });
+    // Sábado 24/10 12h Córdoba → semana del sábado 17 al viernes 23/10: 5001 (20/10 21h), 5002 (21/10), 6001 (22/10).
+    const now = new Date('2026-10-24T15:00:00Z');
+    assert.deepEqual(lastCompleteWeek(now), { desde: '2026-10-17', hasta: '2026-10-23' });
 
     let calls = 0;
     const okFetch = async (_url, init) => {
@@ -252,9 +258,9 @@ test('weekly report stores facts, optional AI conclusions and retries AI errors;
     assert.equal(list.reportes.length, 1);
     const report = await readInstagramReport(pool, leader, String(list.reportes[0].id));
     assert.equal(report.conclusiones, 'RESUMEN: buena semana.');
-    assert.equal(report.hechos.totales.piezas, 4);
+    assert.equal(report.hechos.totales.piezas, 3);
     const bohle = report.hechos.clientes.find(c => c.cliente === 'IG Test Bohle');
-    assert.equal(bohle.piezas, 3);
+    assert.equal(bohle.piezas, 2);
     assert.equal(bohle.mejor_pieza.alcance, 100);
     assert.ok(report.hechos.equipo.some(p => p.nombre === 'Augusto'));
 

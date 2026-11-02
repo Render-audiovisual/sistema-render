@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lastCompleteWeek, resolveAiConfig, buildWeeklyFacts, SYSTEM_PROMPT } from '../src/instagram-weekly-report.js';
 
-test('lastCompleteWeek uses Córdoba Monday-Sunday weeks', () => {
-  assert.deepEqual(lastCompleteWeek(new Date('2026-11-02T12:00:00Z')), { desde: '2026-10-26', hasta: '2026-11-01' }); // lunes
-  assert.deepEqual(lastCompleteWeek(new Date('2026-11-02T02:00:00Z')), { desde: '2026-10-19', hasta: '2026-10-25' }); // domingo 23h en Córdoba
-  assert.deepEqual(lastCompleteWeek(new Date('2026-11-01T15:00:00Z')), { desde: '2026-10-19', hasta: '2026-10-25' });
+test('lastCompleteWeek uses Saturday-Friday weeks due Saturday 9:00 in Córdoba', () => {
+  const at = iso => lastCompleteWeek(new Date(iso));
+  assert.deepEqual(at('2026-11-07T12:00:00Z'), { desde: '2026-10-31', hasta: '2026-11-06' }); // sábado 9:00
+  assert.deepEqual(at('2026-11-07T11:59:00Z'), { desde: '2026-10-24', hasta: '2026-10-30' }); // sábado 8:59
+  assert.deepEqual(at('2026-11-02T12:00:00Z'), { desde: '2026-10-24', hasta: '2026-10-30' }); // lunes
+  assert.deepEqual(at('2026-11-07T02:00:00Z'), { desde: '2026-10-24', hasta: '2026-10-30' }); // viernes 23h en Córdoba
+  assert.deepEqual(at('2026-11-08T15:00:00Z'), { desde: '2026-10-31', hasta: '2026-11-06' }); // domingo
+  assert.deepEqual(at('2027-01-02T12:00:00Z'), { desde: '2026-12-26', hasta: '2027-01-01' }); // cambio de año
+  assert.deepEqual(at('2026-08-01T12:00:00Z'), { desde: '2026-07-25', hasta: '2026-07-31' }); // cambio de mes
 });
 
 test('AI is off unless explicitly enabled with key and model', () => {

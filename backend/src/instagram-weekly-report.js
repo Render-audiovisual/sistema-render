@@ -6,19 +6,22 @@ import { responsablesDe, interactions } from './instagram-metrics.js';
 const TIME_ZONE = 'America/Argentina/Cordoba';
 const DAY = 86400000;
 
-function cordobaDate(date) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
-    .formatToParts(date).map(({ type, value }) => [type, value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
+function cordobaParts(date) {
+  return Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(({ type, value }) => [type, value]));
 }
 const addDays = (iso, days) => new Date(Date.parse(`${iso}T12:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 
-// Última semana completa (lunes a domingo) en el calendario de Córdoba.
+// El reporte se arma los sábados desde las 9:00 (Córdoba) con la semana
+// completa de sábado a viernes que acaba de terminar.
+export const REPORT_WEEKDAY = 6, REPORT_HOUR = 9;
 export function lastCompleteWeek(now) {
-  const today = cordobaDate(now);
-  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 domingo
-  const thisMonday = addDays(today, -((weekday + 6) % 7));
-  return { desde: addDays(thisMonday, -7), hasta: addDays(thisMonday, -1) };
+  const parts = cordobaParts(now);
+  const today = `${parts.year}-${parts.month}-${parts.day}`;
+  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 domingo … 6 sábado
+  let saturday = addDays(today, -((weekday - REPORT_WEEKDAY + 7) % 7));
+  if (saturday === today && Number(parts.hour) < REPORT_HOUR) saturday = addDays(saturday, -7);
+  return { desde: addDays(saturday, -7), hasta: addDays(saturday, -1) };
 }
 
 const WEEK_MEDIA_SQL = `SELECT m.ig_media_id, m.tipo, m.permalink, left(m.caption, 160) AS caption, m.publicado_at,

@@ -8,7 +8,8 @@ const environment=()=>({RENDER_AUTOMATIONS_MODE:'scheduled-v1',RENDER_AUTOMATION
   RENDER_DB_ENVIRONMENT:'test',DATABASE_URL:'postgresql://fixture@127.0.0.1:5432/example'});
 test('dedicated worker narrows enabled jobs without changing its input or security controls',()=>{
   const env=environment(),selected=instagramWorkerEnvironment(env);
-  assert.equal(selected.RENDER_AUTOMATION_JOBS,'instagram');assert.ok(Object.isFrozen(selected));
+  assert.equal(selected.RENDER_AUTOMATION_JOBS,'instagram,instagram_reporte');assert.ok(Object.isFrozen(selected));
+  assert.equal(instagramWorkerEnvironment({...env,RENDER_AUTOMATION_JOBS:'editorial,instagram'}).RENDER_AUTOMATION_JOBS,'instagram');
   assert.equal(env.RENDER_AUTOMATION_JOBS,'editorial,wilson,supervisor,instagram,instagram_reporte');
   assert.equal(selected.DATABASE_URL,env.DATABASE_URL);
   for(const extra of [{RENDER_AUTOMATION_JOBS:'editorial'},{RENDER_AUTOMATION_CONNECTION_MODE:'transaction'},

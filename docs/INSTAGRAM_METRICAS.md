@@ -170,7 +170,9 @@ Se calculan al abrir el panel; no envían mensajes. Cada una muestra los número
 ## Reporte semanal (job `instagram_reporte`, migración 095)
 
 Cada corrida verifica si existe el reporte de la última semana completa
-(lunes a domingo, Córdoba); si no, lo crea. Los **hechos** los calcula SQL.
+(sábado a viernes, Córdoba; se arma desde el sábado a las 9:00); si no, lo crea.
+Corre en el worker dedicado `run-instagram-automation.js` después de sincronizar,
+si `instagram_reporte` está autorizado en `RENDER_AUTOMATION_JOBS`. Los **hechos** los calcula SQL.
 Las **conclusiones** con IA son opcionales y solo se piden con:
 
 ```
