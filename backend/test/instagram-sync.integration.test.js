@@ -26,6 +26,46 @@ test.after(async () => {
 });
 const H = 3600000;
 
+test('dedicated scheduled Instagram worker renews inventory, captions and covers without operational writes or duplicate hourly runs', { skip: !enabled }, async () => {
+  const {AuthorityBoundPool}=await import('../src/database-authority-context.js');
+  const {runInstagramScheduled}=await import('../src/instagram-scheduled-worker.js');
+  const pool=new AuthorityBoundPool({connectionString:url,max:4});
+  try{
+    const client=(await pool.query("INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES('IG Dedicated Worker',4,2) RETURNING id")).rows[0];
+    await pool.query("INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES('987654321','dedicated_qa',$1)",[client.id]);
+    const accounts=(await pool.query('SELECT ig_user_id,username FROM instagram_cuentas')).rows;
+    let revision=1,reads=0;
+    const stamp=new Date('2026-11-03T10:05:00Z');
+    const graph={
+      async listInstagramAccounts(){reads++;return accounts.map(a=>({igUserId:a.ig_user_id,username:a.username,pageId:null,followers:null}));},
+      async listMedia(id){return id==='987654321'?[
+        {igMediaId:'987654322',tipo:'reel',permalink:'https://www.instagram.com/reel/DedicatedQA/',caption:`Copy ${revision}`,publishedAt:new Date('2026-11-02T15:00:00Z')},
+        ...(revision===2?[{igMediaId:'987654323',tipo:'carrusel',permalink:'https://www.instagram.com/p/DedicatedCarousel/',caption:'Carrusel nuevo',publishedAt:new Date('2026-11-03T14:00:00Z')}]:[]),
+      ]:[];},
+      async mediaInsights(){return {alcance:100,vistas:200};},
+      async mediaCover(){return `https://scontent.cdninstagram.com/cover-${revision}.jpg`;},
+    };
+    const fingerprints=async()=>Promise.all(['tareas','publicaciones','cliente_objetivos_mensuales'].map(async name=>
+      (await pool.query(`SELECT count(*)::int AS n,md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY id),'')) AS hash FROM ${name} t`)).rows[0]));
+    const before=await fingerprints();
+    const env={RENDER_DB_ENVIRONMENT:'test',DATABASE_URL:url,RENDER_AUTOMATIONS_MODE:'scheduled-v1',
+      RENDER_AUTOMATION_CONNECTION_MODE:'direct',RENDER_AUTOMATION_JOBS:'editorial,instagram,wilson'};
+    const execute=()=>runInstagramScheduled({env,now:()=>stamp,
+      createPool:()=>new AuthorityBoundPool({connectionString:url,max:4}),
+      sync:(owned,{now})=>runInstagramSync(owned,{now,env:{},graph})});
+    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram']});
+    const firstReads=reads;assert.deepEqual(await execute(),{state:'COMPLETED',jobs:[]});assert.equal(reads,firstReads);
+    revision=2;stamp.setUTCHours(stamp.getUTCHours()+7);
+    assert.deepEqual(await execute(),{state:'COMPLETED',jobs:['instagram']});
+    const media=(await pool.query("SELECT caption FROM instagram_media WHERE ig_media_id='987654322'")).rows[0];
+    assert.equal(media.caption,'Copy 2');
+    const cover=(await pool.query(`SELECT detalles FROM integracion_auditoria WHERE accion=$1 AND detalles->>'clientId'=$2 ORDER BY id DESC LIMIT 1`,[MEDIA_COVERS_ACTION,String(client.id)])).rows[0].detalles;
+    assert.equal(cover.items.find(i=>i.id==='987654322').url,'https://scontent.cdninstagram.com/cover-2.jpg');
+    assert.equal(cover.items.find(i=>i.id==='987654323').kind,'carrusel');
+    assert.deepEqual(await fingerprints(),before);
+  }finally{await pool.end();}
+});
+
 function fakeGraph(state) {
   return {
     async listInstagramAccounts() { if (state.authError) throw new GraphError('auth'); return state.accounts; },
