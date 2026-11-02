@@ -84,13 +84,13 @@ test('owner record keeps 3/1, dates its record and never claims closure or ident
   assert.match(html,/Fecha del dato:/);assert.doesNotMatch(html,/Emitido:/);
 });
 
-test('gallery is visible before advanced statistics without duplicating posts or private IDs',()=>{
+test('simple report shows only formats and media, without advanced blocks or duplicate posts',()=>{
   const data=fixture();data.piezas=Array.from({length:31},(_,i)=>({permalink:`https://www.instagram.com/p/Post${i}/`,tipo:i%2?'reel':'carrusel',publicado_at:'2026-10-05T15:00:00.000Z',metricas:{alcance:i,vistas:null}}));
   data.destacadas=[{...data.piezas[0],caption:'Texto de prueba'}];
   const html=render(api.ClientReportDocument,{data});
-  assert.match(html,/<details class="ig-client-report-statistics"><summary>Más estadísticas/);assert.doesNotMatch(html,/<details[^>]* open/);
-  assert.match(html,/Post30/);assert.equal((html.match(/class="ig-media-card"/g)||[]).length,31);assert.match(html,/no son personas únicas/);
-  assert.ok(html.indexOf('Rendimiento del contenido')<html.indexOf('Más estadísticas'));
+  assert.doesNotMatch(html,/Más estadísticas|Sobre estos datos|Mes anterior|Ordenar por|Ver resultados/);assert.doesNotMatch(html,/<details[^>]* open/);
+  assert.match(html,/Post30/);assert.equal((html.match(/class="ig-media-card"/g)||[]).length,31);
+  for(const label of ['Reproducciones','Alcance','Me gusta','Comentarios','Guardados','Compartidos'])assert.match(html,new RegExp(`<dt>${label}</dt>`));
   assert.doesNotMatch(source,/p\.ig_media_id|responsables|publicacion_id/);
 });
 

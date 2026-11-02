@@ -51,6 +51,14 @@ test('printed gallery explicitly identifies the active format and sort instead o
   assert.match(css, /@media print\{[^\n]*\.ig-media-print-context\{display:block/);
 });
 
+test('simple gallery keeps formats and visible metrics without a sort menu or nested results',()=>{
+  const html=render(api.InstagramMediaGallery,{pieces:[piece('reel',0),piece('carrusel',null)]});
+  assert.doesNotMatch(html,/Ordenar por|Qué contenido funciona mejor|Ver resultados|<select/);
+  for(const label of ['Reproducciones','Alcance','Me gusta','Comentarios','Guardados','Compartidos'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,2);
+  assert.match(html,/<dd>0<\/dd>/);assert.match(html,/<dd>—<\/dd>/);
+  assert.match(html,/aria-pressed="true">Todo/);
+});
+
 test('reels and carousels expose the entire original copy outside the Instagram link, preserving paragraphs safely', () => {
   for (const tipo of ['reel', 'carrusel']) {
     const caption = `Primer párrafo\n\n${'Texto completo '.repeat(60)}\n#Contenido <script>no ejecutar</script>`;

@@ -186,7 +186,7 @@ export function ClientReportDocument({ data }) {
   return <article className="ig-client-report-document">
     <header className="ig-client-report-heading">
       <ReportLogo key={`${data.cliente}:${data.logo || ''}`} logo={data.logo} name={data.cliente} />
-      <div><p className="ig-client-report-eyebrow">RENDER · Reporte de Instagram</p><h1>{data.cliente}</h1>
+      <div><h1>{data.cliente}</h1>
         <p className="ig-client-report-accounts">{accounts.length ? accounts.map(name => `@${name}`).join(' · ') : 'Sin cuenta vinculada'}</p></div>
       <p className="ig-client-report-period">{reportPeriodLabel(data.periodo)}</p>
     </header>
@@ -195,11 +195,8 @@ export function ClientReportDocument({ data }) {
       <ClientReportFormatCard label="Carruseles" format="carruseles" data={data} />
     </section>
     <InstagramMediaGallery pieces={data.piezas} />
-    <details className="ig-client-report-source"><summary>Sobre estos datos</summary>
-      <p className="ig-client-report-evidence">{reportEvidenceLabel(data.format_counts)}</p>
-      <p className="ig-client-report-coverage">{reportCoverageLabel(data)}</p>
-    </details>
-    <ClientReportStatistics data={data} />
+    {!['current','confirmed','historical'].includes(data.format_counts?.status) && <p className="ig-client-report-evidence">{reportEvidenceLabel(data.format_counts)}</p>}
+    {(data.format_counts?.status === 'owner_record' || data.coverage?.complete === false) && <p className="ig-client-report-coverage">{reportCoverageLabel(data)}</p>}
     <footer className="ig-client-report-footer"><span>RENDER · {reportPeriodLabel(data.periodo)}</span>
       {data.dataFecha && <span>Fecha del dato: {reportDate(data.dataFecha)}</span>}</footer>
   </article>;
@@ -217,7 +214,6 @@ function InstagramClientReportContent({ sesion, params, onPeriodChange }) {
       <div className="ig-client-report-controls"><label><span>Mes del reporte</span><input type="month" value={params.periodo} onChange={event => onPeriodChange(event.target.value)} /></label>
         <button type="button" onClick={() => window.print()} disabled={!state.data || state.loading || Boolean(state.error)}>Imprimir / Guardar PDF</button></div>
     </div>
-    <p className="ig-client-report-print-help">En el cuadro de impresión elegí “Guardar como PDF”.</p>
     {state.loading && <div className="ig-client-report-state" role="status">Cargando el reporte de {reportPeriodLabel(params.periodo)}…</div>}
     {state.error && <div className="ig-client-report-state" role="alert">{state.error}</div>}
     {state.data && <ClientReportDocument data={state.data} />}
