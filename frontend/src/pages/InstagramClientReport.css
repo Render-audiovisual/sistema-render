@@ -19,19 +19,22 @@
 .ig-client-report-accounts{font-size:14px;line-height:1.6;color:var(--icr-muted);margin:8px 0 0;overflow-wrap:anywhere}
 .ig-client-report-period{align-self:end;font-size:14px;font-weight:500;margin:0 0 4px;text-align:right}
 .ig-client-report-formats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-.ig-client-report-format{min-width:0;background:var(--icr-surface);padding:32px;border:1px solid var(--icr-line);border-radius:20px}
-.ig-client-report-format h2{font-size:17px;font-weight:600;margin:0 0 24px}
+.ig-client-report-format{min-width:0;display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;background:var(--icr-surface);padding:20px 24px;border:1px solid var(--icr-line);border-radius:14px}
+.ig-client-report-format h2{font-size:15px;font-weight:600;margin:0}
 .ig-client-report-count{display:flex;align-items:baseline;gap:12px;margin:0;font-variant-numeric:tabular-nums;line-height:1}
-.ig-client-report-count strong{font-size:clamp(52px,7vw,72px);letter-spacing:-.05em;font-weight:600}
-.ig-client-report-count>span{font-size:28px;color:var(--icr-muted);font-weight:400}
-.ig-client-report-format-caption{font-size:13px;line-height:1.5;color:var(--icr-muted);margin:16px 0 24px}
-.ig-client-report-bar{height:8px;border-radius:8px;overflow:hidden;background:var(--icr-line)}
+.ig-client-report-count strong{font-size:32px;letter-spacing:-.05em;font-weight:600}
+.ig-client-report-count>span{font-size:20px;color:var(--icr-muted);font-weight:400}
+.ig-client-report-format-caption{grid-column:1/-1;font-size:12px;line-height:1.5;color:var(--icr-muted);margin:0}
+.ig-client-report-bar{grid-column:1/-1;height:6px;border-radius:8px;overflow:hidden;background:var(--icr-line)}
 .ig-client-report-bar>span{display:block;height:100%;border-radius:inherit;background:var(--icr-accent)}
 .ig-client-report-bar.is-locked{background:repeating-linear-gradient(135deg,#e4e7ec 0,#e4e7ec 4px,#f5f5f7 4px,#f5f5f7 8px)}
 .ig-client-report-format[data-status=stale] .ig-client-report-bar>span,.ig-client-report-format[data-status=owner_record] .ig-client-report-bar>span{opacity:.55}
-.ig-client-report-format-note{font-size:12px;line-height:1.6;color:var(--icr-muted);margin:16px 0 0;min-height:20px}
+.ig-client-report-format-note{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .ig-client-report-evidence{font-size:12px;line-height:1.7;color:var(--icr-muted);margin:20px 0 40px}
 .ig-client-report-coverage{font-size:12px;line-height:1.7;color:var(--icr-muted);margin:-24px 0 32px;max-width:84ch}
+.ig-client-report-source{border-top:1px solid var(--icr-line);margin:24px 0;padding:8px 0}
+.ig-client-report-source summary{min-height:44px;align-content:center;font-size:13px;color:var(--icr-muted);cursor:pointer}
+.ig-client-report-source .ig-client-report-evidence,.ig-client-report-source .ig-client-report-coverage{margin:12px 0;font-size:12px}
 .ig-client-report-statistics{border:1px solid var(--icr-line);border-radius:16px;background:var(--icr-surface);overflow:hidden}
 .ig-client-report-statistics>summary{cursor:pointer;min-height:64px;padding:20px 24px;font-size:15px;font-weight:600}
 .ig-client-report-statistics>summary>span{display:inline-block;color:var(--icr-muted);font-size:12px;font-weight:400;margin-left:16px}

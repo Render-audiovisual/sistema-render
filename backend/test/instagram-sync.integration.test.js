@@ -4,9 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
 import pg from 'pg';
-import { runInstagramSync } from '../src/instagram-sync.js';
+import { runInstagramSync, cordobaDate } from '../src/instagram-sync.js';
 import { linkInstagramAccount } from '../src/instagram-accounts.js';
-import { GraphError } from '../src/instagram-graph.js';
+import { GraphError, MEDIA_COVERS_ACTION } from '../src/instagram-graph.js';
 import { FEED_SNAPSHOT_ACTION, validateFeedCountSnapshot } from '../../shared/instagram-feed-counts.mjs';
 import { startLocalHarness, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 
@@ -75,6 +75,7 @@ test('instagram sync stores accounts, media, metrics and links pieces conservati
       },
     };
     const graph = fakeGraph(state);
+    graph.mediaCover = async id => `https://scontent.cdninstagram.com/${id}.jpg?sig=fixture`;
 
     // Antes de vincular: solo descubre cuentas, no sincroniza piezas.
     let summary = await runInstagramSync(pool, { now, graph });
@@ -88,6 +89,12 @@ test('instagram sync stores accounts, media, metrics and links pieces conservati
 
     summary = await runInstagramSync(pool, { now, graph });
     assert.deepEqual([summary.ok, summary.errores, summary.media, summary.metricas], [2, 0, 4, 4]);
+    const coverSnapshots = (await pool.query(`SELECT detalles FROM integracion_auditoria
+      WHERE integracion='instagram_graph' AND accion='media_covers_v1' AND resultado='ok'
+        AND detalles->>'igUserId'=ANY($1::text[]) ORDER BY id DESC LIMIT 2`, [['111', '222']])).rows;
+    assert.equal(coverSnapshots.length, 2);
+    assert.equal(coverSnapshots.flatMap(row => row.detalles.items).length, 4);
+    assert.ok(coverSnapshots.every(row => row.detalles.items.every(item => /^https:\/\/scontent\.cdninstagram\.com\/[0-9]+\.jpg/.test(item.url))));
     const links = Object.fromEntries((await pool.query('SELECT ig_media_id,vinculo,publicacion_id FROM instagram_media')).rows
       .map(r => [r.ig_media_id, [r.vinculo, r.publicacion_id]]));
     assert.deepEqual(links['5001'], ['automatico', reelBohle]);
@@ -369,5 +376,47 @@ test('client report reads one authorized RR with closed counts, current quotas a
     assert.equal(report.dataFecha, checkedAt);
     assert.doesNotMatch(JSON.stringify(report), /Scoped B|report_scope_1|Public99502|Public99503|NOT PUBLIC|ig_media_id|publicacion_id|responsables|vinculo|abono_mensual|"posts"/);
     await assert.rejects(readInstagramClientReport(pool, designer, `cliente-${clients[0]}`, { periodo: '2026-10' }), { status: 403 });
+  } finally { await pool.end(); }
+});
+
+test('optional real cover pipeline persists in existing audit and reaches client gallery without changing feed proofs', { skip: !enabled }, async () => {
+  const { readInstagramClientReport } = await import('../src/instagram-panel.js');
+  const pool = new pg.Pool({ connectionString: url, max: 3 });
+  try {
+    const clientId = (await pool.query("INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES('IG Cover Pipeline',2,2) RETURNING id")).rows[0].id;
+    await pool.query("INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES('66111','cover_pipeline',$1)", [clientId]);
+    const now = new Date(), first = new Date(+now - 7 * 3600000), publishedAt = new Date(+now - 8 * 3600000);
+    const period = cordobaDate(publishedAt).slice(0, 7), image = 'https://scontent.cdninstagram.com/real-cover.jpg?oh=signed';
+    let failCover = false, coverCalls = 0;
+    const media = ['66501', '66502'].map((igMediaId, i) => ({ igMediaId, tipo: i ? 'carrusel' : 'reel',
+      permalink: `https://www.instagram.com/p/Cover${igMediaId}/`, caption: `Public caption ${igMediaId}`, publishedAt }));
+    const graph = {
+      async listInstagramAccounts() { return [{ igUserId: '66111', username: 'cover_pipeline', pageId: null, followers: null }]; },
+      async listMedia() { return media; },
+      async mediaInsights() { return { alcance: 120, vistas: 300, likes: 10 }; },
+      async mediaCover() { coverCalls++; if (failCover) throw new GraphError('network'); return image; },
+    };
+    await runInstagramSync(pool, { now: first, env: {}, graph });
+    failCover = true;
+    await runInstagramSync(pool, { now, env: {}, graph });
+    assert.equal(coverCalls, 4, 'refresh is independent and retries after six hours');
+    const stored = (await pool.query(`SELECT detalles FROM integracion_auditoria
+      WHERE integracion='instagram_graph' AND canal='system' AND actor_id='render-worker' AND accion=$1
+        AND detalles->>'igUserId'='66111' ORDER BY id DESC LIMIT 1`, [MEDIA_COVERS_ACTION])).rows[0].detalles;
+    assert.ok(stored.items.every(item => item.url === image && item.checkedAt === first.toISOString()), 'network failure retains original URL age');
+    const leader = (await pool.query("SELECT id,session_version FROM usuarios WHERE usuario='ig_test_lider'")).rows[0];
+    const report = await readInstagramClientReport(pool, leader, `cliente-${clientId}`, { periodo: period });
+    assert.equal(coverCalls, 4, 'report performs no request-side Graph call');
+    assert.equal(report.piezas.length, 2);
+    assert.equal(report.format_counts.reels, 1); assert.equal(report.format_counts.carruseles, 1);
+    for (const piece of report.piezas) {
+      assert.equal(piece.portada_url, image); assert.match(piece.caption, /^Public caption/);
+      assert.equal(piece.metricas.vistas, 300); assert.equal('ig_media_id' in piece, false);
+    }
+    const proof = (await pool.query(`SELECT detalles FROM integracion_auditoria WHERE accion=$1
+      AND detalles->>'igUserId'='66111' AND detalles->>'period'=$2 ORDER BY id DESC LIMIT 1`, [FEED_SNAPSHOT_ACTION, period])).rows[0].detalles;
+    assert.equal(proof.posts.length, 2);
+    for (const post of proof.posts) assert.deepEqual(Object.keys(post).sort(), ['id', 'kind', 'publishedAt']);
+    assert.doesNotMatch(JSON.stringify(proof), /"portada_url"|"url"|cdninstagram/);
   } finally { await pool.end(); }
 });

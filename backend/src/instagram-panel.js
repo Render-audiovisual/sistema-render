@@ -7,6 +7,7 @@ import { num, interactions, responsablesDe } from './instagram-metrics.js';
 import { loadGoalClients } from './client-goals.js';
 import { instagramFeedGroupCounts, validateFeedCountSnapshot,feedCountsAreTrusted } from '../../shared/instagram-feed-counts.mjs';
 import { validateInstagramMonthlyObservation } from '../../shared/instagram-monthly-observation.mjs';
+import { MEDIA_COVERS_ACTION, COVER_MAX_AGE_MS, normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
 export { interactions, responsablesDe };
 
 // Panel de rendimiento de Instagram (solo Líder). Lecturas en una instantánea
@@ -345,6 +346,22 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
       instagram_feed_snapshot: snapshots.find(s => s.clientId === c.id && s.igUserId === account?.ig_user_id && s.period === period) };
   });
   const counts = instagramFeedGroupCounts(inputs, period, { now });
+  const coverRows = (await db.query(`SELECT a.ig_user_id,a.cliente_id,c.detalles AS cover_details
+    FROM instagram_cuentas a LEFT JOIN LATERAL (
+      SELECT ia.detalles FROM integracion_auditoria ia
+      WHERE ia.integracion='instagram_graph' AND ia.canal='system' AND ia.actor_id='render-worker'
+        AND ia.accion=$2 AND ia.resultado='ok' AND ia.detalles->>'clientId'=a.cliente_id::text
+        AND ia.detalles->>'igUserId'=a.ig_user_id ORDER BY ia.created_at DESC,ia.id DESC LIMIT 1
+    ) c ON TRUE WHERE a.cliente_id=ANY($1::int[])`, [ids, MEDIA_COVERS_ACTION])).rows;
+  const covers = new Map();
+  for (const row of coverRows) {
+    if (!ids.includes(row.cliente_id) || !accounts.some(a => a.ig_user_id === row.ig_user_id && a.cliente_id === row.cliente_id)) continue;
+    const cache = normalizeCoverSnapshot(row.cover_details, { clientId: row.cliente_id, igUserId: row.ig_user_id, now });
+    for (const item of cache?.items ?? []) {
+      if (+now - Date.parse(item.checkedAt) <= COVER_MAX_AGE_MS)
+        covers.set(`${row.cliente_id}:${row.ig_user_id}:${item.id}:${item.kind}`, item.url);
+    }
+  }
   const media = observed.filter(row => {
     // Bind proof membership to this client/account/month, not merely an ID
     // returned by a different account. Missing proof preserves observations.
@@ -370,7 +387,8 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
     coverage: { status: counts.status, source: 'profile_observations',
       complete: feedCountsAreTrusted(counts.status), checkedAt: counts.checkedAt },
     piezas: media.map(row => ({
-      ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 280),
+      ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 2200),
+      portada_url: covers.get(`${row.cliente_id}:${row.ig_user_id}:${row.ig_media_id}:${row.tipo}`) ?? null,
       publicado_at: row.publicado_at, vinculo: row.vinculo, publicacion_id: row.publicacion_id,
       pieza: row.publicacion_id ? { idea: row.pieza_idea, fecha: row.pieza_fecha } : null,
       responsables: responsablesDe(row), medido_at: row.medido_at,
@@ -475,7 +493,7 @@ export async function readInstagramClientReport(pool, auth, clave, query) {
       seguidores: client.seguidores, crecimiento_seguidores: client.crecimiento_seguidores,
       formatos: { reel: byType('reel'), carrusel: byType('carrusel') },
       destacadas: [...measured].sort((a, b) => b.metricas.alcance - a.metricas.alcance).slice(0, 3)
-        .map(p => publicReportPiece(p, true)),
+        .map(p => publicReportPiece(p)),
       piezas: detail.piezas.map(p => publicReportPiece(p)),
     };
   });
@@ -488,10 +506,10 @@ function publicFormatCounts(counts) {
     ...(counts.source ? { source: counts.source } : {}), ...(counts.reason ? { reason: counts.reason } : {}) };
 }
 
-function publicReportPiece(piece, withCaption = false) {
+function publicReportPiece(piece) {
   const m = piece.metricas;
   return { tipo: piece.tipo, permalink: piece.permalink, publicado_at: piece.publicado_at, medido_at: piece.medido_at,
-    ...(withCaption ? { caption: piece.caption } : {}),
+    caption: piece.caption, portada_url: normalizeCoverUrl(piece.portada_url),
     metricas: { alcance: m.alcance, vistas: m.vistas, likes: m.likes, comentarios: m.comentarios,
       guardados: m.guardados, compartidos: m.compartidos, interacciones: m.interacciones } };
 }

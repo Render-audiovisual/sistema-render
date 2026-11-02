@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getSesion } from '../utils.jsx';
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
+import { InstagramMediaGallery } from './InstagramMediaGallery.jsx';
 import './InstagramClientReport.css';
 
 // Private Leader view; the existing API independently enforces authorization.
@@ -154,7 +155,6 @@ function ReportMetric({ label, value, previous }) {
 
 export function ClientReportStatistics({ data }) {
   const actual = data.actual || {}, previous = data.anterior || {};
-  const pieces = Array.isArray(data.piezas) ? data.piezas : [], featured = Array.isArray(data.destacadas) ? data.destacadas : [];
   return <details className="ig-client-report-statistics">
     <summary>Más estadísticas<span>Alcance, comunidad y publicaciones</span></summary>
     <div className="ig-client-report-statistics-body">
@@ -176,24 +176,6 @@ export function ClientReportStatistics({ data }) {
           <p>Carruseles: {fmt(data.formatos?.carrusel?.alcance_promedio)} de alcance</p>
           <p className="ig-client-report-help">Interacciones / alcance: {typeof actual.tasa_interaccion === 'number' ? `${fmt(actual.tasa_interaccion)}%` : '—'}</p></div>
       </section>
-      {featured.length > 0 && <section><h2>Publicaciones destacadas</h2><ol className="ig-client-report-featured">{featured.map(p => {
-        const href = safeInstagramPostUrl(p.permalink);
-        return <li key={p.permalink}><strong>{TIPO[p.tipo] || 'Publicación'} · {reportDate(p.publicado_at, true)}</strong>
-          {p.caption && <p>{p.caption}</p>}{href && <a href={href} rel="noopener noreferrer">Ver publicación en Instagram ↗</a>}
-          <dl><div><dt>Alcance</dt><dd>{fmt(p.metricas?.alcance)}</dd></div><div><dt>Reproducciones</dt><dd>{fmt(p.metricas?.vistas)}</dd></div>
-            <div><dt>Interacciones</dt><dd>{fmt(p.metricas?.interacciones)}</dd></div><div><dt>Guardados</dt><dd>{fmt(p.metricas?.guardados)}</dd></div></dl>
-        </li>;
-      })}</ol></section>}
-      <section><h2>Publicaciones del perfil en el mes</h2>
-        <p className="ig-client-report-help">{reportCoverageLabel(data)}</p>
-        {pieces.length === 0 ? <p className="ig-client-report-empty">No hay publicaciones registradas para este mes.</p> : <ul className="ig-client-report-posts">{pieces.map(p => {
-          const href = safeInstagramPostUrl(p.permalink);
-          return <li key={p.permalink}><header><strong>{TIPO[p.tipo] || 'Publicación'}</strong><span>{reportDate(p.publicado_at, true)}</span>
-            {href && <a href={href} rel="noopener noreferrer">Ver publicación ↗</a>}</header>
-            <dl>{[['Alcance', 'alcance'], ['Reproducciones', 'vistas'], ['Likes', 'likes'], ['Comentarios', 'comentarios'], ['Guardados', 'guardados'], ['Compartidos', 'compartidos']].map(([label, key]) =>
-              <div key={key}><dt>{label}</dt><dd>{fmt(p.metricas?.[key])}</dd></div>)}</dl></li>;
-        })}</ul>}
-      </section>
     </div>
   </details>;
 }
@@ -211,8 +193,11 @@ export function ClientReportDocument({ data }) {
       <ClientReportFormatCard label="Reels" format="reels" data={data} />
       <ClientReportFormatCard label="Carruseles" format="carruseles" data={data} />
     </section>
-    <p className="ig-client-report-evidence" role="status">{reportEvidenceLabel(data.format_counts)}</p>
-    <p className="ig-client-report-coverage">{reportCoverageLabel(data)}</p>
+    <InstagramMediaGallery pieces={data.piezas} />
+    <details className="ig-client-report-source"><summary>Sobre estos datos</summary>
+      <p className="ig-client-report-evidence">{reportEvidenceLabel(data.format_counts)}</p>
+      <p className="ig-client-report-coverage">{reportCoverageLabel(data)}</p>
+    </details>
     <ClientReportStatistics data={data} />
     <footer className="ig-client-report-footer"><span>RENDER · {reportPeriodLabel(data.periodo)}</span>
       {data.dataFecha && <span>Fecha del dato: {reportDate(data.dataFecha)}</span>}</footer>

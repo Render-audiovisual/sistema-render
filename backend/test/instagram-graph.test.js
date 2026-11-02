@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGraphClient, resolveGraphConfig, normalizeMedia, normalizeInsights, GraphError } from '../src/instagram-graph.js';
+import { createGraphClient, resolveGraphConfig, normalizeMedia, normalizeInsights, GraphError,
+  normalizeCoverUrl, normalizeMediaCover } from '../src/instagram-graph.js';
 
 const TOKEN = 'EAAtest-token-value-1234567890';
+const COVER = 'https://scontent.cdninstagram.com/v/t51/image.jpg?oh=signed&oe=123';
 const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
 test('config requires a plausible token and version', () => {
@@ -221,4 +223,45 @@ test('feed page limit rejects the entire inventory even when every page contains
   } });
   await assert.rejects(client.listMedia('9', new Date('2026-10-01T00:00:00Z')), { kind: 'pagination' });
   assert.equal(calls, 20);
+});
+
+test('cover validator accepts only HTTPS Meta raster CDN URLs without credentials or token/auth queries', () => {
+  assert.equal(normalizeCoverUrl(COVER), COVER);
+  assert.equal(normalizeCoverUrl('https://scontent.xx.fbcdn.net/image.webp'), 'https://scontent.xx.fbcdn.net/image.webp');
+  for (const url of [null, '', 'http://scontent.cdninstagram.com/image.jpg', 'https://evil.test/image.jpg',
+    'https://cdninstagram.com.evil.test/image.jpg', 'https://scontent.cdninstagram.com:8443/image.jpg',
+    'https://user:pass@scontent.cdninstagram.com/image.jpg', COVER + '#fragment', COVER + '&access_token=SECRET',
+    COVER + '&AUTHORIZATION=SECRET', COVER + '&token=SECRET', 'https://scontent.cdninstagram.com/video.mp4',
+    'https://scontent.cdninstagram.com/image.svg', 'https://scontent.cdninstagram.com/image.jpg\n',
+    'https://127.0.0.1/image.jpg', 'data:image/png;base64,x']) assert.equal(normalizeCoverUrl(url), null, String(url));
+});
+
+test('video cover is thumbnail only; carousel uses only first child according to its real type', () => {
+  assert.equal(normalizeMediaCover({ media_type: 'VIDEO', thumbnail_url: COVER, media_url: 'https://scontent.cdninstagram.com/video.mp4' }), COVER);
+  assert.equal(normalizeMediaCover({ media_type: 'VIDEO', media_url: COVER }), null, 'even image-shaped video media_url is never used');
+  assert.equal(normalizeMediaCover({ media_type: 'IMAGE', media_url: COVER }), COVER);
+  assert.equal(normalizeMediaCover({ media_type: 'CAROUSEL_ALBUM', children: { data: [
+    { media_type: 'VIDEO', thumbnail_url: COVER }, { media_type: 'IMAGE', media_url: COVER },
+  ] } }), COVER);
+  assert.equal(normalizeMediaCover({ media_type: 'CAROUSEL_ALBUM', children: { data: [
+    { media_type: 'VIDEO', media_url: COVER }, { media_type: 'IMAGE', media_url: COVER },
+  ] } }), null, 'no arbitrary second-child replacement');
+});
+
+test('optional mediaCover uses a separate bounded Graph read; inventory ignores changing optional URLs', async () => {
+  const calls = [];
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    if (new URL(url).pathname.endsWith('/media')) return json({ data: [
+      feedRow('11', undefined, { thumbnail_url: COVER }), feedRow('11', undefined, { thumbnail_url: 'broken' }),
+    ] });
+    return json({ id: '11', media_type: 'VIDEO', thumbnail_url: COVER, media_url: 'https://scontent.cdninstagram.com/video.mp4' });
+  } });
+  assert.equal((await client.listMedia('9', new Date(0))).length, 1);
+  assert.equal(calls.length, 1, 'cover fields are not requested in inventory');
+  assert.equal(await client.mediaCover('11'), COVER);
+  assert.match(new URL(calls[1].url).searchParams.get('fields'), /children.limit\(1\)/);
+  assert.equal(calls[1].options.headers.Authorization, `Bearer ${TOKEN}`);
+  assert.ok(!calls[1].url.includes(TOKEN));
+  await assert.rejects(client.mediaCover('../me'), { kind: 'config' });
 });

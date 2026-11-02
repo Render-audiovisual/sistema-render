@@ -14,7 +14,7 @@ const proof = (extra = {}) => ({ version: 1, source: 'meta_graph_feed', clientId
   username: 'account_a', period, windowStart: '2020-08-03T15:00:00.000Z', checkedAt: checked,
   posts: [{ id: '11', kind: 'reel', publishedAt: published }], ...extra });
 
-function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot = proof(), manual = [], role = 'admin', sameName = false } = {}) {
+function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot = proof(), manual = [], role = 'admin', sameName = false, coverRows = [] } = {}) {
   const calls = []; let connections = 0, releases = 0, active = false;
   const clients = [{ id: 1, nombre: 'Client A', clave: 'cliente-1', logo: 'https://example.test/a.png' },
     { id: 2, nombre: sameName ? 'Client A' : 'Client B', clave: 'cliente-2', logo: 'https://example.test/b.png' }];
@@ -31,6 +31,7 @@ function harness({ rows = [media('11'), media('12'), media('21', 2)], snapshot =
     if (sql.startsWith('SELECT m.ig_media_id')) return { rows }; // deliberately includes B and wrong months
     if (sql.startsWith('SELECT clave, reels')) return { rows: [{ clave: 'cliente-1', reels: 9, carruseles: 9 }] };
     if (sql.startsWith('SELECT a.ig_user_id,a.cliente_id,s.detalles')) return { rows: snapshot ? [{ ig_user_id: '111', cliente_id: 1, detalles: snapshot }] : [] };
+    if (sql.startsWith('SELECT a.ig_user_id,a.cliente_id,c.detalles')) return { rows: coverRows };
     if (sql.startsWith('SELECT DISTINCT ON')) return { rows: manual.map(detalles => ({ detalles })) };
     if (sql.startsWith('SELECT c.id,c.nombre,c.grupo_feed_id')) return { rows: clients.map(c => ({ ...c, cuota_reels: 1, cuota_carruseles: 1 })) };
     if (sql.startsWith('SELECT p.id, p.cliente_id')) return { rows: [{ id: 999, cliente_id: 2, idea: 'PRIVATE CANDIDATE' }] };
@@ -72,6 +73,27 @@ test('client report shares one authorized RR, isolates A from B and strips all p
   assertClosed(report);
   assert.doesNotMatch(JSON.stringify(report), /account_b|Client B|Public21/);
   assert.equal(h.calls.some(c => /^(INSERT|UPDATE|DELETE|ALTER|CREATE)\b/.test(c.sql)), false);
+});
+
+test('gallery captions and safe persisted covers are closed, account-bound and expire after 24h without Graph calls', async () => {
+  const now = new Date(), url = 'https://scontent.cdninstagram.com/gallery.jpg?oh=signed';
+  const cover = (extra = {}, itemExtra = {}) => ({ ig_user_id: '111', cliente_id: 1, cover_details: {
+    version: 1, clientId: 1, igUserId: '111', checkedAt: now.toISOString(),
+    items: [{ id: '11', kind: 'reel', url, checkedAt: now.toISOString(), secret: 'PRIVATE' }], ...extra,
+    ...(Object.keys(itemExtra).length ? { items: [{ id: '11', kind: 'reel', url, checkedAt: now.toISOString(), ...itemExtra }] } : {}),
+  } });
+  const h = harness({ coverRows: [cover()] });
+  const result = await readInstagramClientReport(h.pool, auth, 'cliente-1', { periodo: period });
+  assert.equal(result.piezas[0].portada_url, url); assert.equal(result.destacadas[0].portada_url, url);
+  assert.equal(result.piezas[0].caption, 'profile 11'); assertClosed(result);
+  assert.equal(h.connections(), 1);
+  for (const bad of [cover({ clientId: 2 }), cover({ igUserId: '222' }),
+    cover({}, { kind: 'carrusel' }), cover({}, { url: 'https://evil.test/photo.jpg' }),
+    cover({}, { url: url + '&token=PRIVATE' }), cover({}, { checkedAt: new Date(+now - 24 * 3600000 - 1000).toISOString() })]) {
+    const fallback = await readInstagramClientReport(harness({ coverRows: [bad] }).pool, auth, 'cliente-1', { periodo: period });
+    assert.equal(fallback.piezas[0].portada_url, null); assert.equal(fallback.piezas[0].caption, 'profile 11');
+    assert.equal(fallback.piezas[0].metricas.vistas, 200); assertClosed(fallback);
+  }
 });
 
 test('report clave is bound to the requested context even when client names are identical', async () => {

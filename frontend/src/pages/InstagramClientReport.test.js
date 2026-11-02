@@ -5,6 +5,9 @@ import ts from 'typescript';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {isSessionFailure} from '../shared/session/captured-request.js';
+const gallerySource=readFileSync(new URL('./InstagramMediaGallery.jsx',import.meta.url),'utf8');
+const galleryCode=ts.transpileModule(gallerySource.replace(/^import .*;$/gm,''),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const galleryExports={};Function('exports','React','useState','useMemo',galleryCode)(galleryExports,React,React.useState,React.useMemo);
 
 const source=readFileSync(new URL('./InstagramClientReport.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('InstagramClientReport.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -12,7 +15,7 @@ const css=readFileSync(new URL('./InstagramClientReport.css',import.meta.url),'u
 const code=ts.transpileModule(tree.statements.filter(n=>!ts.isImportDeclaration(n)).map(n=>n.getText(tree)).join('\n'),
   {compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 function compile(overrides={}){
-  const deps={React,useEffect:React.useEffect,useState:React.useState,useRef:React.useRef,isSessionFailure,
+  const deps={React,useEffect:React.useEffect,useState:React.useState,useRef:React.useRef,isSessionFailure,InstagramMediaGallery:galleryExports.InstagramMediaGallery,
     getSesion:()=>({usuario:{id:7,rol:'admin'}}),useScopedRequest:()=>({view:{role:'admin',key:'qa',session:{}},epoch:0,capture:()=>{throw Error('SSR never requests');}}),
     window:{location:{search:'?cliente=cliente-1&periodo=2026-10'}},...overrides};
   const exports={};Function('exports',...Object.keys(deps),code)(exports,...Object.values(deps));return exports;
@@ -81,19 +84,20 @@ test('owner record keeps 3/1, dates its record and never claims closure or ident
   assert.match(html,/Fecha del dato:/);assert.doesNotMatch(html,/Emitido:/);
 });
 
-test('advanced statistics and all public posts remain inside closed details, without internal IDs as keys',()=>{
+test('gallery is visible before advanced statistics without duplicating posts or private IDs',()=>{
   const data=fixture();data.piezas=Array.from({length:31},(_,i)=>({permalink:`https://www.instagram.com/p/Post${i}/`,tipo:i%2?'reel':'carrusel',publicado_at:'2026-10-05T15:00:00.000Z',metricas:{alcance:i,vistas:null}}));
   data.destacadas=[{...data.piezas[0],caption:'Texto de prueba'}];
   const html=render(api.ClientReportDocument,{data});
   assert.match(html,/<details class="ig-client-report-statistics"><summary>Más estadísticas/);assert.doesNotMatch(html,/<details[^>]* open/);
-  assert.match(html,/Post30/);assert.equal((html.match(/<li>/g)||[]).length,32);assert.match(html,/no son personas únicas/);
-  assert.equal((source.match(/key=\{p.permalink\}/g)||[]).length,2);assert.doesNotMatch(source,/p\.ig_media_id|responsables|publicacion_id/);
+  assert.match(html,/Post30/);assert.equal((html.match(/class="ig-media-card"/g)||[]).length,31);assert.match(html,/no son personas únicas/);
+  assert.ok(html.indexOf('Rendimiento del contenido')<html.indexOf('Más estadísticas'));
+  assert.doesNotMatch(source,/p\.ig_media_id|responsables|publicacion_id/);
 });
 
 test('empty document, safe logos/fallback and only safe public post links',()=>{
   const data=fixture('unavailable',null,null);data.cuentas=[];data.logo='https://external.invalid/tracker.png';
   const html=render(api.ClientReportDocument,{data});
-  assert.match(html,/Sin cuenta vinculada/);assert.match(html,/No hay publicaciones registradas/);assert.match(html,/>CD<\/span>/);assert.doesNotMatch(html,/<img|external.invalid/);
+  assert.match(html,/Sin cuenta vinculada/);assert.match(html,/No hay reels ni carruseles registrados/);assert.match(html,/>CD<\/span>/);assert.doesNotMatch(html,/<img|external.invalid/);
   for(const value of ['javascript:alert(1)','data:image/svg+xml;base64,AAAA','https://host/logo.png'])assert.equal(api.safeReportLogo(value),null);
   assert.equal(api.safeReportLogo('data:image/png;base64,AAAA'),'data:image/png;base64,AAAA');
   for(const value of ['javascript:alert(1)','https://www.instagram.com.evil/p/X/','https://user@www.instagram.com/p/X/'])assert.equal(api.safeInstagramPostUrl(value),null);

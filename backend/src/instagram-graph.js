@@ -2,6 +2,48 @@
 // El token viaja en el encabezado Authorization (nunca en URLs ni en logs).
 const GRAPH_HOST = 'graph.facebook.com';
 const DEFAULT_VERSION = 'v23.0';
+export const MEDIA_COVERS_ACTION = 'media_covers_v1';
+export const COVER_MAX_AGE_MS = 24 * 3600000;
+
+// Only raster URLs on Meta's CDN, never arbitrary URLs or raw video assets.
+// Signed CDN parameters are retained; Graph credentials must never persist.
+export function normalizeCoverUrl(value) {
+  if (typeof value !== 'string' || value.length > 4096 || /[\s\\\x00-\x1f\x7f]/.test(value)) return null;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' || u.username || u.password || u.port || u.hash ||
+      !/^(?:[a-z0-9-]+\.)+(?:cdninstagram\.com|fbcdn\.net)$/.test(u.hostname) ||
+      !/\.(?:jpe?g|png|webp|avif)$/i.test(decodeURIComponent(u.pathname)) ||
+      [...u.searchParams.keys()].some(k => /^(?:access_token|token|authorization|bearer)$/i.test(k))) return null;
+    return u.href;
+  } catch { return null; }
+}
+
+export function normalizeMediaCover(row) {
+  if (row?.media_type === 'VIDEO') return normalizeCoverUrl(row.thumbnail_url);
+  if (row?.media_type === 'IMAGE') return normalizeCoverUrl(row.media_url);
+  if (row?.media_type === 'CAROUSEL_ALBUM') {
+    const first = row.children?.data?.[0];
+    if (first?.media_type === 'VIDEO') return normalizeCoverUrl(first.thumbnail_url);
+    if (first?.media_type === 'IMAGE') return normalizeCoverUrl(first.media_url);
+  }
+  return null;
+}
+
+// Closed, account-bound cache contract, independent from certified feed counts.
+export function normalizeCoverSnapshot(value, { clientId, igUserId, now = new Date() }) {
+  const iso = s => typeof s === 'string' && Number.isFinite(Date.parse(s)) && new Date(s).toISOString() === s;
+  if (value?.version !== 1 || value.clientId !== clientId || value.igUserId !== igUserId ||
+    !iso(value.checkedAt) || Date.parse(value.checkedAt) > +now || !Array.isArray(value.items) || value.items.length > 1000) return null;
+  const items = [], seen = new Set();
+  for (const item of value.items) {
+    if (!/^[1-9]\d{0,39}$/.test(item?.id) || seen.has(item.id) || !['reel', 'carrusel', 'imagen'].includes(item.kind) ||
+      !iso(item.checkedAt) || Date.parse(item.checkedAt) > Date.parse(value.checkedAt)) return null;
+    seen.add(item.id);
+    items.push({ id: item.id, kind: item.kind, url: normalizeCoverUrl(item.url), checkedAt: item.checkedAt });
+  }
+  return { version: 1, clientId, igUserId, checkedAt: value.checkedAt, items };
+}
 const METRIC_SETS = Object.freeze([
   'reach,views,likes,comments,saved,shares,total_interactions',
   'reach,likes,comments,saved,shares,total_interactions',
@@ -47,7 +89,7 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
   if (typeof fetchImpl !== 'function' || (businessId !== null && (typeof businessId !== 'string' || !/^[1-9]\d{0,31}$/.test(businessId))))
     throw new GraphError('config');
 
-  async function request(url) {
+  async function request(url, requestTimeoutMs = timeoutMs) {
     if (url.hostname !== GRAPH_HOST || url.protocol !== 'https:' || url.port || url.username || url.password)
       throw new GraphError('other');
     url.searchParams.delete('access_token');
@@ -56,7 +98,7 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
       response = await fetchImpl(url.toString(), {
         redirect: 'error',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
     } catch { throw new GraphError('network'); }
     let body = null;
@@ -153,6 +195,17 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
         }
       }
       return [...items.values()];
+    },
+
+    // Optional, separate read: fields/permissions for covers cannot invalidate
+    // a complete feed inventory. Never fetch image bytes or expose the token.
+    async mediaCover(igMediaId) {
+      if (typeof igMediaId !== 'string' || !/^[1-9]\d{0,39}$/.test(igMediaId)) throw new GraphError('config');
+      const body = await request(build(igMediaId, {
+        fields: 'id,media_type,thumbnail_url,media_url,children.limit(1){media_type,thumbnail_url,media_url}',
+      }), Math.min(timeoutMs, 5000));
+      if (String(body.id) !== igMediaId) return null;
+      return normalizeMediaCover(body);
     },
 
     // Métricas de una pieza. Prueba conjuntos más chicos si Meta rechaza alguna métrica.

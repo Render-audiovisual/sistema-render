@@ -1,4 +1,5 @@
-import { createGraphClient, resolveGraphConfig, GraphError } from './instagram-graph.js';
+import { createGraphClient, resolveGraphConfig, GraphError, MEDIA_COVERS_ACTION,
+  normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
 import { buildFeedCountSnapshots, FEED_SNAPSHOT_ACTION } from '../../shared/instagram-feed-counts.mjs';
 
 // Sincronización programada de Instagram (job 'instagram' del ejecutor).
@@ -9,6 +10,8 @@ const HOUR = 3600000, DAY = 24 * HOUR;
 export const SYNC_WINDOW_DAYS = 35;
 export const BACKFILL_DAYS = 90;
 const TIME_ZONE = 'America/Argentina/Cordoba';
+export const COVER_REFRESH_MS = 6 * HOUR;
+export const COVER_REQUEST_LIMIT = 20;
 
 // Cada cuánto se vuelve a medir una pieza según su antigüedad.
 export function metricsRefreshInterval(age) {
@@ -106,7 +109,7 @@ UPDATE instagram_media m SET
   actualizada_at = clock_timestamp()
 FROM decision d WHERE d.ig_media_id=m.ig_media_id`;
 
-async function storeAccountData(pool, account, media, metrics, snapshots, now) {
+async function storeAccountData(pool, account, media, metrics, snapshots, covers, now) {
   return withTransaction(pool, async db => {
     // Graph reads happen outside the transaction. A leader may have reassigned
     // the account meanwhile; never overwrite the new client's links with an
@@ -141,9 +144,61 @@ async function storeAccountData(pool, account, media, metrics, snapshots, now) {
       stored += result.rowCount;
     }
     await db.query(matchSQL, [account.ig_user_id]);
+    if (covers) {
+      // Optional metadata must not roll back certified inventory on an isolated
+      // audit write failure. A lost DB session still fails honestly.
+      await db.query('SAVEPOINT instagram_optional_covers');
+      try {
+        await db.query(auditSQL, [MEDIA_COVERS_ACTION, 'ok', JSON.stringify(covers)]);
+        await db.query('RELEASE SAVEPOINT instagram_optional_covers');
+      } catch {
+        await db.query('ROLLBACK TO SAVEPOINT instagram_optional_covers');
+        await db.query('RELEASE SAVEPOINT instagram_optional_covers');
+      }
+    }
     await db.query('UPDATE instagram_cuentas SET sincronizada_at=$2 WHERE ig_user_id=$1', [account.ig_user_id, now]);
     return stored;
   });
+}
+
+async function refreshAccountCovers(pool, graph, account, media, now) {
+  if (typeof graph.mediaCover !== 'function' || !media.length) return null;
+  let previous = null;
+  try {
+    const row = (await pool.query(`SELECT detalles FROM integracion_auditoria
+      WHERE integracion='instagram_graph' AND canal='system' AND actor_id='render-worker'
+        AND accion=$1 AND resultado='ok' AND detalles->>'clientId'=$2 AND detalles->>'igUserId'=$3
+      ORDER BY created_at DESC,id DESC LIMIT 1`, [MEDIA_COVERS_ACTION, String(account.cliente_id), account.ig_user_id])).rows[0];
+    previous = normalizeCoverSnapshot(row?.detalles, { clientId: account.cliente_id, igUserId: account.ig_user_id, now });
+  } catch { /* No cache is a normal fallback; never affects inventory proof. */ }
+  const prior = new Map(previous?.items.map(item => [item.id, item]) ?? []);
+  const items = new Map();
+  for (const item of media) {
+    const old = prior.get(item.igMediaId);
+    if (old?.kind === item.tipo) items.set(item.igMediaId, old);
+  }
+  const targets = [...new Map(media.map(item => [item.igMediaId, item])).values()]
+    .filter(item => !items.has(item.igMediaId) || +now - Date.parse(items.get(item.igMediaId).checkedAt) >= COVER_REFRESH_MS)
+    .sort((a, b) => (Date.parse(items.get(a.igMediaId)?.checkedAt) || 0) - (Date.parse(items.get(b.igMediaId)?.checkedAt) || 0))
+    .slice(0, COVER_REQUEST_LIMIT);
+  let cursor = 0, stopped = false;
+  // At most two concurrent optional reads, 20 requests/account/run, each with
+  // a 5s Graph timeout. Metadata is refreshed independently of insight cadence.
+  await Promise.all(Array.from({ length: Math.min(2, targets.length) }, async () => {
+    while (!stopped && cursor < targets.length) {
+      const item = targets[cursor++]; let url = null;
+      try { url = normalizeCoverUrl(await graph.mediaCover(item.igMediaId)); }
+      catch (error) {
+        if (['auth', 'rate'].includes(error?.kind)) stopped = true;
+        // Keep the last known URL AND its original age. A thrown read is not
+        // evidence the cover disappeared and must never extend cache validity.
+        continue;
+      }
+      items.set(item.igMediaId, { id: item.igMediaId, kind: item.tipo, url, checkedAt: now.toISOString() });
+    }
+  }));
+  return { version: 1, clientId: account.cliente_id, igUserId: account.ig_user_id,
+    checkedAt: now.toISOString(), items: [...items.values()].slice(0, 1000) };
 }
 
 async function syncAccount(pool, graph, account, now) {
@@ -176,7 +231,8 @@ async function syncAccount(pool, graph, account, now) {
       throw error;
     }
   }
-  const stored = await storeAccountData(pool, account, media, metrics, snapshots, now);
+  const covers = await refreshAccountCovers(pool, graph, account, media, now);
+  const stored = await storeAccountData(pool, account, media, metrics, snapshots, covers, now);
   return { media: media.length, metricas: stored };
 }
 
