@@ -312,6 +312,12 @@ router.get("/sesion", async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   if (!req.browserSession) return res.json({ usuario: req.auth });
   try {
+    const bootstrap = await browserSessions?.ownerProfiles?.readBootstrap?.(req.auth);
+    if (bootstrap) {
+      const user = bootstrap.usuario;
+      return res.json({ usuario: { id:user.id,usuario:user.usuario,nombre:user.nombre,rol:user.rol,foto_perfil:user.foto_perfil },
+        ...req.browserSession, owner_profiles: bootstrap.owner_profiles });
+    }
     // Bootstrap must read the saved profile, not just the authorization DTO.
     // Keep this projection closed and bind it to the verified account epoch.
     const result = await pool.query(`SELECT id, usuario, nombre, rol, foto_perfil

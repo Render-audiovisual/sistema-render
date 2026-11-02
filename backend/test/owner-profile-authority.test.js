@@ -43,6 +43,45 @@ function fixture(env={}) {
   return {rows,calls,pool,transport,issued,authenticate};
 }
 
+test('owner bootstrap reads profile and metadata together, stays fresh and rejects root revocation after middleware',async()=>{
+  const f=fixture(), current=await f.authenticate(f.issued(),{method:'GET'});
+  assert.equal(current.continued,true);
+  f.rows[0].foto_perfil='data:image/png;base64,cWE=';
+  const before=f.calls.length;
+  const result=await f.transport.ownerProfiles.readBootstrap(current.req.auth);
+  assert.equal(f.calls.length-before,1);
+  assert.deepEqual(result.usuario,{id:1,usuario:'synthetic-1',nombre:'Líder sin cambios',rol:'admin',foto_perfil:f.rows[0].foto_perfil});
+  assert.deepEqual(result.owner_profiles,await f.transport.ownerProfiles.describe(current.req.auth));
+  assert.equal(JSON.stringify(result).includes('session_version'),false);
+  f.rows[0].session_version++;
+  await assert.rejects(f.transport.ownerProfiles.readBootstrap(current.req.auth),{status:401});
+});
+
+test('owner bootstrap does not reuse revoked metadata, promote targets or query for unrelated users',async()=>{
+  for(const change of [rows=>{rows[0].activo=false;},rows=>{rows[1].rol='diseno';},rows=>{rows[2].activo=false;}]){
+    const f=fixture(),current=await f.authenticate(f.issued(),{method:'GET'});
+    change(f.rows);
+    await assert.rejects(f.transport.ownerProfiles.readBootstrap(current.req.auth));
+  }
+  const f=fixture(),before=f.calls.length;
+  assert.equal(await f.transport.ownerProfiles.readBootstrap({id:99}),undefined);
+  assert.equal(f.calls.length,before);
+});
+
+test('delegated owner bootstrap revalidates both epochs and expiry in a fresh read',async()=>{
+  const f=fixture(),root=await f.authenticate(f.issued(),{method:'GET'});
+  const {user:actor,delegation}=await f.transport.ownerProfiles.switchProfile(root.req.auth,'franco');
+  const current=await f.authenticate(f.issued(actor,{delegation}),{method:'GET'});
+  const before=f.calls.length,result=await f.transport.ownerProfiles.readBootstrap(current.req.auth);
+  assert.equal(f.calls.length-before,1);assert.equal(result.usuario.id,31);assert.equal(result.owner_profiles.active,'franco');
+  f.rows[1].session_version++;
+  await assert.rejects(f.transport.ownerProfiles.readBootstrap(current.req.auth),{status:401});
+  f.rows[1].session_version--;
+  await assert.rejects(f.transport.ownerProfiles.readBootstrap({...current.req.auth,exp:1}),{status:401});
+  f.pool.query=async()=>{throw Error('synthetic database unavailable');};
+  await assert.rejects(f.transport.ownerProfiles.readBootstrap(current.req.auth),/database unavailable/);
+});
+
 test('config default off, closed mapping, no name inference and no root/target14 impersonation',()=>{
   assert.equal(configuredOwnerProfiles({},{}),null);
   assert.equal(parseOwnerProfilePolicy({RENDER_OWNER_PROFILES:''}),null);

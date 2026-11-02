@@ -77,3 +77,21 @@ test('legacy bearer bootstrap remains unchanged and does not issue an additional
   await handle({ auth: identity }, res, error => { throw error; });
   assert.deepEqual(res.body, { usuario: identity });
 });
+
+test('optimized owner bootstrap keeps a closed DTO without a duplicate profile or metadata query',async()=>{
+  let reads=0;
+  const profiles={principal_id:1,active:null,profiles:[]};
+  const handle=route(()=>assert.fail('duplicate query'),{ownerProfiles:{
+    async readBootstrap(auth){reads++;assert.equal(auth,identity);return {usuario:{...identity,foto_perfil:null,password_hash:'private',sueldo:123},owner_profiles:profiles};},
+    describe(){assert.fail('duplicate metadata');},
+  }});
+  const res=response();await handle({auth:identity,browserSession:context},res,e=>{throw e;});
+  assert.equal(reads,1);assert.deepEqual(res.body,{usuario:{id:7,usuario:'synthetic',nombre:'Synthetic',rol:'edicion',foto_perfil:null},...context,owner_profiles:profiles});
+});
+
+test('optimized bootstrap authority failure never falls back to prior identity or profile',async()=>{
+  const failure=Object.assign(new Error('revoked'),{status:401});
+  const handle=route(()=>assert.fail('fallback'),{ownerProfiles:{async readBootstrap(){throw failure;},describe(){assert.fail('fallback');}}});
+  const res=response();let forwarded;await handle({auth:identity,browserSession:context},res,e=>{forwarded=e;});
+  assert.equal(forwarded,failure);assert.equal(res.body,undefined);
+});

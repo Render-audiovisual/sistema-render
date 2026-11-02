@@ -166,17 +166,29 @@ export function configuredOwnerProfiles(env, pool) {
   if (!policy) return null;
   policyPools.set(policy,pool);
   bindDatabaseAuthorityClient(pool,pool);
+  const eligible = auth => auth && (hasOwnerProfileClaims(auth) || auth.id === policy.accountId);
+  const describeRows = (auth, rows) => {
+    checkCurrent(auth, rows, policy);
+    if (keys.some(key => !validProfileUser(rows.find(u => u.id === targetId(policy, key)),key,policy))) throw fail();
+    return { principal_id: policy.accountId, active: auth.owner_profile ?? null,
+      profiles: keys.map(key => ({ key, user_id: targetId(policy, key), name: labels[key] })) };
+  };
   return Object.freeze({
     policy,
     async describe(auth) {
-      if (!auth || (!hasOwnerProfileClaims(auth) && auth.id !== policy.accountId)) return undefined;
+      if (!eligible(auth)) return undefined;
       const rows = await readUsers(pool, policy);
-      checkCurrent(auth, rows, policy);
       // Both explicit target accounts must be active administrators. No auto
       // promotion, creation, assignment transfer or fallback to a namesake.
-      if (keys.some(key => !validProfileUser(rows.find(u => u.id === targetId(policy, key)),key,policy))) throw fail();
-      return { principal_id: policy.accountId, active: auth.owner_profile ?? null,
-        profiles: keys.map(key => ({ key, user_id: targetId(policy, key), name: labels[key] })) };
+      return describeRows(auth, rows);
+    },
+    async readBootstrap(auth) {
+      if (!eligible(auth)) return undefined;
+      // Fresh second read after middleware: profile and delegation metadata
+      // come from the same statement, not a cached authentication decision.
+      const rows = await readUsers(pool, policy);
+      const owner_profiles = describeRows(auth, rows), user = rows.find(row => row.id === auth.id);
+      return { usuario: { id:user.id,usuario:user.usuario,nombre:user.nombre,rol:user.rol,foto_perfil:user.foto_perfil }, owner_profiles };
     },
     async switchProfile(auth, key) {
       if (!keys.includes(key) || !auth || !authorities.has(auth)) throw fail();
