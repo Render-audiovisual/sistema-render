@@ -2224,3 +2224,11 @@
   .render-workspace .ros-task-card{padding:13px}
   .render-workspace .ros-project-grid{grid-template-columns:1fr}
 }
+
+/* Empty columns remain drop surfaces; creation is a separate keyboard control. */
+.render-workspace .ros-empty-dropzone{width:100%}
+.render-workspace .ros-empty-create{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:64px;min-width:44px;padding:12px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.render-workspace .ros-empty-create:hover{background:var(--render-surface-muted);color:var(--render-ink)}
+.render-workspace .ros-empty-create:focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
+.render-workspace .ros-column.drag-over .ros-empty-dropzone,
+.render-workspace .ros-board:has(.ros-task-card.is-dragging) .ros-empty-dropzone{pointer-events:none}

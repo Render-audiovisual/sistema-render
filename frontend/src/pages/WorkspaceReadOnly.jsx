@@ -1328,7 +1328,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
         const items = visible.filter((task) => column.states.includes(effectiveTaskFilterState(task)));
         const windowed = taskVisibleWindow(items,columnLimits[column.id] ?? 250);
         return <section className={`ros-column ${mobileBoardColumn === column.id ? "is-mobile-active" : ""} ${dragOver === column.id ? "drag-over" : ""}`} key={column.id}
-          onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }}
+          onDragEnter={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOver(column.id); }}
+          onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOver(column.id); }}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => dropOnProcessButton(event,column)}>
           <header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header>
           <div>{windowed.items.map((task,index) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move}
@@ -1336,7 +1337,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
             manualControls={orderControls(task,items,index,windowed.limit)}/>)}
             {windowed.hasMore && <div className="ros-column-limit"><p>Mostrando {windowed.limit} de {items.length} tareas cargadas.</p><button type="button" disabled={orderState.busy||orderState.locked}
               aria-label={`Mostrar más tareas de ${column.label}`} onClick={()=>setColumnLimits(current=>({...current,[column.id]:windowed.nextLimit}))}>Mostrar más</button></div>}
-            {items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span>+</span>Nueva tarea</button>}
+            {items.length === 0 && <div className="ros-empty-column ros-empty-dropzone"><button className="ros-empty-create" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span aria-hidden="true">+</span>Nueva tarea</button></div>}
           </div>
         </section>;
       })}</div></>}
