@@ -122,6 +122,18 @@ test('an incomplete successful combined response still requests the missing Face
   assert.equal(calls.at(-1),'facebook_views');
 });
 
+test('carousel sums known disjoint platform views only when combined is unsupported; collaborations do not abort account',async()=>{
+  for(const error of [{code:100},{code:-1,error_subcode:2207086}]){
+    const client=createGraphClient({token:TOKEN,version:'v23.0'},{fetchImpl:async url=>{
+      const metric=new URL(url).searchParams.get('metric');
+      if(metric.includes('crossposted_views'))return json({error},400);
+      return json({data:metric==='facebook_views'?[{name:'facebook_views',values:[{value:26}]}]:[{name:'views',values:[{value:11552}]}]});
+    }});
+    const m=await client.mediaInsights('5');assert.equal(m.vistas_total,11578);
+    assert.equal(m.vistas_instagram,11552);assert.equal(m.vistas_facebook,26);
+  }
+});
+
 test('errors are classified without leaking messages', async () => {
   const cases = [[{ code: 190 }, 400, 'auth'], [{ code: 4 }, 400, 'rate'], [{ code: 10 }, 400, 'permission'], [{ code: 1 }, 500, 'other']];
   for (const [error, status, kind] of cases) {

@@ -71,6 +71,9 @@ function classify(status, error) {
   if ([4, 17, 32, 613, 80001, 80002].includes(code) || status === 429) return 'rate';
   if (code === 10 || code === 200 || (code >= 200 && code < 300) || status === 403) return 'permission';
   if (code === 100) return 'metric';
+  // Meta uses this unsupported-insight response for some collaborations.
+  // It is not a bad token or a reason to discard the whole client's sync.
+  if (code === -1 && Number(error?.error_subcode) === 2207086) return 'metric';
   return 'other';
 }
 
@@ -269,8 +272,13 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
               if (!(error instanceof GraphError) || !['metric', 'permission'].includes(error.kind)) throw error;
             }
           }
+          const facebook = extra.facebook_views ?? null;
+          // Some formats expose both disjoint platform counters, but not the
+          // combined metric. Sum only those, never combined + Facebook.
+          const sum = result.vistas !== null && facebook !== null ? result.vistas + facebook : null;
+          const total = extra.crossposted_views ?? (Number.isSafeInteger(sum) ? sum : null);
           return { ...result, vistas_instagram: result.vistas,
-            vistas_total: extra.crossposted_views ?? null, vistas_facebook: extra.facebook_views ?? null };
+            vistas_total: total, vistas_facebook: facebook };
         } catch (error) {
           if (error instanceof GraphError && error.kind === 'metric') continue;
           throw error;

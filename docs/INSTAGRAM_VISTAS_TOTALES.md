@@ -2,7 +2,10 @@
 
 La cifra principal es `crossposted_views` de Meta. Ya contiene Facebook:
 **nunca sumar `facebook_views` otra vez al total**. `views` se conserva como
-Instagram; Facebook se muestra por separado. El alcance no es visualizaciones.
+Instagram; Facebook se muestra por separado. Si el formato no ofrece el total
+directo, se suman únicamente Instagram y Facebook cuando ambos están informados.
+El alcance no es visualizaciones. Colaboraciones sin acceso a una métrica no
+impiden sincronizar las demás publicaciones de esa cuenta.
 
 Si Meta no ofrece un contador, se devuelve null, no cero. Un resumen mensual
 solo presenta un total combinado cuando todas sus publicaciones lo tienen.
