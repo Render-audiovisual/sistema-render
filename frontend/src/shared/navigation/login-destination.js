@@ -1,4 +1,5 @@
 import { canonicalLegacyRoute } from './legacy-routes.js';
+import { clientReportDestination } from './client-report-navigation.js';
 import { canUseSharedCalendarRole } from '../../components/navigation.js';
 
 // Navigation context only: this never authenticates a person or grants API
@@ -7,13 +8,13 @@ const paths = new Set([
   '/inicio', '/workspace/tareas', '/calendario', '/calendario-estructura',
   '/producciones', '/clientes', '/clientes/operacion', '/proyectos', '/planificacion-historias',
   '/planificacion-publicaciones', '/lista', '/feedback', '/bloc-notas',
-  '/reportes-historias', '/drive', '/moodboards', '/instagram', '/sueldos', '/empleados', '/perfil',
+  '/reportes-historias', '/drive', '/moodboards', '/instagram', '/instagram/reporte', '/sueldos', '/empleados', '/perfil',
 ]);
 const pathname = value => value.split(/[?#]/, 1)[0];
 export function normalizeLoginDestination(value) {
   if (typeof value !== 'string' || !value || value.length > 4096
     || !value.startsWith('/') || value.startsWith('//') || /[\\\s\u0000-\u001f\u007f]/.test(value)) return null;
-  const candidate = canonicalLegacyRoute(value) || value;
+  const candidate = clientReportDestination(value) || canonicalLegacyRoute(value) || value;
   // Check the literal path before URL parsing can normalize dot segments,
   // encoded separators or authority-like input into an apparently safe URL.
   if (!paths.has(pathname(candidate))) return null;
@@ -37,7 +38,7 @@ export function resolveLoginDestination(value, user) {
   if (!next || !Number.isSafeInteger(user?.id) || user.id <= 0 || user.activo === false
     || !canUseSharedCalendarRole(user.rol)) return '/inicio';
   const path = pathname(next);
-  if (['/instagram', '/sueldos', '/empleados'].includes(path) && user.rol !== 'admin') return '/inicio';
+  if (['/sueldos', '/empleados'].includes(path) && user.rol !== 'admin') return '/inicio';
   if (path === '/clientes' && user.rol !== 'admin'
     && new URL(next, 'https://render.local').searchParams.getAll('gestion').includes('1')) return '/clientes';
   return next;

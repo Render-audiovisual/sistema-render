@@ -18,7 +18,10 @@ const nodes = (root, predicate) => {
 };
 const calls = (root, name) => nodes(root, (n) => ts.isCallExpression(n) && text(n.expression) === name);
 const declarationFor = (expression) => nodes(app.body, (n) => ts.isVariableDeclaration(n) && n.initializer && expression(n.initializer))[0];
-const destination = () => declarationFor((n) => ts.isCallExpression(n) && text(n.expression) === 'canonicalLegacyRoute');
+const destination = () => declarationFor((n) => ts.isBinaryExpression(n)
+  && n.operatorToken.kind === ts.SyntaxKind.BarBarToken
+  && ts.isCallExpression(n.left) && text(n.left.expression) === 'clientReportDestination'
+  && ts.isCallExpression(n.right) && text(n.right.expression) === 'canonicalLegacyRoute');
 const observation = () => declarationFor((n) => ts.isCallExpression(n) && text(n.expression) === 'sessionViewKey' && text(n.arguments[0]) === 'sesion');
 const hasReturn = (node) => nodes(node, ts.isReturnStatement).length > 0;
 const compact = (node) => text(node).replace(/\s+/g, '');
@@ -88,7 +91,14 @@ test('App imports real closed-policy helpers and resolves the complete reactive 
   assert.ok(names.includes('canonicalLegacyRoute') && names.includes('replaceLegacyRoute'));
   const value = destination();
   assert.ok(value, 'Resolve legacy destination in App');
-  assert.equal(text(value.initializer.arguments[0]), 'route', 'Pass query/hash context, not pathname alone');
+  for (const branch of [value.initializer.left, value.initializer.right]) {
+    assert.deepEqual(branch.arguments.map(text), ['route'], 'Both policies receive full query/hash context');
+  }
+  const reportImport = file.statements.find(n => ts.isImportDeclaration(n)
+    && n.moduleSpecifier.text === './shared/navigation/client-report-navigation.js');
+  assert.ok(reportImport);
+  assert.deepEqual(new Set(reportImport.importClause.namedBindings.elements.map(n => n.name.text)),
+    new Set(['clientReportDestination', 'replaceClientReportRoute']));
   assert.match(source, /readRouteKey\(window\)/);
   assert.doesNotMatch(source, /function\s+canonicalLegacyRoute|canonicalLegacyRoute\s*=|function\s+replaceLegacyRoute/);
 });
@@ -119,8 +129,15 @@ test('all App hooks, including canonical replacement effect, precede conditional
   assert.deepEqual(replace[0].arguments.map(text), ['window', text(dest.name)]);
   const guard = nodes(effect.arguments[0], ts.isIfStatement).find((n) => calls(n.thenStatement, 'replaceLegacyRoute').length);
   assert.ok(guard, 'Replacement is gated inside effect');
-  const operands = compact(guard.expression).replace(/^\(|\)$/g, '').split('&&');
+  const conjuncts = node => ts.isParenthesizedExpression(node) ? conjuncts(node.expression)
+    : ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+      ? [...conjuncts(node.left), ...conjuncts(node.right)] : [compact(node)];
+  const operands = conjuncts(guard.expression);
   assert.ok(operands.includes(text(session.name)) && operands.includes(text(dest.name)), 'Both session observation and recognized destination required');
+  assert.deepEqual(operands, [text(session.name), text(dest.name), '!replaceClientReportRoute(window)'],
+    'Report replacement is session-gated and short-circuits legacy replacement');
+  assert.equal(calls(effect.arguments[0], 'replaceClientReportRoute').length, 1);
+  assert.equal(calls(app.body, 'replaceClientReportRoute').length, 1, 'No render-time report replacement');
   assert.ok(ts.isArrayLiteralExpression(effect.arguments[1]));
   assert.deepEqual(new Set(effect.arguments[1].elements.map(text)), new Set([text(session.name), text(dest.name)]));
   assert.equal(calls(app.body, 'replaceLegacyRoute').length, 1, 'No render-time duplicate replacement');

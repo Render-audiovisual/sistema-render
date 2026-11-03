@@ -61,7 +61,8 @@ test("el menú principal retira Moodboards y Drive para todos los roles sin quit
     const groups = getNavigationGroups(role);
     const resources = groups.find(group => group.id === "resources");
     assert.ok(resources, `Grupo de recursos para ${role}`);
-    assert.ok(resources.links.some(link => link.href === "/reportes-historias"));
+    assert.equal(resources.links.filter(link => link.href === "/instagram" && link.label === "Reportes de clientes").length, 1);
+    assert.equal(groups.flatMap(group => group.links).some(link => ["/reportes-historias", "/equipo"].includes(link.href)), false);
     assert.equal(groups.flatMap(group => group.links).some(link => ["/moodboards", "/drive"].includes(link.href)), false);
   }
 });

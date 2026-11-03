@@ -250,11 +250,12 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/reportes-historias", "/instagram", "/perfil"];
+  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/instagram", "/perfil"];
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());
-    assert.equal(links.some(link=>link.href==='/instagram'),true,`${role} puede consultar Instagram`);
+    assert.equal(links.filter(link=>link.href==='/instagram' && link.label==='Reportes de clientes').length,1,`${role} puede consultar reportes de clientes`);
+    assert.equal(links.some(link=>['/reportes-historias','/equipo'].includes(link.href)),false,'Sin navegación a reportes por persona');
     for (const href of ["/sueldos", "/empleados", "/clientes?gestion=1"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
     assert.equal(links.some(link => link.href === "/wilson-conversaciones" || link.href.includes("wilson=open")), false);
     assert.equal(links.some(link => ["/drive", "/moodboards"].includes(link.href)), false);

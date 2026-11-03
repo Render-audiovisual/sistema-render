@@ -12,8 +12,7 @@ const shared = new Map([
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
   ["/feedback", ["Feedback"]],
-  ["/reportes-historias", ["Reportes"]],
-  ["/instagram", ["Instagram"]],
+  ["/instagram", ["Reportes de clientes"]],
   ["/perfil", ["Perfil"]],
 ]);
 const adminOnly = new Map([
@@ -23,6 +22,17 @@ const adminOnly = new Map([
 ]);
 const linksFor = role => getNavigationGroups(role).flatMap(group => group.links);
 const sortedHrefs = links => links.map(link => link.href).sort();
+
+test('reports are client-only for every role and deep links highlight the same destination', () => {
+  for (const role of ['admin', ...employeeRoles]) {
+    const links = linksFor(role);
+    assert.equal(links.some(link => link.href === '/reportes-historias' || link.href === '/equipo'), false);
+    assert.equal(links.filter(link => link.label === 'Reportes de clientes').length, 1);
+    for (const route of ['/instagram/reporte', '/reportes-historias', '/equipo']) {
+      assert.deepEqual(links.filter(link => isNavigationActive(link.href, route)).map(link => link.href), ['/instagram']);
+    }
+  }
+});
 
 test('simplified navigation removes Projects and Publications without changing server privileges', () => {
   for (const role of ['admin', ...employeeRoles]) {

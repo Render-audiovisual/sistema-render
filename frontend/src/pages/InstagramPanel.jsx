@@ -6,6 +6,7 @@ import { hasWeeklyReportCoverage } from '../shared/instagram-report-coverage.js'
 import { readInstagramLocation,instagramPanelHref,instagramReportHref } from './instagramNavigation.js';
 import { needsInstagramOverview } from './instagramLoading.js';
 import { handleAppLinkClick } from '../shared/navigation/location.js';
+import { clientReportPanelLocation } from '../shared/navigation/client-report-navigation.js';
 import './InstagramPanel.css';
 
 // Shared read-only reports. Administration remains Leader-only on the server.
@@ -47,10 +48,11 @@ export function InstagramPanelPage({ sesion }) {
 
 function InstagramPanelContent({ sesion }) {
   const canManage = sesion?.usuario?.rol === 'admin';
-  const [navigation,setNavigation]=useState(()=>readInstagramLocation(window.location.search,currentPeriod()));
+  const readPanelLocation=()=>clientReportPanelLocation(readInstagramLocation(window.location.search,currentPeriod()));
+  const [navigation,setNavigation]=useState(readPanelLocation);
   const {period,tab,selected}=navigation;
   const navigate=changes=>{const next={...navigation,...changes,error:''};window.history.pushState({},'',instagramPanelHref(next));setNavigation(next);};
-  useEffect(()=>{const pop=()=>setNavigation(readInstagramLocation(window.location.search,currentPeriod()));window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
+  useEffect(()=>{const pop=()=>setNavigation(readPanelLocation());window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ function InstagramPanelContent({ sesion }) {
   return <main className="page-shell ig-panel">
     <section className="salary-hero ig-hero">
       <div>
-        <h1>Instagram</h1>
+        <h1>Reportes de clientes</h1>
       </div>
       <label className="ig-period"><span>Mes</span>
         <input type="month" value={period} min="2026-01" onChange={e => { if (/^20\d{2}-(0[1-9]|1[0-2])$/.test(e.target.value)) navigate({period:e.target.value}); }} />
@@ -92,7 +94,6 @@ function InstagramPanelContent({ sesion }) {
     {!navigation.error&&data?.periodo === period && tab === 'clientes' && !selected && <ClientsView data={data} />}
     {!navigation.error&&tab === 'clientes' && selected && (canManage ? <ClientDetail key={`${selected}:${period}`} sesion={sesion} clave={selected} period={period} onBack={() => navigate({selected:null})} onChanged={reload} /> :
       <a className="btn" href={instagramReportHref(selected,period)} onClick={event=>handleAppLinkClick(window,event)}>Ver reporte del cliente</a>)}
-    {!navigation.error&&data?.periodo === period && tab === 'equipo' && <TeamView data={data} />}
     {!navigation.error&&tab === 'reportes' && <ReportsView sesion={sesion} />}
     {!navigation.error&&tab === 'cuentas' && (canManage ? <AccountsView sesion={sesion} onChanged={reload} /> : <p role="alert">Solo Líder puede administrar las cuentas.</p>)}
     {canManage && tab === 'clientes' && !selected && <footer className="ig-panel-settings"><button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>Configurar cuentas</button></footer>}
@@ -299,7 +300,6 @@ function ClientDetail({ sesion, clave, period, onBack, onChanged }) {
         </dl>
         <footer>
           <p className={`ig-link-state is-${p.vinculo}`}>{VINCULO[p.vinculo]}{p.pieza?.idea ? ` · ${p.pieza.idea}` : ''}</p>
-          {p.responsables.length > 0 && <p className="ig-people">Equipo: {p.responsables.join(', ')}</p>}
           <label className="ig-link-select"><span>Pieza del sistema</span>
             <select disabled={busy === p.ig_media_id} value={p.publicacion_id ?? ''} onChange={e => link(p.ig_media_id, e.target.value)}>
               <option value="">{p.publicacion_id ? 'Quitar vínculo (recalcular)' : 'Elegir pieza…'}</option>
@@ -313,24 +313,6 @@ function ClientDetail({ sesion, clave, period, onBack, onChanged }) {
   </section>;
 }
 
-function TeamView({ data }) {
-  if (!data.equipo.length) return <div className="salary-state">Todavía no hay piezas con responsables para {labelPeriod(data.periodo)}. Los responsables salen de las piezas del objetivo mensual y de las publicaciones vinculadas.</div>;
-  return <section className="ig-card">
-    <header className="ig-card-head"><h2>Equipo · {labelPeriod(data.periodo)}</h2></header>
-    <p className="ig-help">Carga = piezas del objetivo mensual asignadas. Resultados = publicaciones de Instagram vinculadas a sus piezas.</p>
-    <div className="ig-table ig-team" role="table" aria-label="Rendimiento por persona">
-      <div className="ig-row is-head" role="row"><span role="columnheader">Persona</span><span role="columnheader">Carga</span>
-        <span role="columnheader">Publicadas en IG</span><span role="columnheader">Alcance promedio</span><span role="columnheader">Interacción</span></div>
-      {data.equipo.map(p => <div className="ig-row" role="row" key={p.nombre}>
-        <span role="cell"><strong>{p.nombre}</strong></span>
-        <span role="cell"><em className="ig-cell-label">Carga</em><strong>{p.publicadas_sistema}/{p.asignadas}</strong><small>publicadas / asignadas</small></span>
-        <span role="cell"><em className="ig-cell-label">Publicadas en IG</em><strong>{p.totales.piezas}</strong><small>{p.totales.reels} reels · {p.totales.carruseles} carr.</small></span>
-        <span role="cell"><em className="ig-cell-label">Alcance promedio</em><strong>{fmt(p.totales.alcance_promedio)}</strong><small>{fmt(p.totales.vistas_promedio)} reproducciones prom.</small></span>
-        <span role="cell"><em className="ig-cell-label">Interacción</em><strong>{pct(p.totales.tasa_interaccion)}</strong></span>
-      </div>)}
-    </div>
-  </section>;
-}
 
 function AccountsView({ sesion, onChanged }) {
   const [state, setState] = useState({ loading: true, error: '', data: null });

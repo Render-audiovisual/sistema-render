@@ -2,6 +2,10 @@
   RewriteEngine On
   RewriteBase /
 
+  # Los chunks faltantes deben devolver 404, nunca el HTML de la SPA.
+  # END evita otra pasada del fallback en contexto .htaccess (Apache 2.4).
+  RewriteRule ^assets(?:/|$) - [END]
+
   # No reescribir si es un archivo o carpeta real
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

@@ -19,7 +19,8 @@ test('principal route uses the connected calendar page, not the old publication-
   const source=readFileSync(new URL('../App.jsx',import.meta.url),'utf8');
   assert.match(source,/canUseSharedCalendarRole\(sesion.usuario.rol\) \? \["\/calendario", "\/calendario-estructura"\]/);
   assert.match(source,/const CalendarPage = lazyNamed\(\(\) => import\("\.\/pages\/Calendar.jsx"\), "CalendarPage"\)/);
-  const route=source.slice(source.indexOf('if (path === "/calendario")'),source.indexOf('if (path === "/reportes-historias")'));
+  const route=source.match(/if \(path === "\/calendario"\) \{[\s\S]*?\n    \}/)?.[0];
+  assert.ok(route,'La ruta de calendario sigue existiendo sin depender del sector retirado de reportes por persona');
   assert.match(route,/CalendarPage sesion=\{sesion\} onNavigate=\{navigate\}/);
   assert.doesNotMatch(route,/PublicacionesPage/);
   assert.match(source,/if \(path === "\/planificacion-publicaciones"\)/);

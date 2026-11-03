@@ -106,7 +106,7 @@ test('legacy dashboards use current identity home or the single safe task contex
     assert.equal(normalizeLoginDestination(alias), '/workspace/tareas');
     assert.equal(normalizeLoginDestination(`${alias}?task=42&responsable=Franco`), '/workspace/tareas?task=42');
   }
-  assert.equal(normalizeLoginDestination('/equipo?usuario=Franco'), '/reportes-historias');
+  assert.equal(normalizeLoginDestination('/equipo?usuario=Franco'), '/instagram');
 });
 
 test('resolve defaults to personal home for unusable destinations or missing/inactive/unidentified user', () => {
@@ -122,7 +122,7 @@ test('resolve defaults to personal home for unusable destinations or missing/ina
 test('roles, not IDs or personal names, gate finance, users and management destinations', () => {
   for (const rol of roles) {
     const actor = user(rol, { id: 91001, usuario: 'lider', nombre: 'Franco' });
-    for (const route of ['/sueldos?periodo=2026-10#private', '/empleados?user=7', '/instagram'])
+    for (const route of ['/sueldos?periodo=2026-10#private', '/empleados?user=7'])
       assert.equal(resolveLoginDestination(route, actor), rol === 'admin' ? route : '/inicio');
     const management = '/clientes?gestion=1&periodo=2026-08#cliente-17';
     assert.equal(resolveLoginDestination(management, actor), rol === 'admin' ? management : '/clientes');
@@ -152,6 +152,33 @@ test('every actual sidebar href normalizes and resolves unchanged for the role t
       assert.equal(resolveLoginDestination(href, user(rol)), href, `${rol}: sidebar return must remain usable`);
       assert.equal(readLoginDestination(new URL(loginHrefForDestination(href), 'https://fixture.invalid').search), href);
     }
+  }
+});
+
+test('client reports are shared login destinations, not finance or account-management grants', () => {
+  const reports = ['/instagram', '/instagram?periodo=2026-10', '/instagram/reporte?cliente=cliente-7&periodo=2026-10#resumen'];
+  for (const role of roles) {
+    for (const route of reports) {
+      assert.equal(resolveLoginDestination(route, user(role)), route);
+      assert.equal(readLoginDestination(new URL(loginHrefForDestination(route), 'https://fixture.invalid').search), route);
+    }
+    for (const route of ['/equipo?persona=7', '/reportes-historias?usuario=Franco']) {
+      assert.equal(resolveLoginDestination(route, user(role)), '/instagram');
+      assert.equal(readLoginDestination(new URL(loginHrefForDestination(route), 'https://fixture.invalid').search), '/instagram');
+    }
+    if (role !== 'admin') {
+      for (const route of ['/sueldos', '/empleados']) assert.equal(resolveLoginDestination(route, user(role)), '/inicio');
+      assert.equal(resolveLoginDestination('/clientes?gestion=1', user(role)), '/clientes');
+    }
+  }
+  for (const role of ['unknown', 'Admin', 'lider', 'admin ']) {
+    for (const route of reports) assert.equal(resolveLoginDestination(route, user(role)), '/inicio');
+  }
+  for (const actor of [null, user('edicion', { activo: false }), user('admin', { id: 0 })]) {
+    for (const route of reports) assert.equal(resolveLoginDestination(route, actor), '/inicio');
+  }
+  for (const route of ['/instagram/reporte/extra', '/instagram/reporte/', '/instagram/../instagram/reporte']) {
+    assert.equal(normalizeLoginDestination(route), null);
   }
 });
 

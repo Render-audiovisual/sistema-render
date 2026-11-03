@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
-import { canonicalLegacyRoute } from './legacy-routes.js';
+import { canonicalLegacyRoute, replaceLegacyRoute } from './legacy-routes.js';
+import { clientReportDestination, replaceClientReportRoute } from './client-report-navigation.js';
 
 // Integration boundaries, not a DOM/focus emulator: real App/hook functions
 // are extracted verbatim; SSR and hook leases are tested independently from
@@ -83,7 +84,8 @@ async function renderApp(route, { status = 'authenticated', session = { usuario:
   const deps = { React, SectionErrorBoundary, window: { location }, URLSearchParams,
     readRouteKey: () => `${location.pathname}${location.search}${location.hash}`,
     useApplicationSession: () => snapshot, sessionViewKey: value => value ? 'opaque-session' : null,
-    getApplicationSessionSnapshot: () => snapshot, canonicalLegacyRoute, sectionFocusKey,
+    getApplicationSessionSnapshot: () => snapshot, canonicalLegacyRoute, replaceLegacyRoute,
+    clientReportDestination, replaceClientReportRoute, sectionFocusKey,
     useSectionContentFocus: options => { observed.push(options); return {
       skipLink: React.createElement('a', { 'data-qa-shell-skip': true, href: '#render-main-content' }, 'Ir al contenido'),
       marker: React.createElement('span', { 'data-qa-shell-marker': true, id: 'render-main-content', hidden: true }),
@@ -106,6 +108,45 @@ async function renderApp(route, { status = 'authenticated', session = { usuario:
   const actual = exported(compile(app, ['RouteLoading', 'App']), deps).App;
   return { html: renderToStaticMarkup(React.createElement(actual)), observed, redirects, draftProviders };
 }
+
+test('actual App redirect effect replaces old team routes with client reports using genuine helpers', async () => {
+  const effect = nodes(appFunction, ts.isCallExpression).find(n =>
+    n.expression.getText(app) === 'React.useEffect'
+      && n.arguments[0].getText(app).includes('replaceClientReportRoute(window)'));
+  assert.ok(effect, 'Real App report redirect effect');
+  const effectCode = ts.transpileModule(`const redirect = ${effect.arguments[0].getText(app)}; exports.redirect = redirect;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  for (const route of ['/equipo', '/equipo?persona=7#equipo', '/reportes-historias', '/reportes-historias?periodo=mes_actual']) {
+    const before = await renderApp(route);
+    assert.match(before.html, /route-loading/);
+    assert.equal(before.observed[0].enabled, false);
+    assert.doesNotMatch(before.html, /data-qa-page=/);
+    const url = new URL(route, 'https://render.test');
+    const state = { navigation: 7 }, events = [];
+    const window = {
+      location: url,
+      history: { state, replaceState(nextState, title, destination) {
+        assert.equal(nextState, state);
+        url.href = new URL(destination, url).href;
+      } },
+      PopStateEvent: class { constructor(type, init) { this.type = type; this.state = init.state; } },
+      dispatchEvent(event) { events.push(event); },
+    };
+    const redirect = exported(effectCode, { window, sessionKey: 'opaque-session',
+      legacyDestination: clientReportDestination(route) || canonicalLegacyRoute(route),
+      replaceClientReportRoute, replaceLegacyRoute,
+    }).redirect;
+    redirect();
+    assert.equal(url.pathname + url.search + url.hash, '/instagram', route);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'popstate');
+    assert.equal(events[0].state, state);
+    const after = await renderApp(url.pathname);
+    assert.match(after.html, /data-qa-page="InstagramPanelPage"/);
+    assert.equal(after.observed[0].enabled, true);
+  }
+});
 
 test('alias loading retains the same root provider contract; session verification gates never expose recovery', async () => {
   const returns = nodes(appFunction.body, ts.isReturnStatement);

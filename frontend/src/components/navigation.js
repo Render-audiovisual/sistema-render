@@ -20,8 +20,7 @@ export function getNavigationGroups(role) {
       { href: "/feedback", label: "Feedback", icon: "feedback" },
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [
-      { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-      { href: "/instagram", label: "Instagram", icon: "instagram" },
+      { href: "/instagram", label: "Reportes de clientes", icon: "reports" },
       ...(admin ? [{ href: "/sueldos", label: "Finanzas", icon: "salary" }] : []),
     ] },
     { id: "account", label: "Cuenta", links: [
@@ -33,6 +32,7 @@ export function getNavigationGroups(role) {
 }
 
 export function isNavigationActive(href, pathname, search = "") {
+  if (pathname === '/instagram/reporte' || pathname === '/reportes-historias' || pathname === '/equipo') return href === '/instagram';
   if (pathname === '/clientes/operacion') return href === '/clientes';
   const aliases = { "/bloc-notas": "/feedback", "/calendario-estructura": "/planificacion-historias" };
   if (pathname === "/clientes" && ["/clientes", "/clientes?gestion=1"].includes(href)) {

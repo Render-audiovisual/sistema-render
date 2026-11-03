@@ -154,7 +154,7 @@ test("mobile focus-trap/Escape and breakpoint listeners are bounded and clean up
 
 test("collapse never filters navigation destinations or expands employee permissions", () => {
   assert.match(source, /getNavigationGroups\(sesion\?\.usuario\?\.rol\)/);
-  const shared = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/reportes-historias", "/instagram", "/perfil"].sort();
+  const shared = ["/inicio", "/calendario", "/workspace/tareas", "/producciones", "/clientes", "/lista", "/feedback", "/instagram", "/perfil"].sort();
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), shared);

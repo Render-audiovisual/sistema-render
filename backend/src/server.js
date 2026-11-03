@@ -74,6 +74,7 @@ import { createProjectsRouter } from "./projects.js";
 import { createClientOperationRouter } from "./client-operation.js";
 import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
 import {createClientMonthlyControlRouter,clientMonthlyLegacyOwnerGuard} from './client-monthly-control.js';
+import {createRetainedAssetMiddleware} from './retained-assets.js';
 import { createTeamPaymentsRouter } from './team-payments.js';
 import { createInstagramPanelRouter } from './instagram-panel.js';
 import { projectDomainConflict } from "./project-errors.js";
@@ -2847,16 +2848,18 @@ if (indexHtml !== null) {
       setHeaders: (res, filePath) => {
         if (filePath.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        }
+        } else if(path.basename(filePath)==='index.html')res.setHeader('Cache-Control','no-store');
       },
     }),
   );
+  app.use(createRetainedAssetMiddleware({distDir}));
+  app.use('/assets',(_req,res)=>res.status(404).set('Cache-Control','no-store').type('text/plain').send('Archivo no disponible.'));
   // Se lee una sola vez en memoria en vez de usar res.sendFile(): en el
   // hosting de Hostinger, sendFile devolvía NotFoundError pese a que el
   // archivo existía (probablemente por cómo resuelve symlinks/permisos
   // en esa infraestructura). readFileSync no tiene ese problema.
   app.get(/^\/(?!api\/|health(?:\/|$)).*/, (_req, res) => {
-    res.type("html").send(indexHtml);
+    res.set('Cache-Control','no-store').type("html").send(indexHtml);
   });
   console.log("Sirviendo frontend estático desde", distDir);
 }

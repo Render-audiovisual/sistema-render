@@ -13,6 +13,7 @@ import { createOwnerProfileActions } from './shared/session/owner-profile-action
 import { ownerProfileCapability } from './shared/session/owner-profiles.js';
 import { navigateWithinApp, navigateWithConfirmation, readRouteKey } from "./shared/navigation/location.js";
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
+import {clientReportDestination,replaceClientReportRoute} from './shared/navigation/client-report-navigation.js';
 import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
 import { canUseSharedCalendarRole } from "./components/navigation.js";
 import { useSectionContentFocus } from './components/SectionContentFocus.jsx';
@@ -21,8 +22,16 @@ import { GoalDraftMemoryProvider } from './components/GoalDraftMemoryProvider.js
 import { createRememberedViewOwner } from './shared/navigation/rememberedViewOwner.js';
 import { SectionErrorBoundary } from './components/SectionErrorBoundary.jsx';
 import { loadInstagramReportModule, warmInstagramReportModule } from './pages/instagramReportModule.js';
+import {createSectionModule} from './shared/navigation/sectionModule.js';
+import {requestSectionRetry} from './shared/navigation/section-retry.js';
 
-const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
+const lazyNamed = (loader, name) => {
+  const module=createSectionModule(loader,name);
+  let current=React.lazy(module.load);
+  const Section=props=>React.createElement(current,props);
+  Section.retry=()=>{module.retry();current=React.lazy(module.load);};
+  return Section;
+};
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
 const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
@@ -31,7 +40,6 @@ const ClientOperationPage = lazyNamed(() => import("./pages/ClientOperationPage.
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
-const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
 const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
 const InstagramPanelPage = lazyNamed(() => import("./pages/InstagramPanel.jsx"), "InstagramPanelPage");
 const InstagramClientReportPage = lazyNamed(loadInstagramReportModule, "InstagramClientReportPage");
@@ -47,12 +55,13 @@ function RouteLoading() {
 export function App() {
   const [route, setRoute] = React.useState(() => readRouteKey(window));
   const [navigationTick, setNavigationTick] = React.useState(0);
+  const [sectionRetryEpoch,setSectionRetryEpoch]=React.useState(0);
   const navigationEpoch = React.useRef(0);
   const path = route.split(/[?#]/, 1)[0];
   React.useEffect(() => { warmInstagramReportModule(path); }, [path]);
   const sessionSnapshot = useApplicationSession();
   const sesion = sessionSnapshot.session;
-  const legacyDestination = canonicalLegacyRoute(route);
+  const legacyDestination = clientReportDestination(route)||canonicalLegacyRoute(route);
   const sessionKey = sessionViewKey(sesion);
   // Session comparison may contain credentials in the legacy bearer adapter.
   // Never hand that value to React keys (which can appear in diagnostics).
@@ -126,7 +135,7 @@ export function App() {
 
   // Subscribe first: direct authenticated alias loads emit popstate immediately.
   React.useEffect(() => {
-    if (sessionKey && legacyDestination) replaceLegacyRoute(window, legacyDestination);
+    if (sessionKey && legacyDestination && !replaceClientReportRoute(window)) replaceLegacyRoute(window, legacyDestination);
   }, [sessionKey, legacyDestination]);
 
   const navigate = React.useCallback((href) => {
@@ -233,9 +242,6 @@ export function App() {
     if (path === "/calendario") {
       return <CalendarPage sesion={sesion} onNavigate={navigate} />;
     }
-    if (path === "/reportes-historias") {
-      return <ReportesEquipoPage />;
-    }
     if (path === "/sueldos") {
       return <SueldosPage />;
     }
@@ -262,7 +268,12 @@ export function App() {
     return null;
   }
 
-  const loadedDashboard = <SectionErrorBoundary key={`section:${sessionRenderEpoch}:${sectionFocusKey(path,route.slice(path.length).split('#',1)[0])}`}>
+  const retrySection=()=>requestSectionRetry(window,{
+    isCurrent:()=>getApplicationSessionSnapshot()===sessionSnapshot&&sessionSnapshot.status==='authenticated'
+      &&readRouteKey(window).split(/[?#]/,1)[0]===path&&navigationOwner.current.token===navigationLifetime,
+    retry:()=>{dashboard.type.retry?.();setSectionRetryEpoch(value=>value+1);},
+  });
+  const loadedDashboard = <SectionErrorBoundary onRetry={retrySection} key={`section:${sessionRenderEpoch}:${sectionFocusKey(path,route.slice(path.length).split('#',1)[0])}:${sectionRetryEpoch}`}>
     <React.Suspense key={`dashboard:${sessionRenderEpoch}`} fallback={<RouteLoading />}>{dashboard}</React.Suspense>
   </SectionErrorBoundary>;
 
