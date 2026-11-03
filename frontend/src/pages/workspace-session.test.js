@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {projectPendingTaskUpdate, isWorkingTask, isTaskUpdatePending} from '../features/render-os/utils/working-task-view.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
@@ -21,6 +22,31 @@ const initializer = (owner, name) => nodes(component(owner), node => ts.isVariab
 const run = (node, deps) => new Function(...Object.keys(deps), `return (${text(node)});`)(...Object.values(deps));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const task = () => ({ id: 5, revision: 7, updated_at: '2026-10-20T10:00:00Z', estado: 'pendiente', titulo: 'Original', propiedades_extra: { workspace: 'render_os' } });
+test('actual update callback paints both destinations before ACK and does not wait for activity', async () => {
+ const first=deferred(), second=deferred(), history=deferred(); let patches=0;
+ const f=fixture({transport:(_url,options)=>options.method==='PATCH' ? (++patches===1?first.promise:second.promise) : history.promise});
+ const completion=f.deps.updateTask(5,{estado:'finalizada'},'completed');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.items[0].estado,'finalizada'); assert.equal(isWorkingTask(f.items[0]),true);
+ assert.equal(isTaskUpdatePending(f.items[0]),true); assert.equal(f.deps.tasksRef.current[0].revision,7);
+ first.resolve({...task(),estado:'finalizada',revision:8,propiedades_extra:{workspace:'render_os',finalizada_at:'2026-11-03T15:00:00.000Z'}});
+ await completion;
+ const reverse=f.deps.updateTask(5,{estado:'en_revision'},'returned');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(patches,2); assert.equal(f.items[0].estado,'en_revision'); assert.equal(isWorkingTask(f.items[0]),true);
+ assert.equal(JSON.parse(f.requests.findLast(r=>r.options.method==='PATCH').options.body).expected_revision,8);
+ second.resolve({...task(),estado:'en_revision',revision:9}); await reverse;
+ assert.equal(isTaskUpdatePending(f.items[0]),false); history.reject(Error('history unavailable'));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.items[0].estado,'en_revision'); assert.equal(f.items[0].revision,9);
+});
+test('failed state save restores original visible task',async()=>{
+ const pending=deferred(); const f=fixture({transport:()=>pending.promise});
+ const result=f.deps.updateTask(5,{estado:'finalizada'},null);
+ await new Promise(resolve=>setImmediate(resolve)); assert.equal(f.items[0].estado,'finalizada');
+ pending.reject(Object.assign(Error('offline'),{status:500})); await assert.rejects(result);
+ assert.equal(f.items[0].estado,'pendiente'); assert.equal(isTaskUpdatePending(f.items[0]),false);
+});
 function fixture({ cookie = false, transport = async () => task() } = {}) {
   const store = createBrowserSessionState();
   const bootstrap = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'admin' }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
@@ -30,7 +56,7 @@ function fixture({ cookie = false, transport = async () => task() } = {}) {
   const effects = [], requests = [], tasksRef = { current: items };
   const captureRequest = () => createCapturedRequest({ session, readSession: () => live, isActive: () => active,
     request: (url, options) => { requests.push({ url, options }); return transport(url, options); } });
-  const deps = { captureRequest, isSessionFailure, isTaskEditorialContext, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
+  const deps = { projectPendingTaskUpdate, captureRequest, isSessionFailure, isTaskEditorialContext, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
     sesion: session, tasksRef, createdAdmissions:{current:{ids:new Set()}},parseTaskCreationAck,
     taskQueryGenerationRef:{current:0},setLoadingMore:()=>{},setPagingBlocked:()=>{},setOrderMessage:()=>{},
     updateQueuesRef: { current: new Map() }, canRetryTaskUpdate, reviewScopeRef: { current: '' },

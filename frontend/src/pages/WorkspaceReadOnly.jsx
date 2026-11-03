@@ -11,7 +11,7 @@ import { apiJson, apiRequest, apiTaskById, apiTaskPage, apiSubtasks } from "../f
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { effectiveTaskFilterState, getTasksEmptyMessage, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, writeTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
-import { getWorkingTaskViewState as getTaskViewState, isWorkingTask } from '../features/render-os/utils/working-task-view.js';
+import { getWorkingTaskViewState as getTaskViewState, isWorkingTask, projectPendingTaskUpdate, isTaskUpdatePending } from '../features/render-os/utils/working-task-view.js';
 import { buildResponsibleOptions, resolveResponsibleFilter, taskMatchesResponsible } from "../features/render-os/utils/task-responsible-filter.js";
 import { groupTasksByResponsible, groupTasksByClient } from "../features/render-os/utils/task-groups.js";
 import { createTaskManualOrder, taskOrderArrowAnchor } from "../features/render-os/utils/task-manual-order.js";
@@ -1015,7 +1015,8 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
   const primaryLabel = responsibleLabels[0] || "Sin responsables";
   const phase = getProductionPhase(task);
   const availableStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado) || canUserMoveTaskToState(task, user, item.id));
-  const canDrag = canMove || Boolean(manualControls);
+  moveBlocked = moveBlocked || isTaskUpdatePending(task);
+  const canDrag = !moveBlocked && (canMove || Boolean(manualControls));
   const startDrag = (event) => {
     if (!canDrag || moveBlocked || dragRef.current.blocked) { event.preventDefault(); return; }
     dragRef.current.suppressClick = true;
@@ -1033,6 +1034,7 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
     onDrop={onOrderDrop ? event => onOrderDrop(event,task) : undefined}
     onClick={(event) => { if (dragRef.current.suppressClick || event.target.closest('button,select,input,textarea,a,[contenteditable="true"]')) return; onOpen(task.id); }}>
     <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canDrag && <span className="ros-card-drag-handle" aria-hidden="true" title="Arrastrá desde cualquier parte de la tarjeta">⠿</span>}</div><h3><button type="button" className="ros-card-open" draggable={canDrag} onClick={(event)=>{ if (!dragRef.current.suppressClick || event?.detail === 0) onOpen(task.id); }}>{task.titulo}</button></h3><p>{task.cliente_nombre || "Sin cliente"}</p>
+    {isTaskUpdatePending(task) && <small role="status">Guardando…</small>}
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {canonicalTaskState(task.estado) === 'aprobada' && <small className="ros-card-summary">Aprobada</small>}
     {task.estado === 'en_revision' && effectiveTaskFilterState(task) === 'aprobada' && <small className="ros-card-summary">Aprobada (registro histórico; sin evidencia de entrega)</small>}
@@ -1237,7 +1239,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, taskStatus, reviewScope, mobileBoardColumn]);
 
   const move = useCallback((task, status) => {
-    if (orderState.busy || orderState.locked) return;
+    if (orderState.busy || orderState.locked || isTaskUpdatePending(task)) return;
     if (status === canonicalTaskState(task.estado)) return;
     if (!canUserMoveTaskToState(task, sesion?.usuario, status)) {
       onError(status === 'finalizada' && isProductionVisitTask(task) && !getProductionVisitProgress(task).complete
@@ -1404,7 +1406,11 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
     setOrderMessage(`${uncertain ? 'La cola puede haber cambiado.' : 'La cola cambió.'} El total corresponde a la consulta anterior; actualizá desde el principio para continuar.`);
   };
   const responsibleSelection = useMemo(() => resolveResponsibleFilter(responsible, users, catalogReady, sesion?.usuario?.rol === 'admin'), [responsible, users, catalogReady, sesion?.usuario?.rol]);
-  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  useEffect(() => {
+    // Keep CAS observations canonical while the board paints a pending move.
+    tasksRef.current = tasks.map(task => isTaskUpdatePending(task)
+      ? tasksRef.current.find(previous => previous.id === task.id) || task : task);
+  }, [tasks]);
 
   useEffect(() => {
     const syncFilters = () => {
@@ -1610,6 +1616,14 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
   const logActivity = (taskId, message, guard) => guard.request(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
   const updateTask = (id, changes, activity, observedRevision = null) => {
     const guard = captureRequest();
+    const recordActivity = () => {
+      if (!activity) return;
+      // Auxiliary history must not hold the per-task save queue or roll back
+      // an acknowledged state change if this separate request fails.
+      void Promise.resolve().then(() => { guard.assertCurrent(); return logActivity(id, activity, guard); }).catch(error => {
+        if (guard.current() && !isSessionFailure(error)) notify("Cambio guardado, pero no se pudo registrar la actividad.", "error");
+      });
+    };
     changes = JSON.parse(JSON.stringify(changes));
     const requiresReviewObservation = ["aprobada", "finalizada", "publicada"].includes(changes.estado);
     if (requiresReviewObservation && observedRevision === null) observedRevision = tasksRef.current.find((task) => task.id === id)?.revision ?? null;
@@ -1618,12 +1632,8 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
       const previous = tasksRef.current.find((task) => task.id === id);
       if (!previous) throw new Error("La tarea ya no está disponible.");
       if ((requiresReviewObservation && !Number.isSafeInteger(observedRevision)) || (observedRevision !== null && previous.revision !== observedRevision)) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá el trabajo antes de aprobar o finalizar."), { status: 409 });
-      // A completion needs the server's canonical closure timestamp to remain
-      // in the working set. Keep the source card visible until that ACK arrives;
-      // never fabricate finalizada_at or briefly hide the card while saving.
-      if (!["finalizada", "publicada"].includes(changes.estado)) {
-        setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
-      }
+      // Paint the destination immediately without inventing a closure date.
+      setTasks((current) => current.map((task) => task.id === id ? projectPendingTaskUpdate(task, changes) : task));
       try {
         const updated = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
         guard.assertCurrent();
@@ -1632,13 +1642,8 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
         const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
         tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
         setTasks((current) => current.map((task) => task.id === id ? complete : task));
-        let historyFailed = false;
-        if (activity) {
-          try { await logActivity(id, activity, guard); }
-          catch (historyError) { if (isSessionFailure(historyError)) throw historyError; historyFailed = true; }
-        }
-        guard.assertCurrent();
-        notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
+        recordActivity();
+        notify("Cambio guardado en la tarea real.", "success");
         return complete;
       } catch (reason) {
         if (!guard.current() || isSessionFailure(reason)) throw reason;
@@ -1656,13 +1661,8 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
               const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
               setTasks((current) => current.map((task) => task.id === id ? complete : task));
-              let historyFailed = false;
-              if (activity) {
-                try { await logActivity(id, activity, guard); }
-                catch (historyError) { if (isSessionFailure(historyError)) throw historyError; historyFailed = true; }
-              }
-              guard.assertCurrent();
-              notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
+              recordActivity();
+              notify("Cambio guardado en la tarea real.", "success");
               return complete;
             }
             tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);

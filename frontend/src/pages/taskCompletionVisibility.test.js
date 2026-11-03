@@ -1,25 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import ts from 'typescript';
-import {isWorkingTask} from '../features/render-os/utils/working-task-view.js';
+import {isWorkingTask, projectPendingTaskUpdate, isTaskUpdatePending} from '../features/render-os/utils/working-task-view.js';
 const source=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8');
-const file=ts.createSourceFile('WorkspaceReadOnly.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
-let update;
-function walk(node){if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='updateTask')update=node;ts.forEachChild(node,walk);}walk(file);
-test('actual optimistic update keeps completion visible until canonical server response',()=>{
- assert.equal(file.parseDiagnostics.length,0);
- const run=update.initializer.body.statements.find(n=>ts.isVariableStatement(n)&&n.declarationList.declarations[0].name.getText(file)==='run').declarationList.declarations[0].initializer;
- const optimistic=run.body.statements.find(n=>ts.isIfStatement(n)&&n.expression.getText(file).includes('["finalizada", "publicada"]'));
- assert.ok(optimistic);
- const task={id:1,estado:'en_revision',propiedades_extra:{workspace:'render_os'}};
- for(const estado of ['finalizada','publicada']){
-  let rows=[task],writes=0;
-  new Function('changes','id','setTasks',optimistic.getText(file))({estado},1,fn=>{writes++;rows=fn(rows);});
-  assert.equal(writes,0);assert.equal(isWorkingTask(rows[0]),true);
-  const confirmed={...task,estado,propiedades_extra:{workspace:'render_os',finalizada_at:'2026-11-03T15:00:00.000Z'}};
-  assert.equal(isWorkingTask(confirmed),true);
+const task={id:1,revision:4,estado:'en_revision',propiedades_extra:{workspace:'render_os'}};
+test('completion paints immediately without fabricating closure evidence',()=>{
+ for(const estado of ['finalizada','publicada']) {
+  const projected=projectPendingTaskUpdate(task,{estado});
+  assert.equal(projected.estado,estado);
+  assert.equal(isTaskUpdatePending(projected),true);
+  assert.equal(isWorkingTask(projected),true);
+  assert.equal(projected.propiedades_extra.finalizada_at,undefined);
+  assert.equal(task.estado,'en_revision');
+  assert.equal(isWorkingTask(JSON.parse(JSON.stringify(projected))),false);
  }
- let rows=[task];new Function('changes','id','setTasks',optimistic.getText(file))({estado:'en_progreso'},1,fn=>{rows=fn(rows);});assert.equal(rows[0].estado,'en_progreso');
- assert.doesNotMatch(optimistic.getText(file),/finalizada_at\s*[:=]/);
+});
+test('ACK and reverse move preserve visibility and canonical revisions',()=>{
+ const confirmed={...task,estado:'finalizada',revision:5,propiedades_extra:{workspace:'render_os',finalizada_at:'2026-11-03T15:00:00.000Z'}};
+ assert.equal(isWorkingTask(confirmed),true);
+ assert.equal(isTaskUpdatePending(confirmed),false);
+ const returning=projectPendingTaskUpdate(confirmed,{estado:'en_revision'});
+ assert.equal(isWorkingTask(returning),true);
+ assert.equal(returning.estado,'en_revision');
+ assert.equal(returning.revision,5);
+ assert.equal(isTaskUpdatePending(task),false);
+});
+test('pending visibility never admits deleted or archived tasks',()=>{
+ for(const flag of ['papelera_render_os','archivada_render_os'])
+  assert.equal(isWorkingTask(projectPendingTaskUpdate({...task,propiedades_extra:{[flag]:true}},{estado:'finalizada'})),false);
+});
+test('repeat moves are guarded and auxiliary history cannot block ACK',()=>{
+ const update=source.slice(source.indexOf('  const updateTask ='),source.indexOf('  const createTask ='));
+ assert.match(update,/projectPendingTaskUpdate\(task, changes\)/);
+ assert.doesNotMatch(update,/await logActivity/);
+ assert.match(update,/expected_revision: previous.revision/);
+ assert.match(source,/orderState.locked \|\| isTaskUpdatePending\(task\)/);
+ assert.match(source,/role="status">Guardando…/);
+ assert.match(update,/task.id === id \? previous : task/);
 });

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {isTaskUpdatePending} from '../features/render-os/utils/working-task-view.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React from 'react';
@@ -34,7 +35,7 @@ const user = { id: 7, rol: 'admin', activo: true, nombre: 'QA' };
 function fixture({ blocked = false, readOnly = false, manual = true } = {}) {
   const opens = [], moves = [], orders = [], ref = { current: { blocked: false, suppressClick: false } };
   const actor = readOnly ? { id: 0, rol: 'diseno', activo: true } : user;
-  const deps = { React, useRef: () => ref, AREAS, STATUSES, canonicalTaskState, isTaskCompleted,
+  const deps = { isTaskUpdatePending, React, useRef: () => ref, AREAS, STATUSES, canonicalTaskState, isTaskCompleted,
     areaForTask, emojiForTaskCard, formatDate, initials, personForTask, taskResponsibleLabels, getProductionPhase,
     effectiveTaskFilterState, canUserMoveTaskToState, esperandoMaterial: () => false };
   const ActualCard = new Function(...Object.keys(deps), `${compiled};return ActualCard;`)(...Object.values(deps));

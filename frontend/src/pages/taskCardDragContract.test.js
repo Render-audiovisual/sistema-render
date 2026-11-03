@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {isTaskUpdatePending} from '../features/render-os/utils/working-task-view.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
@@ -54,7 +55,7 @@ function fixture({ blocked = false } = {}) {
   const cardFunction = find(file, n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'TaskCard').initializer.arguments[0];
   const instances = new Map(); let refs, cursor = 0;
   const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }) };
-  const Card = extract(cardFunction, { React, useRef: value => refs[cursor++] ||= { current: value },
+  const Card = extract(cardFunction, { isTaskUpdatePending, React, useRef: value => refs[cursor++] ||= { current: value },
     personForTask: () => null, taskResponsibles: () => ['Synthetic'], getProductionPhase: () => null, STATUSES,
     canonicalTaskState, canUserMoveTaskToState, effectiveTaskFilterState, AreaBadge: 'AreaBadge', Avatar: 'Avatar',
     esperandoMaterial: () => false, taskResponsiblesLabel: () => 'Synthetic', isTaskCompleted: () => false, formatDate: () => '' });
