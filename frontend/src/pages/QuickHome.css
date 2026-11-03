@@ -75,3 +75,13 @@
 @media(max-width:760px){.qh-columns{grid-template-columns:minmax(0,1fr)}.qh-summary{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:16px}.qh-summary>div:nth-child(3){border-right:0}.quick-home{padding-inline:16px}.qh-primary-column,.qh-secondary-column{gap:16px}.qh-columns{gap:16px}}
 @media(max-width:440px){.quick-home-header{align-items:flex-start}.quick-home .qh-refresh{padding:8px 12px}.qh-task-row{flex-wrap:wrap}.qh-row-main{flex-basis:calc(100% - 32px)}.qh-deadline{order:3;width:100%;text-align:left}.quick-home .qh-task-row{gap:8px 12px;padding:12px 16px}.qh-section-heading{gap:4px 12px}.qh-list-count{white-space:normal}.qh-shortcuts{gap:4px 16px}}
 @media(prefers-reduced-motion:reduce){.quick-home *{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+/* Etapa 2 · botones del Inicio con el sistema común */
+@media (hover:hover) and (pointer:fine) and (min-width:761px){.quick-home button{min-height:36px;padding:0 14px;font-size:13px;font-weight:600}}
+.quick-home button{transition:background-color var(--render-motion-fast) ease,border-color var(--render-motion-fast) ease,color var(--render-motion-fast) ease}
+.quick-home button:hover:not(:disabled){border-color:var(--render-line-strong)}
+.quick-home .qh-section-heading .qh-refresh{min-height:30px;padding:0 10px;border-color:transparent;background:transparent;color:var(--render-accent);font-size:12px;font-weight:600}
+:root[data-theme="dark"] .quick-home .qh-section-heading .qh-refresh{color:#c6ff3d}
+.quick-home .qh-section-heading .qh-refresh:hover:not(:disabled){background:var(--render-accent-soft);border-color:transparent}
+.quick-home .qh-owner-access button[aria-pressed="true"]{background:var(--render-accent-soft);border-color:var(--render-accent-border)}
+/* Paginación solo cuando hay más de una página: si ambos botones están deshabilitados, no ocupa lugar. */
+.quick-home nav.qh-section-heading:not(:has(button:not(:disabled))){display:none}

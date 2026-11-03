@@ -1627,3 +1627,60 @@ textarea {
 :root[data-theme="dark"] :is(.principal-calendar .principal-calendar-day-preview>span, .productions-page .prod-days>button>span, .render-workspace section.ros-calendar .ros-calendar-task) { background: #14243b; color: #b9d4ff; border-left-color: #6aa8ff; }
 :root[data-theme="dark"] .client-monthly-avatar { background: var(--render-surface-muted); color: var(--render-ink-soft); border-color: var(--render-line); }
 :root[data-theme="dark"] .finance-exchange-note.is-fallback { border-color: rgba(242, 184, 75, .4); background: #2a2210; }
+
+/* ===== Etapa 2 · botones, estados y filtros =====
+ * Una sola forma para la familia .btn: 3 tipos (principal, secundario, texto),
+ * peligro y 3 tamaños. En pantallas táctiles se mantiene el mínimo de 44 px. */
+.btn {
+  gap: var(--render-space-2);
+  border-color: var(--render-line-strong);
+  font-size: 13px;
+  letter-spacing: 0;
+  transition: background-color var(--render-motion-fast) ease, border-color var(--render-motion-fast) ease, color var(--render-motion-fast) ease, box-shadow var(--render-motion-fast) ease;
+}
+.btn:hover { transform: none; box-shadow: none; background: var(--render-surface-soft); border-color: var(--render-muted); }
+.btn.primary:hover, .btn.btn-active:hover { background: var(--render-accent-hover); border-color: var(--render-accent-hover); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--render-accent); }
+:root[data-theme="dark"] .btn.ghost { color: #c6ff3d; }
+.btn.ghost:hover { background: var(--render-accent-soft); border-color: transparent; }
+.btn.danger { background: transparent; border-color: color-mix(in srgb, var(--render-danger) 45%, transparent); color: var(--render-danger); }
+.btn.danger:hover { background: color-mix(in srgb, var(--render-danger) 10%, transparent); border-color: var(--render-danger); }
+.btn.disabled, .btn:disabled, .btn[aria-disabled="true"] { background: var(--render-surface-muted); border-color: transparent; color: var(--render-muted); opacity: .7; box-shadow: none; }
+.btn:focus-visible { outline: none; box-shadow: var(--render-focus); }
+.btn.small, .btn.btn-sm { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.btn.large, .btn.btn-lg { min-height: 48px; padding: 0 20px; font-size: 14px; }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn[aria-busy="true"]::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: render-spin .8s linear infinite; }
+@keyframes render-spin { to { transform: rotate(1turn); } }
+@media (hover: hover) and (pointer: fine) and (min-width: 761px) {
+  .btn { min-height: 36px; padding: 0 14px; }
+  .btn.large, .btn.btn-lg { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .btn[aria-busy="true"]::before { animation: none; } }
+
+/* Estados de tarea: mismo color y texto en todo el sistema. */
+.render-status { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 650; line-height: 1; white-space: nowrap; background: var(--render-surface-muted); color: var(--render-ink-soft); }
+.render-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.render-status[data-state="en_progreso"] { background: #edf4ff; color: #0058b8; }
+.render-status[data-state="en_revision"] { background: #fff4dc; color: #8a5a00; }
+.render-status[data-state="finalizada"], .render-status[data-state="aprobada"], .render-status[data-state="publicada"] { background: #e7f4ec; color: #1f6a43; }
+.render-status[data-state="vencida"] { background: #fdecea; color: #b42318; }
+:root[data-theme="dark"] .render-status[data-state="en_progreso"] { background: #14243b; color: #8fc0ff; }
+:root[data-theme="dark"] .render-status[data-state="en_revision"] { background: #33280f; color: #f2b84b; }
+:root[data-theme="dark"] :is(.render-status[data-state="finalizada"], .render-status[data-state="aprobada"], .render-status[data-state="publicada"]) { background: #12301f; color: #5fd39a; }
+:root[data-theme="dark"] .render-status[data-state="vencida"] { background: #3a1a18; color: #ff8a7f; }
+
+/* Filtro tipo pastilla: el activo se pinta. */
+.render-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 10px; border: 1px solid var(--render-line-strong); border-radius: 999px; background: var(--render-surface); color: var(--render-ink); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.render-chip[aria-pressed="true"], .render-chip.is-active { background: var(--render-accent-soft); border-color: var(--render-accent-border); color: var(--render-ink); font-weight: 650; }
+.render-chip:focus-visible { outline: none; box-shadow: var(--render-focus); }
+/* Etapa 2 · Mi perfil: "Editar" / "Cambiar" como botón secundario chico, sin un tercer color de acción. */
+.profile-setting-panel { border-color: var(--render-line); }
+.profile-setting-panel summary b { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--render-line-strong); border-radius: var(--render-radius-control); background: var(--render-surface); color: var(--render-ink); font-size: 12px; font-weight: 600; }
+.profile-setting-panel summary:hover b { background: var(--render-surface-soft); border-color: var(--render-muted); }
+.profile-setting-panel[open] summary b { background: var(--render-surface-muted); }
+:root[data-theme="dark"] .profile-photo-preview { background: var(--render-surface-muted); color: var(--render-ink-soft); border-color: var(--render-line-strong); }
+:root[data-theme="dark"] .profile-identity-copy > span { background: var(--render-accent-soft); color: var(--render-ink); }
+:root[data-theme="dark"] .profile-security-note { background: var(--render-surface-soft); }
+:root[data-theme="dark"] .profile-security-note strong { color: var(--render-ink); }
+:root[data-theme="dark"] .profile-security-note span { color: var(--render-muted); }
