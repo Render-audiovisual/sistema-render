@@ -153,7 +153,7 @@ test('actual page allows the team, gates missing session and invalid URL; key sc
   assert.match(render(denied.InstagramClientReportPage,{}),/Iniciá sesión/);
   const invalid=compile({window:{location:{search:'?cliente=cliente-1&periodo=2026-10&periodo=2026-11'}}});
   assert.match(render(invalid.InstagramClientReportPage,{}),/no son válidos/);
-  const valid=render(api.InstagramClientReportPage,{});assert.match(valid,/href="\/instagram\?periodo=2026-10"/);assert.match(valid,/type="month"/);assert.match(valid,/disabled=""/);
+  const valid=render(api.InstagramClientReportPage,{});assert.match(valid,/href="\/instagram\?periodo=2026-10&amp;tab=clientes"/);assert.match(valid,/type="month"/);assert.match(valid,/disabled=""/);
   assert.match(source,/key=\{`\$\{view.key\}:\$\{epoch\}:\$\{params.cliente\}:\$\{params.periodo\}`\}/);
   assert.doesNotMatch(source,/import .*InstagramPanel|fetch\(/);
   assert.equal(tree.parseDiagnostics.length,0);

@@ -194,7 +194,7 @@ function StatsContent({ sesion, params, navigate }) {
   const a = d?.totales?.actual, p = d?.totales?.anterior;
   return <main className="igs-page">
     <div className="igs-toolbar">
-      <a className="igs-link" href={`/instagram?periodo=${encodeURIComponent(params.periodo)}`} onClick={e => handleAppLinkClick(window, e)}>← Volver a Clientes</a>
+      <a className="igs-link" href={`/instagram?periodo=${encodeURIComponent(params.periodo)}&tab=clientes`} onClick={e => handleAppLinkClick(window, e)}>← Volver a Clientes</a>
       <div className="igs-controls">
         <label><span>Mes</span><input type="month" value={params.periodo} onChange={e => validPeriod(e.target.value) && navigate({ ...params, periodo: e.target.value, pub: null })} /></label>
         <a className="igs-button" href={`/instagram/reporte?${new URLSearchParams({ cliente: params.cliente, periodo: params.periodo })}`} onClick={e => handleAppLinkClick(window, e)}>Ver reporte</a>

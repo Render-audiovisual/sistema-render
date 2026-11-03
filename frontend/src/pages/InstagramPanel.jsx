@@ -9,6 +9,7 @@ import { handleAppLinkClick } from '../shared/navigation/location.js';
 import { clientReportPanelLocation } from '../shared/navigation/client-report-navigation.js';
 import './InstagramPanel.css';
 import {TeamStatistics} from '../components/TeamStatistics.jsx';
+import {ReportHub,ClientReportList} from '../components/ReportViews.jsx';
 
 // Shared read-only reports. Administration remains Leader-only on the server.
 const number = new Intl.NumberFormat('es-AR');
@@ -80,16 +81,13 @@ function InstagramPanelContent({ sesion }) {
       <div>
         <h1>Reportes</h1>
       </div>
-      <label className="ig-period"><span>Mes</span>
+      {tab !== 'resumen' && <label className="ig-period"><span>Mes</span>
         <input type="month" value={period} min="2026-01" onChange={e => { if (/^20\d{2}-(0[1-9]|1[0-2])$/.test(e.target.value)) navigate({period:e.target.value}); }} />
-      </label>
+      </label>}
     </section>
 
     {tab !== 'resumen' && <button type="button" className="ig-link" onClick={() => navigate({tab:'resumen',selected:null})}>← Volver a Reportes</button>}
-    {!navigation.error&&tab==='resumen'&&<div className="ig-statistics-grid ig-statistics-hub" aria-label="Tipos de reporte">
-      <button type="button" className="ig-statistics-card" onClick={()=>navigate({tab:'clientes',selected:null})}><h2>Estadísticas de cuentas</h2><p>Feed, reels, carruseles y resultados de cada cliente.</p><span>Ver cuentas →</span></button>
-      <button type="button" className="ig-statistics-card" onClick={()=>navigate({tab:'equipo',selected:null})}><h2>Estadísticas del equipo</h2><p>Grabaciones, ediciones y carruseles entregados.</p><span>Ver equipo →</span></button>
-    </div>}
+    {!navigation.error&&tab==='resumen'&&<ReportHub onSelect={tab=>navigate({tab,selected:null})}/>}
     {!navigation.error&&tab==='equipo'&&<TeamStatistics sesion={sesion} period={period}/>}
 
     {navigation.error&&<div className="salary-state is-error" role="alert">{navigation.error}<button type="button" className="btn" onClick={()=>navigate({period:currentPeriod(),tab:'clientes',selected:null})}>Volver a clientes</button></div>}
@@ -102,7 +100,6 @@ function InstagramPanelContent({ sesion }) {
       <a className="btn" href={instagramReportHref(selected,period)} onClick={event=>handleAppLinkClick(window,event)}>Ver reporte del cliente</a>)}
     {!navigation.error&&tab === 'reportes' && <ReportsView sesion={sesion} />}
     {!navigation.error&&tab === 'cuentas' && (canManage ? <AccountsView sesion={sesion} onChanged={reload} /> : <p role="alert">Solo Líder puede administrar las cuentas.</p>)}
-    {canManage && tab === 'clientes' && !selected && <footer className="ig-panel-settings"><button type="button" className="ig-link" onClick={() => navigate({tab:'cuentas',selected:null})}>Configurar cuentas</button></footer>}
   </main>;
 }
 
@@ -249,7 +246,7 @@ function ClientsView({ data }) {
       <header className="ig-client-spaces-head"><div><h2>Clientes</h2></div>
         <label className="ig-client-search"><span className="ig-sr">Buscar cliente</span><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cliente"/></label>
       </header>
-      {rows.length?<div className="ig-client-grid" aria-label="Reportes por cliente">{rows.map(c=><ClientReportCard key={c.clave} client={c} period={data.periodo}/>)}</div>:<div className="salary-state">{search?'No hay clientes con ese nombre.':'No hay clientes registrados para este mes.'}</div>}
+      {rows.length?<ClientReportList clients={rows} period={data.periodo}/>:<div className="salary-state">{search?'No hay clientes con ese nombre.':'No hay clientes registrados para este mes.'}</div>}
     </section>
   </>;
 }
