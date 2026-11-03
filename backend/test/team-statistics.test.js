@@ -1,8 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {projectTeamStatistics,readTeamStatistics,recoverHistoricalEditingCandidates} from '../src/team-statistics.js';
+import {projectTeamStatistics,readTeamStatistics,recoverHistoricalEditingCandidates,recoverReviewActivityCandidates} from '../src/team-statistics.js';
 const users=[{id:8,nombre:'Augusto',rol:'diseno'},{id:9,nombre:'Luciano',rol:'edicion'},{id:10,nombre:'Germán',rol:'produccion'}];
+test('review activity uses authenticated actor ID or corroborated legacy evidence, never a name alone',()=>{
+ const row={task_id:21,key:'task:21',comment_id:101,content:'[Actividad] movió la tarea de En proceso a Para revisar',
+  comment_at:'2026-11-03T17:43:27.672Z',actor_id:9};
+ const signed=recoverReviewActivityCandidates([row]);assert.equal(signed.length,1);
+ assert.equal(projectTeamStatistics(users,signed,'2026-10')[1].count,0);
+ assert.equal(projectTeamStatistics(users,[...signed,...signed],'2026-11')[1].count,1);
+ for(const patch of [{actor_id:8},{actor_id:'9'},{actor_id:null,author:'Luciano'},
+  {content:'Propuesta de entrega: 2026-11-03'},{comment_at:'2026-11-03'},{comment_id:0}]){
+  assert.deepEqual(recoverReviewActivityCandidates([{...row,...patch}]),[]);
+ }
+ const legacy={...row,actor_id:null,author:'Luciano',legacy_witness:true,audit_id:'100',
+  event_id:'21:2026-10-05T14:01:34.731Z:tarea_en_revision',comment_at:'2026-10-05T14:01:49.584Z',audit_at:'2026-10-05T14:03:14.811Z'};
+ assert.equal(recoverReviewActivityCandidates([legacy]).length,1);
+ for(const patch of [{legacy_witness:false},{audit_id:null},{author:'Other'},{actor_id:8},
+  {event_id:'22:2026-10-05T14:01:34.731Z:tarea_en_revision'},
+  {comment_at:'2026-10-05T15:01:49.584Z'},{audit_at:'2026-10-04T14:03:14.811Z'}]){
+  assert.deepEqual(recoverReviewActivityCandidates([{...legacy,...patch}]),[]);
+ }
+ const recovered=recoverReviewActivityCandidates([legacy]);
+ const known={person_id:9,key:'task:21',task_id:21,date:'2026-10-05T14:01:34.731Z',priority:2};
+ assert.equal(projectTeamStatistics(users,[...recovered,known,{...known,date:null}],'2026-10')[1].count,1);
+ assert.equal(projectTeamStatistics(users,[...recovered,known,{...known,date:null}],'2026-10')[1].unverified,0);
+});
 test('historical delivery requires corroboration, exact task ID and Córdoba day; never modification dates alone',()=>{
  const row={task_id:21,audit_id:100,key:'task:21',event_id:'21:2026-10-21T02:47:12.749Z:tarea_en_revision',
   legacy_at:'2026-10-21T02:47:12.824Z',audit_at:'2026-10-21T02:47:31.135Z'};
@@ -67,6 +90,20 @@ test('local HTTP team statistics deduplicate linked tasks and preserve source re
   for(let j=0;j<2;j++)await f.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,tarea_id,resultado,detalles,created_at)
    VALUES('mia','qa','qa','QA','entregar_evento_mia',$1,'ok',$2::jsonb,'2026-11-03T12:01:00Z')`,[historical.id,JSON.stringify({eventId:`${historical.id}:2026-11-03T12:00:00.000Z:tarea_en_revision`})]);
  }
+ const activity='[Actividad] movió la tarea de En proceso a Para revisar';
+ const [signedTask]=await f.query("INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado) VALUES('QA signed review',$1,'QA','edicion','en_revision') RETURNING id",[client.id]);
+ const [legacyTask]=await f.query("INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado) VALUES('QA old review',$1,'QA','edicion','en_revision') RETURNING id",[client.id]);
+ const [unproven]=await f.query("INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado) VALUES('QA unproven name',$1,'QA','edicion','en_revision') RETURNING id",[client.id]);
+ for(const task of [signedTask,legacyTask,unproven])await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,9,'responsable')",[task.id]);
+ for(let i=0;i<2;i++)await f.query(`INSERT INTO tarea_comentarios(tarea_id,autor,actor_usuario_id,contenido,created_at)
+  VALUES($1,'QA renamed',9,$2,'2026-11-03T17:43:27Z')`,[signedTask.id,activity]);
+ for(const task of [legacyTask,unproven]){
+  await f.query(`INSERT INTO tarea_comentarios(tarea_id,autor,contenido,created_at) VALUES($1,'Luciano',$2,'2026-10-05T14:01:49Z')`,[task.id,activity]);
+  await f.query(`INSERT INTO progreso_edicion_entregas(tarea_id,editor_clave,titulo_snapshot,cliente_id,estado_actual,entregada_at)
+   VALUES($1,'luciano','QA old review',$2,'en_revision','2026-09-25T03:00:00Z')`,[task.id,client.id]);
+ }
+ await f.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,tarea_id,resultado,detalles,created_at)
+  VALUES('mia','qa','qa','QA','entregar_evento_mia',$1,'ok',$2::jsonb,'2026-10-05T14:03:14Z')`,[legacyTask.id,JSON.stringify({eventId:`${legacyTask.id}:2026-10-05T14:01:34.731Z:tarea_en_revision`})]);
  const [filming]=await f.query("INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado) VALUES('QA visit',$1,'QA','produccion','en_progreso') RETURNING id",[client.id]);
  await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,10,'responsable')",[filming.id]);
  const visit=randomUUID();await f.query("INSERT INTO produccion_visitas(id,tarea_origen_id,cliente_id,fecha,titulo,creado_por_id,actualizado_por_id) VALUES($1,$2,$3,'2026-11-04','QA visit',91001,91001)",[visit,filming.id,client.id]);
@@ -74,8 +111,13 @@ test('local HTTP team statistics deduplicate linked tasks and preserve source re
  const before=await f.query('SELECT to_jsonb(t) AS row FROM tareas t ORDER BY id');
  const login=await request(f.base,'/api/login',{method:'POST',body:{usuario:'qa_luciano',password:fixturePassword}});assert.equal(login.status,200);
  const result=await request(f.base,'/api/instagram/equipo?periodo=2026-11',{token:login.body.token});assert.equal(result.status,200);
- assert.deepEqual(result.body.rows.map(r=>r.count),[1,2,1]);assert.doesNotMatch(JSON.stringify(result.body),/importe|sueldo|password|email/);
+ assert.deepEqual(result.body.rows.map(r=>r.count),[1,3,1]);assert.doesNotMatch(JSON.stringify(result.body),/importe|sueldo|password|email/);
  assert.equal(result.body.rows[1].records.filter(r=>r.evidence==='historical_review').length,1);
+ assert.equal(result.body.rows[1].records.filter(r=>r.evidence==='review_activity').length,1);
+ const october=await request(f.base,'/api/instagram/equipo?periodo=2026-10',{token:login.body.token});
+ assert.equal(october.status,200);assert.equal(october.body.rows[1].count,1);
+ assert.equal(october.body.rows[1].records[0].evidence,'corroborated_review_activity');
+ assert.equal(october.body.rows[1].records[0].date,'2026-10-05');
  assert.deepEqual(await f.query('SELECT to_jsonb(t) AS row FROM tareas t ORDER BY id'),before);
  assert.equal((await request(f.base,'/api/instagram/equipo?periodo=2026-11')).status,401);
 });

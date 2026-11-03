@@ -24,6 +24,27 @@ export function recoverHistoricalEditingCandidates(rows){
    evidence:'historical_review',evidence_id:auditId}];
  });
 }
+// Activity with a stable actor ID is a dated declaration of review delivery.
+// Old name-only comments additionally need the matching MIA event and legacy
+// editor ledger. A name or a scheduled deadline alone never establishes credit.
+export function recoverReviewActivityCandidates(rows){
+ return rows.flatMap(row=>{
+  const commentId=typeof row.comment_id==='string'&&/^[1-9]\d*$/.test(row.comment_id)?Number(row.comment_id):row.comment_id;
+  if(!Number.isSafeInteger(row.task_id)||row.task_id<=0||!Number.isSafeInteger(commentId)||commentId<=0
+    ||row.content!=='[Actividad] movió la tarea de En proceso a Para revisar'
+    ||!date(row.comment_at)||!row.comment_at.includes('T'))return [];
+  if(row.actor_id!==9){
+   const auditId=typeof row.audit_id==='string'&&/^[1-9]\d*$/.test(row.audit_id)?Number(row.audit_id):row.audit_id;
+   const match=typeof row.event_id==='string'&&row.event_id.match(/^(\d+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z):tarea_en_revision$/);
+   if(row.actor_id!==null||row.author!=='Luciano'||row.legacy_witness!==true||!Number.isSafeInteger(auditId)||auditId<=0
+     ||!match||Number(match[1])!==row.task_id||!date(match[2])||!date(row.audit_at)
+     ||Date.parse(row.audit_at)<Date.parse(match[2])
+     ||Date.parse(row.comment_at)<Date.parse(match[2])-1000||Date.parse(row.comment_at)>Date.parse(match[2])+60000)return [];
+  }
+  return [{person_id:9,key:row.key,task_id:row.task_id,title:row.title,client:row.client,date:row.comment_at,priority:3,
+   evidence:row.actor_id===9?'review_activity':'corroborated_review_activity',evidence_id:commentId}];
+ });
+}
 export function projectTeamStatistics(users,candidates,period){
  return people.map(person=>{
   const user=users.find(u=>u.id===person.id&&u.rol===person.role),unique=new Map(),missing=new Set();
@@ -89,7 +110,29 @@ export async function readTeamStatistics(pool,auth,period){
     AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
     AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
     ORDER BY a.created_at,a.id`)).rows;
-  const result={period,rows:projectTeamStatistics(users,[...videos,...tasks,...deliveries,...recoverHistoricalEditingCandidates(historical)],period)};
+  const activities=(await db.query(`SELECT t.id task_id,t.titulo title,c.nombre client,cm.id comment_id,
+    cm.actor_usuario_id actor_id,cm.autor author,cm.contenido content,
+    CASE WHEN p.id IS NOT NULL THEN 'piece:'||p.id::text ELSE 'task:'||t.id::text END AS key,
+    to_char(cm.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') comment_at,
+    a.id audit_id,a.detalles->>'eventId' event_id,
+    to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') audit_at,
+    EXISTS(SELECT 1 FROM progreso_edicion_entregas e WHERE e.tarea_id=t.id AND e.editor_clave='luciano'
+      AND e.origen_registro IS NULL AND e.activa IS TRUE) legacy_witness
+    FROM tareas t JOIN tarea_comentarios cm ON cm.tarea_id=t.id
+    LEFT JOIN clientes c ON c.id=t.cliente_id
+    LEFT JOIN publicaciones p ON p.id=t.publicacion_id AND p.cliente_id=t.cliente_id
+    LEFT JOIN LATERAL (SELECT ia.id,ia.detalles,ia.created_at FROM integracion_auditoria ia
+      WHERE cm.actor_usuario_id IS NULL AND ia.tarea_id=t.id AND ia.accion='entregar_evento_mia' AND ia.resultado='ok'
+      AND ia.detalles->>'eventId' LIKE t.id::text||':%:tarea_en_revision' ORDER BY ia.created_at,ia.id LIMIT 1) a ON TRUE
+    WHERE t.tipo_tarea='edicion' AND t.estado IN ('en_revision','aprobada','finalizada','publicada')
+    AND cm.contenido='[Actividad] movió la tarea de En proceso a Para revisar'
+    AND (cm.actor_usuario_id=9 OR (cm.actor_usuario_id IS NULL AND cm.autor='Luciano'))
+    AND EXISTS(SELECT 1 FROM tarea_asignaciones x WHERE x.tarea_id=t.id AND x.usuario_id=9 AND x.tipo='responsable')
+    AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+    AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+    ORDER BY cm.created_at,cm.id`)).rows;
+  const result={period,rows:projectTeamStatistics(users,[...videos,...tasks,...deliveries,
+    ...recoverHistoricalEditingCandidates(historical),...recoverReviewActivityCandidates(activities)],period)};
   await db.query('COMMIT');return result;
  }catch(error){try{await db.query('ROLLBACK');}catch(rollback){discard=rollback;}throw error;}finally{db.release(discard);}
 }
