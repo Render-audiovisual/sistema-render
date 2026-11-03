@@ -64,6 +64,14 @@ function graphDouble({ media = [], listMedia, mediaInsights, mediaCover } = {}) 
 }
 const proofs = h => h.committed.filter(a => a.action === FEED_SNAPSHOT_ACTION);
 
+test('narrow operator refresh forces only the selected media and preserves normal cadence for others',async()=>{
+ const h=harness({existing:[{ig_media_id:'501',ultima:now},{ig_media_id:'502',ultima:now}]});const reads=[];
+ await runInstagramSync(h.pool,{now,refreshMediaIds:['501'],env:{},graph:graphDouble({media:[piece('501'),piece('502')],
+  mediaInsights:async id=>{reads.push(id);return{vistas:100};}})});
+ assert.deepEqual(reads,['501']);
+ await assert.rejects(runInstagramSync(h.pool,{now,refreshMediaIds:['../me'],env:{},graph:graphDouble()}));
+});
+
 test('explicit operator refresh remeasures even a recent combined measurement',async()=>{
   const h=harness({existing:[{ig_media_id:'501',ultima:now,vistas_revisadas:true}]});let reads=0;
   await runInstagramSync(h.pool,{now,refreshMetrics:true,env:{},graph:graphDouble({media:[piece()],

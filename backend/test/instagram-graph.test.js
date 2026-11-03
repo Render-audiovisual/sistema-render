@@ -7,6 +7,126 @@ const TOKEN = 'EAAtest-token-value-1234567890';
 const COVER = 'https://scontent.cdninstagram.com/v/t51/image.jpg?oh=signed&oe=123';
 const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
+const PAGE_TOKEN = 'page-token-test-only-123456789';
+function facebookClient(insights, { page = { id: '11', access_token: PAGE_TOKEN }, video = { id: '22', from: { id: '11' } } } = {}) {
+  const calls = [];
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async (url, init) => {
+    const u = new URL(url);
+    calls.push({ url, init });
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal instanceof AbortSignal);
+    assert.ok(!url.includes(TOKEN) && !url.includes(PAGE_TOKEN));
+    assert.ok(!u.searchParams.has('access_token'));
+    if (u.searchParams.get('fields') === 'id,access_token') {
+      assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
+      return json(page);
+    }
+    assert.equal(init.headers.Authorization, `Bearer ${PAGE_TOKEN}`);
+    if (u.searchParams.has('fields')) {
+      assert.equal(u.searchParams.get('fields'), 'id,from{id}');
+      return json(video);
+    }
+    assert.equal(u.pathname, '/v23.0/22/video_insights');
+    assert.equal(u.searchParams.get('metric'), 'fb_reels_total_plays');
+    return insights;
+  } });
+  return { client, calls };
+}
+
+test('Facebook video plays use verified Page auth and exact plays metric, including zero', async () => {
+  for (const value of [1233, 0, '1233', '0']) {
+    const { client, calls } = facebookClient(json({ data: [{ name: 'fb_reels_total_plays', values: [{ value }] }] }));
+    assert.equal(await client.facebookVideoViews('11', '22'), Number(value));
+    assert.equal(calls.length, 3);
+    assert.ok(!JSON.stringify(client).includes(PAGE_TOKEN));
+  }
+});
+
+test('Facebook video identity mismatches fail before insights and never expose tokens', async () => {
+  for (const overrides of [
+    { page: { id: '99', access_token: PAGE_TOKEN } },
+    { video: { id: '99', from: { id: '11' } } },
+    { video: { id: '22', from: { id: '99' } } }, { video: { id: '22' } },
+  ]) {
+    const { client, calls } = facebookClient(json({}), overrides);
+    await assert.rejects(client.facebookVideoViews('11', '22'), error => {
+      assert.equal(error.kind, 'identity');
+      assert.ok(!`${error.stack}${JSON.stringify(error)}`.includes(PAGE_TOKEN));
+      return true;
+    });
+    assert.ok(calls.length <= 2);
+  }
+});
+
+test('Facebook IDs are validated before any request', async () => {
+  const { client, calls } = facebookClient(json({}));
+  for (const bad of [0, 11, null, '', '0', '../me', '1?fields=access_token', '1'.repeat(41)]) {
+    await assert.rejects(client.facebookVideoViews(bad, '22'), { kind: 'config' });
+    await assert.rejects(client.facebookVideoViews('11', bad), { kind: 'config' });
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('Facebook unavailable or invalid plays return null without substituting other metrics', async () => {
+  const bodies = [{}, { data: [] }, { data: [{ name: 'blue_reels_play_count', values: [{ value: 1233 }] },
+    { name: 'post_media_view', values: [{ value: 1233 }] }] }];
+  for (const value of [undefined, null, '', ' ', false, true, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '9007199254740993', {}, []])
+    bodies.push({ data: [{ name: 'fb_reels_total_plays', values: [{ value }] }] });
+  for (const body of bodies) {
+    const { client } = facebookClient(json(body));
+    assert.equal(await client.facebookVideoViews('11', '22'), null);
+  }
+  for (const code of [100, 200]) {
+    const { client } = facebookClient(json({ error: { code, message: PAGE_TOKEN } }, 400));
+    assert.equal(await client.facebookVideoViews('11', '22'), null);
+  }
+});
+
+test('Facebook Page token cache is private, per Page and per client; other methods retain system auth', async () => {
+  const lookups = [];
+  const make = () => createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async (url, init) => {
+    const u = new URL(url), id = u.pathname.split('/')[2];
+    if (u.searchParams.get('fields') === 'id,access_token') {
+      lookups.push(id);
+      assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
+      return json({ id, access_token: `${PAGE_TOKEN}-${id}` });
+    }
+    if (u.pathname.endsWith('/me/adaccounts')) {
+      assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
+      return json({ data: [] });
+    }
+    assert.equal(init.headers.Authorization, `Bearer ${PAGE_TOKEN}-${id}`);
+    return u.pathname.endsWith('/video_insights')
+      ? json({ data: [{ name: 'fb_reels_total_plays', total_value: { value: 1233 } }] })
+      : json({ id, from: { id } });
+  } });
+  const client = make();
+  assert.equal(await client.facebookVideoViews('11', '11'), 1233);
+  assert.equal(await client.facebookVideoViews('11', '11'), 1233);
+  assert.equal(await client.facebookVideoViews('33', '33'), 1233);
+  await client.listAdAccounts();
+  await make().facebookVideoViews('11', '11');
+  assert.deepEqual(lookups, ['11', '33', '11']);
+});
+
+test('Facebook transport failures are sanitized and never logged', async t => {
+  const logs = [];
+  for (const method of ['log', 'warn', 'error', 'info', 'debug']) t.mock.method(console, method, (...args) => logs.push(args));
+  for (const failureAt of [1, 2, 3]) {
+    let calls = 0;
+    const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async () => {
+      if (++calls === failureAt) throw new Error(`${TOKEN} ${PAGE_TOKEN}`);
+      return calls === 1 ? json({ id: '11', access_token: PAGE_TOKEN }) : json({ id: '22', from: { id: '11' } });
+    } });
+    await assert.rejects(client.facebookVideoViews('11', '22'), error => {
+      assert.equal(error.kind, 'network');
+      assert.ok(!error.stack.includes(TOKEN) && !error.stack.includes(PAGE_TOKEN));
+      return true;
+    });
+  }
+  assert.deepEqual(logs, []);
+});
+
 test('config requires a plausible token and version', () => {
   assert.throws(() => resolveGraphConfig({}), { kind: 'config' });
   assert.throws(() => resolveGraphConfig({ META_SYSTEM_USER_TOKEN: 'short' }), { kind: 'config' });

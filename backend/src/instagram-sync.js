@@ -2,6 +2,7 @@ import { createGraphClient, resolveGraphConfig, GraphError, MEDIA_COVERS_ACTION,
   normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
 import { buildFeedCountSnapshots, FEED_SNAPSHOT_ACTION } from '../../shared/instagram-feed-counts.mjs';
 import { VIEWS_ACTION } from './instagram-view-breakdown.js';
+import { readVerifiedFacebookLinks, completeVerifiedFacebookViews } from './instagram-facebook-links.js';
 
 // Sincronización programada de Instagram (job 'instagram' del ejecutor).
 // Lee de Meta fuera de transacciones y escribe en instagram_* y su auditoría,
@@ -115,7 +116,7 @@ async function storeAccountData(pool, account, media, metrics, snapshots, covers
     // Graph reads happen outside the transaction. A leader may have reassigned
     // the account meanwhile; never overwrite the new client's links with an
     // obsolete account snapshot.
-    const current = (await db.query('SELECT cliente_id,activa FROM instagram_cuentas WHERE ig_user_id=$1 FOR UPDATE',
+    const current = (await db.query('SELECT cliente_id,activa,page_id FROM instagram_cuentas WHERE ig_user_id=$1 FOR UPDATE',
       [account.ig_user_id])).rows[0];
     if (!current || !current.activa || current.cliente_id !== account.cliente_id)
       throw new Error('La vinculación de Instagram cambió durante la lectura');
@@ -135,7 +136,11 @@ async function storeAccountData(pool, account, media, metrics, snapshots, covers
       [item.igMediaId, account.ig_user_id, account.cliente_id, item.tipo, item.permalink, item.caption, item.publishedAt]);
     }
     let stored = 0;
+    const linked = [...metrics.values()].some(v=>v.facebookLink) ? await readVerifiedFacebookLinks(db,account,now) : new Map();
+    if (linked.size && current.page_id !== account.page_id) throw new Error('Cambió la página de Facebook de la cuenta');
     for (const [igMediaId, values] of metrics) {
+      if (values.facebookLink && JSON.stringify(linked.get(igMediaId)) !== JSON.stringify(values.facebookLink))
+        throw new Error('Cambió el vínculo verificado de Facebook');
       const result = await db.query(`INSERT INTO instagram_media_metricas
         (ig_media_id,medido_at,alcance,vistas,likes,comentarios,guardados,compartidos,interacciones)
         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9 WHERE EXISTS (SELECT 1 FROM instagram_media WHERE ig_media_id=$1)
@@ -147,6 +152,8 @@ async function storeAccountData(pool, account, media, metrics, snapshots, covers
         version: 1, igMediaId, igUserId: account.ig_user_id, clientId: account.cliente_id,
         measuredAt: now.toISOString(), instagram: values.vistas_instagram ?? values.vistas ?? null,
         facebook: values.vistas_facebook ?? null, total: values.vistas_total ?? null,
+        ...(values.facebookLink ? {facebookSource:{pageId:values.facebookLink.pageId,videoId:values.facebookLink.facebookVideoId,
+          metric:'fb_reels_total_plays',verifiedAt:values.facebookLink.verifiedAt}} : {}),
       })]);
     }
     await db.query(matchSQL, [account.ig_user_id]);
@@ -207,7 +214,7 @@ async function refreshAccountCovers(pool, graph, account, media, now) {
     checkedAt: now.toISOString(), items: [...items.values()].slice(0, 1000) };
 }
 
-async function syncAccount(pool, graph, account, now, refreshMetrics = false) {
+async function syncAccount(pool, graph, account, now, refreshMetrics = false, refreshMediaIds = new Set()) {
   // One exact boundary for the stored inventory, Graph read and shared proof.
   // The 35-day window controls metric refresh only, never feed coverage.
   const from = new Date(now - BACKFILL_DAYS * DAY);
@@ -228,13 +235,15 @@ async function syncAccount(pool, graph, account, now, refreshMetrics = false) {
     igUserId: account.ig_user_id, username: account.username, from, to: now, media });
 
   const known = new Map(existing.map(row => [row.ig_media_id, row]));
+  const facebookLinks = await readVerifiedFacebookLinks(pool,account,now);
   const metrics = new Map();
   for (const item of media) {
     const prior = known.get(item.igMediaId);
     const lastMeasuredAt = prior?.ultima ? new Date(prior.ultima) : null;
-    if (!refreshMetrics && prior?.vistas_revisadas && !needsMetrics({ publishedAt: item.publishedAt, lastMeasuredAt }, now)) continue;
+    if (!refreshMetrics && !refreshMediaIds.has(item.igMediaId) && prior?.vistas_revisadas && !needsMetrics({ publishedAt: item.publishedAt, lastMeasuredAt }, now)) continue;
     try {
-      metrics.set(item.igMediaId, await graph.mediaInsights(item.igMediaId));
+      const values = await graph.mediaInsights(item.igMediaId);
+      metrics.set(item.igMediaId, await completeVerifiedFacebookViews(graph,item,values,facebookLinks.get(item.igMediaId)));
     } catch (error) {
       // Una pieza sin métricas (p. ej. colaboración ajena) no frena la cuenta.
       if (error instanceof GraphError && ['metric', 'permission'].includes(error.kind)) continue;
@@ -246,19 +255,22 @@ async function syncAccount(pool, graph, account, now, refreshMetrics = false) {
   return { media: media.length, metricas: stored };
 }
 
-export async function runInstagramSync(pool, { now = new Date(), env = process.env, graph, refreshMetrics = false } = {}) {
+export async function runInstagramSync(pool, { now = new Date(), env = process.env, graph, refreshMetrics = false, refreshMediaIds = [] } = {}) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('Fecha inválida');
+  if (!Array.isArray(refreshMediaIds) || refreshMediaIds.length>10 || refreshMediaIds.some(id=>typeof id!=='string'||!/^[1-9]\d{0,39}$/.test(id)))
+    throw new Error('Publicaciones no válidas');
+  const selectedMedia = new Set(refreshMediaIds);
   const client = graph ?? createGraphClient(resolveGraphConfig(env));
   await storeAccounts(pool, await client.listInstagramAccounts(), now);
 
-  const accounts = (await pool.query(`SELECT a.ig_user_id, a.username, a.cliente_id
+  const accounts = (await pool.query(`SELECT a.ig_user_id, a.username, a.cliente_id, a.page_id
     FROM instagram_cuentas a JOIN clientes c ON c.id=a.cliente_id
     WHERE a.activa AND COALESCE(c.activo,TRUE) ORDER BY a.ig_user_id`)).rows;
 
   const summary = { version: 1, cuentas: accounts.length, ok: 0, errores: 0, media: 0, metricas: 0 };
   for (const account of accounts) {
     try {
-      const result = await syncAccount(pool, client, account, now, refreshMetrics);
+      const result = await syncAccount(pool, client, account, now, refreshMetrics, selectedMedia);
       summary.ok += 1; summary.media += result.media; summary.metricas += result.metricas;
     } catch (error) {
       const kind = error instanceof GraphError ? error.kind : 'interno';

@@ -93,7 +93,10 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
   if (typeof fetchImpl !== 'function' || (businessId !== null && (typeof businessId !== 'string' || !/^[1-9]\d{0,31}$/.test(businessId))))
     throw new GraphError('config');
 
-  async function request(url, requestTimeoutMs = timeoutMs) {
+  // Closure-only credentials: never expose Page tokens on the public client.
+  const pageTokens = new Map();
+
+  async function request(url, requestTimeoutMs = timeoutMs, authorizationToken = token) {
     if (url.hostname !== GRAPH_HOST || url.protocol !== 'https:' || url.port || url.username || url.password)
       throw new GraphError('other');
     url.searchParams.delete('access_token');
@@ -101,7 +104,7 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
     try {
       response = await fetchImpl(url.toString(), {
         redirect: 'error',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        headers: { Authorization: `Bearer ${authorizationToken}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
     } catch { throw new GraphError('network'); }
@@ -137,6 +140,38 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
   }
 
   return Object.freeze({
+    async facebookVideoViews(pageId, videoId) {
+      for (const id of [pageId, videoId]) {
+        if (typeof id !== 'string' || !/^[1-9]\d{0,39}$/.test(id)) throw new GraphError('config');
+      }
+      let pageToken = pageTokens.get(pageId);
+      if (!pageToken) {
+        const page = await request(build(pageId, { fields: 'id,access_token' }));
+        if (page.id !== pageId) throw new GraphError('identity');
+        if (typeof page.access_token !== 'string' || !page.access_token ||
+          page.access_token.length > 1024 || /\s/.test(page.access_token)) return null;
+        pageToken = page.access_token;
+        pageTokens.set(pageId, pageToken);
+      }
+      const video = await request(build(videoId, { fields: 'id,from{id}' }), timeoutMs, pageToken);
+      if (video.id !== videoId || video.from?.id !== pageId) throw new GraphError('identity');
+      // Meta's plays metric includes initial plays + replays (minimum 1 ms).
+      // blue_reels_play_count excludes replays; post_media_view is impressions.
+      let body;
+      try {
+        body = await request(build(`${videoId}/video_insights`, { metric: 'fb_reels_total_plays' }), timeoutMs, pageToken);
+      } catch (error) {
+        if (error instanceof GraphError && ['metric', 'permission'].includes(error.kind)) return null;
+        throw error;
+      }
+      const rows = Array.isArray(body.data) ? body.data.filter(row => row?.name === 'fb_reels_total_plays') : [];
+      if (rows.length !== 1) return null;
+      const row = rows[0];
+      const value = row.total_value?.value ?? row.values?.[0]?.value;
+      const count = typeof value === 'number' ? value :
+        typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+      return Number.isSafeInteger(count) && count >= 0 ? count : null;
+    },
     // Read-only diagnostics, isolated from the sync worker's existing methods.
     async debugToken() {
       return (await request(build('debug_token', { input_token: token }))).data;

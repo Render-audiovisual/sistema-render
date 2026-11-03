@@ -36,6 +36,23 @@ solo ejecuta Instagram y vuelve a medir los últimos 90 días. No ejecuta
 WhatsApp, editorial ni IA, no borra checkpoints y no crea otro programador.
 Las credenciales se cargan del entorno privado del hosting y nunca se imprimen.
 
+## Publicaciones independientes en Facebook
+
+Un operador puede registrar un vínculo `facebook_verified_media_link_v1` en la
+auditoría existente **solo tras verificar el contenido y los dos enlaces**.
+No se emparejan publicaciones por texto, fecha ni proximidad temporal.
+El vínculo contiene cliente, cuenta IG, ID IG, Página y video de Facebook,
+referencias canónicas y fecha de verificación; nunca credenciales.
+
+Solo cuando falta `facebook_views`, la sincronización consulta ese video usando
+la autenticación normal de su Página, efímera en memoria. Revalida el propietario
+del video y toma `fb_reels_total_plays` (reproducciones + repeticiones), no
+impresiones ni `blue_reels_play_count`, que excluye las repeticiones.
+Un total nativo disponible conserva prioridad; Facebook no se agrega dos veces.
+Vínculos duplicados, revocados o de otra cuenta/Página no se aplican. El vínculo
+se vuelve a validar bajo el bloqueo de la cuenta antes de guardar cada medición.
+No hay rutas de escritura nuevas ni migraciones. Las tareas no participan.
+
 Validación: pruebas de Graph mockeado, fallback sin métricas, vinculación exacta,
 transacción de sincronización, ejecutor manual y fixture PostgreSQL desechable.
 El fixture comprueba que cliente, publicación y reporte muestran 3.320.213,
