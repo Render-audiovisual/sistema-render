@@ -68,7 +68,7 @@ function InstagramPanelContent({ sesion }) {
     const controller = new AbortController();
     const guard = capture();
     setLoading(true); setError('');
-    guard.request(`/api/instagram/panel?periodo=${encodeURIComponent(period)}`, { cache: 'no-store', signal: controller.signal })
+    guard.request(`/api/instagram/clientes?periodo=${encodeURIComponent(period)}`, { cache: 'no-store', signal: controller.signal })
       .then(body => { if (guard.current() && !controller.signal.aborted) setData(body); })
       .catch(reason => { if (guard.current() && !controller.signal.aborted && !isSessionFailure(reason)) setError(reason.message || 'No se pudo cargar el panel.'); })
       .finally(() => { if (guard.current() && !controller.signal.aborted) setLoading(false); });

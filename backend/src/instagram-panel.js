@@ -303,6 +303,28 @@ export async function readInstagramPanel(pool, auth, query) {
   return withInstagramRead(pool, auth, async db => (await readPanelFromDb(db, period)).panel);
 }
 
+// The directory needs identities only, not monthly metrics or quota history.
+export async function readInstagramClientDirectory(pool, auth, query) {
+  const periodo = panelPeriod(query);
+  return withInstagramRead(pool, auth, async db => {
+    const clients = (await db.query(CLIENTS_SQL)).rows;
+    const accounts = (await db.query('SELECT ig_user_id, username, cliente_id FROM instagram_cuentas WHERE activa=TRUE')).rows;
+    const groups = new Map();
+    for (const client of clients) {
+      if (!groups.has(client.clave)) groups.set(client.clave, {
+        clave: client.clave, nombre: client.grupo_nombre || client.nombre,
+        logo: client.logo || null, instagram: [],
+      });
+      const group = groups.get(client.clave);
+      for (const account of accounts.filter(a => String(a.cliente_id) === String(client.id))) {
+        if (!group.instagram.some(a => a.ig_user_id === account.ig_user_id))
+          group.instagram.push({ig_user_id: account.ig_user_id, username: account.username});
+      }
+    }
+    return {periodo, clientes: [...groups.values()].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'))};
+  });
+}
+
 async function readPanelFromDb(db, period, now = new Date()) {
   const previous = previousPeriod(period);
   const [clients, accounts, media, objectives, followers, pieces] = [
@@ -630,6 +652,7 @@ export function createInstagramPanelRouter({ express, pool }) {
     }
   };
   router.get('/panel', handle(req => readInstagramPanel(pool, req.auth, req.query)));
+  router.get('/clientes', handle(req => readInstagramClientDirectory(pool, req.auth, req.query)));
   router.get('/conexion/estado',handle(req=>{
     if(Object.keys(req.query).length)throw fail(400,'Datos inválidos.');
     return readInstagramConnectionState(pool,req.auth);
