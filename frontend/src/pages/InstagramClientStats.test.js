@@ -68,3 +68,10 @@ test('views lead publication rows and the monthly summary; reach remains separat
   assert.equal(api.measurementLabel('bad'),'Sin fecha de medición');
   assert.match(source,/measurementLabel\(d.medido_at\)/);assert.match(source,/measurementLabel\(r.medido_at\)/);
 });
+
+test('a principio de mes compara contra los mismos días del mes anterior',()=>{
+  assert.equal(api.compareLabel({periodo_anterior:'2026-10',comparacion:{parcial:true,hasta_dia:3}}),'1–3 oct');
+  assert.equal(api.compareLabel({periodo_anterior:'2026-10',comparacion:{parcial:true,hasta_dia:1}}),'1 oct');
+  assert.equal(api.compareLabel({periodo_anterior:'2026-09',comparacion:{parcial:false,hasta_dia:null}}),'mes anterior');
+  assert.equal(api.compareLabel({}),'mes anterior');
+});

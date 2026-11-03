@@ -71,11 +71,19 @@ function Sparkline({ values }) {
     <polyline points={v.map((y, i) => `${(i * 100) / (v.length - 1)},${27 - ((y - mn) / span) * 24}`).join(' ')} /></svg>;
 }
 
-function Tile({ label, value, previous, note, spark }) {
+// "vs 1–3 oct" cuando el mes está en curso; "vs mes anterior" cuando ya cerró.
+export function compareLabel(data) {
+  const day = data?.comparacion?.parcial ? data.comparacion.hasta_dia : null;
+  if (!day || !/^\d{4}-\d{2}$/.test(data?.periodo_anterior || '')) return 'mes anterior';
+  const month = new Intl.DateTimeFormat('es-AR', { month: 'short', timeZone: 'UTC' }).format(new Date(`${data.periodo_anterior}-01T12:00:00Z`)).replace('.', '');
+  return day === 1 ? `1 ${month}` : `1–${day} ${month}`;
+}
+
+function Tile({ label, value, previous, note, spark, compare = "mes anterior" }) {
   const d = variation(value, previous);
   return <article className="igs-card igs-tile"><span className="igs-label">{label}</span><strong>{fmt(value)}</strong>
     {note ? <span className="igs-note">{note}</span> : d === null ? <span className="igs-note">Sin dato del mes anterior</span> :
-      <span className={`igs-delta ${d >= 0 ? 'is-up' : 'is-down'}`}>{d >= 0 ? '▲ +' : '▼ '}{d}% vs mes anterior</span>}
+      <span className={`igs-delta ${d >= 0 ? 'is-up' : 'is-down'}`}>{d >= 0 ? '▲ +' : '▼ '}{d}% vs {compare}</span>}
     {spark && <Sparkline values={spark} />}</article>;
 }
 
@@ -204,6 +212,7 @@ function StatsContent({ sesion, params, navigate }) {
   const selected = d?.publicaciones?.find(p => p.ig_media_id === params.pub);
   const maxScore = Math.max(2, ...rows.map(r => r.puntaje ?? 0));
   const a = d?.totales?.actual, p = d?.totales?.anterior;
+  const compare = compareLabel(d);
   return <main className="igs-page">
     <div className="igs-toolbar">
       <a className="igs-link" href={`/instagram?periodo=${encodeURIComponent(params.periodo)}&tab=clientes`} onClick={e => handleAppLinkClick(window, e)}>← Volver a Clientes</a>
@@ -218,11 +227,11 @@ function StatsContent({ sesion, params, navigate }) {
       <header className="igs-head"><h1>{d.nombre} · Estadísticas</h1><p>{d.cuentas.map(c => `@${c}`).join(' · ') || 'Sin cuenta vinculada'} · {periodLabel(d.periodo)}</p></header>
       {d.sin_cuenta ? <p className="igs-state">Este cliente todavía no tiene una cuenta de Instagram conectada.</p> : <>
         <section className="igs-tiles" aria-label="Resumen del mes">
-          <Tile label="Visualizaciones disponibles" value={a.vistas_disponibles} previous={p.vistas_disponibles} note={monthlyViewNote(a)} />
-          <Tile label="Interacciones" value={a.interacciones} previous={p.interacciones} spark={d.diario.map(x => x.interacciones)} />
-          <Tile label="Publicaciones" value={a.piezas} previous={p.piezas} note={`${a.reels} reels · ${a.carruseles} carruseles`} />
+          <Tile label="Visualizaciones disponibles" value={a.vistas_disponibles} previous={p.vistas_disponibles} note={monthlyViewNote(a)} compare={compare} />
+          <Tile label="Interacciones" value={a.interacciones} previous={p.interacciones} spark={d.diario.map(x => x.interacciones)} compare={compare} />
+          <Tile label="Publicaciones" value={a.piezas} previous={p.piezas} note={`${a.reels} reels · ${a.carruseles} carruseles`} compare={compare} />
           <Tile label="Seguidores ganados en el mes" value={d.seguidores.crecimiento} previous={d.seguidores.anterior}
-            note={d.seguidores.fin === null ? 'Sin datos de seguidores en el mes' : `Total: ${fmt(d.seguidores.fin)} seguidores`} spark={d.seguidores.serie.slice(-31).map(x => x.seguidores)} />
+            note={d.seguidores.fin === null ? 'Sin datos de seguidores en el mes' : `Total: ${fmt(d.seguidores.fin)} seguidores`} spark={d.seguidores.serie.slice(-31).map(x => x.seguidores)} compare={compare} />
         </section>
 
         {selected && <PublicationDetail key={selected.ig_media_id} capture={capture} id={selected.ig_media_id} cover={selected.portada_url} bind={bind} onClose={() => navigate({ ...params, pub: null })} />}

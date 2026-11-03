@@ -83,3 +83,19 @@ test('views are counted independently of reach, and missing measurements are nev
   assert.equal(monthTotals([{tipo:'reel',vistas:0}]).vistas,0);
   assert.equal(monthTotals([]).vistas,0);
 });
+
+import { comparisonWindow } from '../src/instagram-stats.js';
+test('mes en curso: compara contra los mismos días del mes anterior (hora de Córdoba)', () => {
+  const w = comparisonWindow('2026-11', new Date('2026-11-03T15:00:00Z'));
+  assert.equal(w.parcial, true); assert.equal(w.hasta_dia, 3);
+  assert.equal(w.cutoff.toISOString(), '2026-10-04T03:00:00.000Z');
+  assert.equal(comparisonWindow('2026-11', new Date('2026-11-01T02:00:00Z')).parcial, false, '31/10 23:00 en Córdoba todavía es octubre');
+  const closed = comparisonWindow('2026-10', new Date('2026-11-03T15:00:00Z'));
+  assert.equal(closed.parcial, false); assert.equal(closed.cutoff.toISOString(), '2026-10-01T03:00:00.000Z');
+  assert.equal(comparisonWindow('2026-03', new Date('2026-03-31T12:00:00Z')).cutoff.toISOString(), '2026-03-01T03:00:00.000Z', 'nunca pasa el inicio del mes actual');
+});
+test('crecimiento de seguidores hasta un día dado', () => {
+  const series = [{ fecha: '2026-09-30', seguidores: 100 }, { fecha: '2026-10-02', seguidores: 110 }, { fecha: '2026-10-20', seguidores: 150 }];
+  assert.equal(followerGrowth(series, '2026-10', 3).crecimiento, 10);
+  assert.equal(followerGrowth(series, '2026-10').crecimiento, 50);
+});

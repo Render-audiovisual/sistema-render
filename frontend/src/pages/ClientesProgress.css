@@ -75,3 +75,11 @@
 .client-monthly-page .client-monthly-management .client-goals .cg-content{padding:20px 0;border:0;border-radius:0}
 @media(max-width:760px){.client-monthly-page .cg-content{padding:18px}.client-monthly-list li{gap:20px;padding:20px}.client-monthly-page .client-monthly-header h1{font-size:24px}}
 @media(max-width:420px){.client-monthly-list li{grid-template-columns:1fr}.client-monthly-list .client-monthly-name{grid-column:auto}.client-monthly-page .client-monthly-header{align-items:flex-start;gap:12px}.client-monthly-list .client-monthly-format>div:first-child{font-size:12px}}
+/* Etapa 6 · estado de conexión como etiqueta con color; lápiz solo al pasar el mouse */
+.client-monthly-list .client-monthly-source{display:inline-flex;align-items:center;gap:6px;justify-self:start;width:max-content;max-width:100%;margin-top:-6px;padding:3px 9px;border-radius:999px;background:var(--render-surface-muted);color:var(--render-ink-soft);font-weight:600}
+.client-monthly-list .client-monthly-source::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.client-monthly-list .client-monthly-source[data-source="meta"]{background:#e7f4ec;color:#1f6a43}
+.client-monthly-list .client-monthly-source:not(:is([data-source="meta"],[data-source="owner"],[data-source="internal"])){background:#fff4dc;color:#8a5a00}
+:root[data-theme="dark"] .client-monthly-list .client-monthly-source[data-source="meta"]{background:#12301f;color:#5fd39a}
+:root[data-theme="dark"] .client-monthly-list .client-monthly-source:not(:is([data-source="meta"],[data-source="owner"],[data-source="internal"])){background:#33280f;color:#f2b84b}
+@media (hover:hover) and (pointer:fine){.client-monthly-list li .client-card-edit{opacity:0;transition:opacity var(--render-motion-fast) ease}.client-monthly-list li:is(:hover,:focus-within) .client-card-edit{opacity:1}}

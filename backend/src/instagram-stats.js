@@ -107,9 +107,9 @@ export function followerSeries(rows, accountIds) {
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
-export function followerGrowth(series, period) {
+export function followerGrowth(series, period, untilDay = null) {
   const before = series.filter(p => p.fecha < `${period}-01`).at(-1);
-  const inside = series.filter(p => p.fecha.startsWith(period));
+  const inside = series.filter(p => p.fecha.startsWith(period) && (untilDay === null || Number(p.fecha.slice(8, 10)) <= untilDay));
   if (!inside.length) return { inicio: before?.seguidores ?? null, fin: null, crecimiento: null, dias: 0 };
   const start = before ?? inside[0], end = inside.at(-1);
   return { inicio: start.seguidores, fin: end.seguidores, crecimiento: end.seguidores - start.seguidores, dias: inside.length,
@@ -178,13 +178,24 @@ export function normalizeRow(row) {
     guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) };
 }
 
-export async function readClientStatsFromDb(db, { accountIds, period, covers = new Map(), selectMedia }) {
+// En el mes en curso se compara contra los mismos días del mes anterior
+// (1 al N), así un mes recién empezado no aparece como "−100 %".
+export function comparisonWindow(period, now = new Date()) {
   const start = monthStart(period), end = monthStart(nextMonth(period)), prevStart = monthStart(prevMonth(period));
+  if (!(+now >= +start && +now < +end)) return { parcial: false, hasta_dia: null, cutoff: start };
+  const day = Number(new Date(+now - 3 * 3600000).toISOString().slice(8, 10));
+  const cutoff = new Date(Math.min(+start, +prevStart + day * DAY));
+  return { parcial: true, hasta_dia: day, cutoff };
+}
+
+export async function readClientStatsFromDb(db, { accountIds, period, covers = new Map(), selectMedia, now = new Date() }) {
+  const start = monthStart(period), end = monthStart(nextMonth(period)), prevStart = monthStart(prevMonth(period));
+  const window = comparisonWindow(period, now);
   const baseStart = new Date(+end - BASELINE_DAYS * DAY);
   const observations = (await db.query(MEDIA_RANGE_SQL, [accountIds, new Date(Math.min(+prevStart, +baseStart)), end])).rows;
   const rows = (await readViewBreakdowns(db, await selectMedia(observations))).map(normalizeRow);
   const inMonth = rows.filter(r => Date.parse(r.publicado_at) >= +start);
-  const inPrev = rows.filter(r => Date.parse(r.publicado_at) >= +prevStart && Date.parse(r.publicado_at) < +start);
+  const inPrev = rows.filter(r => Date.parse(r.publicado_at) >= +prevStart && Date.parse(r.publicado_at) < +window.cutoff);
   const baseRows = rows.filter(r => Date.parse(r.publicado_at) >= +baseStart);
   const base = baselineByType(baseRows);
   const followerRows = (await db.query(`SELECT ig_user_id, fecha::text AS fecha, seguidores FROM instagram_cuenta_seguidores
@@ -192,10 +203,11 @@ export async function readClientStatsFromDb(db, { accountIds, period, covers = n
   const series = followerSeries(followerRows, accountIds);
   return {
     periodo: period, periodo_anterior: prevMonth(period),
+    comparacion: { parcial: window.parcial, hasta_dia: window.hasta_dia },
     totales: { actual: monthTotals(inMonth), anterior: monthTotals(inPrev) },
     diario: dailyTotals(inMonth, period),
     seguidores: { serie: series.slice(-400), ...followerGrowth(series, period),
-      anterior: followerGrowth(series, prevMonth(period)).crecimiento },
+      anterior: followerGrowth(series, prevMonth(period), window.hasta_dia).crecimiento },
     promedio: { dias: BASELINE_DAYS, ...base },
     publicaciones: inMonth.sort((a, b) => Date.parse(b.publicado_at) - Date.parse(a.publicado_at)).map(row => ({
       ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 280),
