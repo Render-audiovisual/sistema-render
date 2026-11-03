@@ -26,7 +26,10 @@ test('unknown, manual owner records and images remain distinct from verified zer
 });
 test('logo and title are escaped and actions remain distinct, without nested buttons or links',()=>{
   const html=render({...client,nombre:'<script>bad</script>',logo:'https://example.test/logo.png'});assert.match(html,/loading="lazy"/);assert.doesNotMatch(html,/<script>/);
-  assert.equal((html.match(/<a /g)||[]).length,1);assert.equal((html.match(/<button /g)||[]).length,1);
+  assert.equal((html.match(/<a /g)||[]).length,2);assert.equal((html.match(/<button /g)||[]).length,1);
+  assert.match(html,/href="\/instagram\/estadisticas\?cliente=cliente-1&amp;periodo=2026-10"/);
+  assert.doesNotMatch(html,/<a\b[^>]*>[^]*?<a\b[^>]*>[^]*?<\/a>[^]*?<\/a>/);
+  assert.doesNotMatch(render({...client,instagram:[]}),/\/instagram\/estadisticas/);
 });
 test('client spaces are a responsive grid, not a wide table of mixed reports',()=>{
   const css=readFileSync(new URL('./InstagramPanel.css',import.meta.url),'utf8');assert.match(css,/\.ig-client-grid\{[^}]*grid-template-columns:repeat\(auto-fill,minmax\(min\(100%,280px\),1fr\)\)/);
