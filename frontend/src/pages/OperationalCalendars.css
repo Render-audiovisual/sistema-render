@@ -14,7 +14,7 @@
 .principal-calendar .principal-calendar-grid>button:hover,.productions-page .prod-days>button:hover,.render-workspace section.ros-calendar .ros-calendar-day:hover{background:#f7f9fc;border-color:#cad8ec}
 .principal-calendar .principal-calendar-grid>button.selected,.productions-page .prod-days>button[aria-pressed=true]{background:#eef5ff;border-color:#80afe9;box-shadow:inset 0 0 0 1px #80afe9}
 .principal-calendar .principal-calendar-grid>button>span,.productions-page .prod-days time,.render-workspace section.ros-calendar .ros-calendar-day-number{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--render-ink);font-size:12px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;box-shadow:none}
-.principal-calendar .principal-calendar-grid>button[aria-current=date]>span,.productions-page .prod-days>button[aria-current=date] time,.render-workspace section.ros-calendar .ros-calendar-day.today .ros-calendar-day-number{background:#0068d4;color:#fff;border:0;border-bottom:0;font-weight:600}
+.principal-calendar .principal-calendar-grid>button[aria-current=date]>span,.productions-page .prod-days>button[aria-current=date] time,.render-workspace section.ros-calendar .ros-calendar-day.today .ros-calendar-day-number{background:var(--render-accent);color:var(--render-accent-ink);border:0;border-bottom:0;font-weight:600}
 .principal-calendar .principal-calendar-day-preview{gap:4px}
 .principal-calendar .principal-calendar-day-preview>span,.productions-page .prod-days>button>span{border:0;border-left:2px solid #71a7e1;border-radius:3px;background:#f0f5fc;padding:4px 5px;font-size:11px;line-height:1.35;color:#365b86;max-width:100%;box-sizing:border-box}
 .principal-calendar .principal-calendar-day-preview strong{font-weight:600;font-size:10px}
@@ -33,7 +33,7 @@
 .render-workspace section.ros-calendar .ros-calendar-day-tasks{gap:4px;margin-top:6px}
 .render-workspace section.ros-calendar .ros-calendar-more{border:0;background:transparent;color:var(--render-muted);font-size:11px;padding:4px}
 .render-workspace section.ros-calendar .ros-calendar-day-count{font-size:9px;background:var(--render-surface-soft);color:var(--render-muted);border-radius:4px}
-.principal-calendar .calendar-today:focus-visible,.productions-page .calendar-today:focus-visible,.render-workspace section.ros-calendar button:focus-visible{outline:2px solid #0068d4;outline-offset:2px}
+.principal-calendar .calendar-today:focus-visible,.productions-page .calendar-today:focus-visible,.render-workspace section.ros-calendar button:focus-visible{outline:2px solid var(--render-accent);outline-offset:2px}
 .principal-calendar [data-render-section-focus-target][tabindex="-1"]:focus{outline:none}
 @media(max-width:1100px){.principal-calendar .principal-calendar-layout,.productions-page .prod-layout{grid-template-columns:minmax(0,1fr)}.principal-calendar .principal-calendar-agenda{position:static}.principal-calendar .principal-calendar-grid>button,.productions-page .prod-days>button{min-height:clamp(78px,11vh,100px)}}
 @media(max-width:680px){

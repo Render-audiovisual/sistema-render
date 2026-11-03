@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import './CalendarTypes.css';
 import { productionResultStatus } from './productionResultStatus.js';
 import { createProductionCatalogReader } from './productionCatalogReader.js';
 import { captureProductionMediaFocus } from './productionMediaFocus.js';

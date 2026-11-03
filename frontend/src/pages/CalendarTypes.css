@@ -1,0 +1,23 @@
+/* Etapa 5 · Calendario y Producciones con las mismas reglas:
+ * botón principal igual, mes con mayúscula, "Actualizar" como botón y
+ * un color por tipo de contenido (Reel, Carrusel, Visita) con leyenda. */
+.principal-calendar .principal-calendar-add{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border:1px solid var(--render-accent);border-radius:var(--render-radius-control);background:var(--render-accent);color:var(--render-accent-ink);font-size:13px;font-weight:600;text-decoration:none}
+.principal-calendar .principal-calendar-add:hover{background:var(--render-accent-hover);border-color:var(--render-accent-hover)}
+.principal-calendar .principal-calendar-add:focus-visible{outline:none;box-shadow:var(--render-focus)}
+.productions-page .prod-heading-actions .prod-refresh{min-height:36px;padding:0 14px;border:1px solid var(--render-line-strong);border-radius:var(--render-radius-control);background:var(--render-surface);color:var(--render-ink);font-size:13px;font-weight:600}
+.productions-page .prod-heading-actions .prod-refresh:hover:not(:disabled){background:var(--render-surface-soft);border-color:var(--render-muted)}
+.productions-page .prod-month-nav h2::first-letter{text-transform:uppercase}
+
+/* Colores por tipo: misma familia en claro y oscuro, texto siempre legible. */
+.principal-calendar,.productions-page{--ev-reel:#0068d4;--ev-reel-bg:#edf4ff;--ev-reel-ink:#0b4f9e;--ev-car:#7a3fd1;--ev-car-bg:#f4eefc;--ev-car-ink:#5b2ca3;--ev-other:#656b76;--ev-other-bg:#f1f2f4;--ev-other-ink:#3f444c;--ev-vis:#c2570b;--ev-vis-bg:#fff1e6;--ev-vis-ink:#8a3d06}
+:root[data-theme="dark"] :is(.principal-calendar,.productions-page){--ev-reel:#6aa8ff;--ev-reel-bg:#14243b;--ev-reel-ink:#b9d4ff;--ev-car:#b48cff;--ev-car-bg:#241a38;--ev-car-ink:#dccbff;--ev-other:#959ba6;--ev-other-bg:#23262b;--ev-other-ink:#d4d6db;--ev-vis:#ffa35c;--ev-vis-bg:#33200f;--ev-vis-ink:#ffd2ad}
+.principal-calendar.principal-calendar .principal-calendar-day-preview>span[data-format]{border-left-color:var(--ev-c);background:var(--ev-bg);color:var(--ev-ink)}
+.principal-calendar [data-format="Reel"]{--ev-c:var(--ev-reel);--ev-bg:var(--ev-reel-bg);--ev-ink:var(--ev-reel-ink)}
+.principal-calendar [data-format="Carrusel"]{--ev-c:var(--ev-car);--ev-bg:var(--ev-car-bg);--ev-ink:var(--ev-car-ink)}
+.principal-calendar [data-format="Contenido"]{--ev-c:var(--ev-other);--ev-bg:var(--ev-other-bg);--ev-ink:var(--ev-other-ink)}
+.productions-page.productions-page .prod-days>button>span{border-left-color:var(--ev-vis);background:var(--ev-vis-bg);color:var(--ev-vis-ink)}
+.principal-calendar .principal-calendar-legend{display:flex;flex-wrap:wrap;gap:14px;margin:0;align-self:flex-end;color:var(--render-ink-soft);font-size:12px}
+.principal-calendar .principal-calendar-legend span{display:inline-flex;align-items:center;gap:6px}
+.principal-calendar .principal-calendar-legend span::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--ev-c)}
+
+.principal-calendar .principal-calendar-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}

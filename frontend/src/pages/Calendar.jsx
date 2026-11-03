@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './CalendarTypes.css';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { Modal } from '../components/Modal.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
@@ -78,6 +79,7 @@ function CalendarContent({ sesion, onNavigate }) {
       <div className="principal-calendar-filters">
         <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !catalog.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{catalog.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect>
         <FilterSelect label="Contenido" value={selection.formato || ''} onChange={event=>change({formato:event.target.value})}><option value="">Todos</option><option value="reel">Reels</option><option value="carrusel">Carruseles</option></FilterSelect></div>
+      <p className="principal-calendar-legend" aria-hidden="true"><span data-format="Reel">Reel</span><span data-format="Carrusel">Carrusel</span><span data-format="Contenido">Otro contenido</span></p>
     </div>
     {status === "loading" && !monthData && <p role="status">Cargando calendario…</p>}
     {status === 'loading' && data && <p role="status">Actualizando calendario…</p>}
@@ -88,7 +90,7 @@ function CalendarContent({ sesion, onNavigate }) {
       <div className="principal-calendar-weekdays" aria-hidden="true">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, index) => <span key={index}>{day}</span>)}</div>
       <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; if(!day.startsWith(selection.mes))return <span key={day} aria-hidden="true"/>; return <button type="button" key={day} className={day === selection.dia ? 'selected' : ''} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-haspopup="dialog" aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${monthData ? ` · ${eventCount(count)}` : ''}`} onClick={event => {dayTrigger.current=event.currentTarget;setDayOpen(true);change({ mes: day.slice(0, 7), dia: day });}}>
         <span>{Number(day.slice(-2))}</span>{monthData && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
-        <div className="principal-calendar-day-preview">{events.map(item => <span key={item.key} title={`${calendarPublicationLabel(item)} · ${item.cliente_nombre}`}><strong>{item.cliente_nombre}</strong><span>{calendarPublicationLabel(item)}</span></span>)}{count>events.length&&<em>+{count-events.length} más</em>}</div>
+        <div className="principal-calendar-day-preview">{events.map(item => <span key={item.key} data-format={calendarPublicationLabel(item)} title={`${calendarPublicationLabel(item)} · ${item.cliente_nombre}`}><strong>{item.cliente_nombre}</strong><span>{calendarPublicationLabel(item)}</span></span>)}{count>events.length&&<em>+{count-events.length} más</em>}</div>
       </button>; })}</div></section>
       </div>{dayOpen&&<Modal native closeOnBackdropClick className="calendar-day-dialog" overlayClassName="calendar-day-overlay" overlayAriaLabel="Publicaciones del día" title="Publicaciones del día" onClose={()=>setDayOpen(false)} returnFocusRef={dayTrigger}>
       <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)}</p>}</header>

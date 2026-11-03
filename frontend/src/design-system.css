@@ -1624,7 +1624,7 @@ textarea {
 }
 :root[data-theme="dark"] :is(.principal-calendar .principal-calendar-grid>button, .productions-page .prod-days>button, .render-workspace section.ros-calendar .ros-calendar-day):hover { background: var(--render-surface-soft); border-color: var(--render-line-strong); }
 :root[data-theme="dark"] :is(.principal-calendar .principal-calendar-grid>button.selected, .productions-page .prod-days>button[aria-pressed=true]) { background: var(--render-accent-soft); border-color: var(--render-accent-border); box-shadow: inset 0 0 0 1px var(--render-accent-border); }
-:root[data-theme="dark"] :is(.principal-calendar .principal-calendar-day-preview>span, .productions-page .prod-days>button>span, .render-workspace section.ros-calendar .ros-calendar-task) { background: #14243b; color: #b9d4ff; border-left-color: #6aa8ff; }
+:root[data-theme="dark"] .render-workspace section.ros-calendar .ros-calendar-task { background: #14243b; color: #b9d4ff; border-left-color: #6aa8ff; }
 :root[data-theme="dark"] .client-monthly-avatar { background: var(--render-surface-muted); color: var(--render-ink-soft); border-color: var(--render-line); }
 :root[data-theme="dark"] .finance-exchange-note.is-fallback { border-color: rgba(242, 184, 75, .4); background: #2a2210; }
 
