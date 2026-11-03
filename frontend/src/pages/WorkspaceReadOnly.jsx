@@ -1617,7 +1617,12 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
       const previous = tasksRef.current.find((task) => task.id === id);
       if (!previous) throw new Error("La tarea ya no está disponible.");
       if ((requiresReviewObservation && !Number.isSafeInteger(observedRevision)) || (observedRevision !== null && previous.revision !== observedRevision)) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá el trabajo antes de aprobar o finalizar."), { status: 409 });
-      setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
+      // A completion needs the server's canonical closure timestamp to remain
+      // in the working set. Keep the source card visible until that ACK arrives;
+      // never fabricate finalizada_at or briefly hide the card while saving.
+      if (!["finalizada", "publicada"].includes(changes.estado)) {
+        setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
+      }
       try {
         const updated = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
         guard.assertCurrent();
