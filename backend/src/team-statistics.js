@@ -9,6 +9,20 @@ function date(value){
    ||!date(value.slice(0,10))||Number(value.slice(11,13))>23||Number(value.slice(14,16))>59||Number(value.slice(17,19))>59)return null;
  return day.format(new Date(value));
 }
+// Legacy dates alone are not evidence: the old trigger fell back to updated_at.
+// Require the independently recorded review event, the same task and local day.
+// This recovers a recorded review delivery, never approval or publication.
+export function recoverHistoricalEditingCandidates(rows){
+ return rows.flatMap(row=>{
+  const auditId=typeof row.audit_id==='string'&&/^[1-9]\d*$/.test(row.audit_id)?Number(row.audit_id):row.audit_id;
+  if(!Number.isSafeInteger(row.task_id)||row.task_id<=0||!Number.isSafeInteger(auditId)||auditId<=0)return [];
+  const match=typeof row.event_id==='string'&&row.event_id.match(/^(\d+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z):tarea_en_revision$/);
+  if(!match||Number(match[1])!==row.task_id||!date(match[2])||date(row.legacy_at)!==date(match[2])
+    ||!date(row.audit_at)||Date.parse(row.audit_at)<Date.parse(match[2]))return [];
+  return [{person_id:9,key:row.key,task_id:row.task_id,title:row.title,client:row.client,date:match[2],priority:2,
+   evidence:'historical_review',evidence_id:auditId}];
+ });
+}
 export function projectTeamStatistics(users,candidates,period){
  return people.map(person=>{
   const user=users.find(u=>u.id===person.id&&u.rol===person.role),unique=new Map(),missing=new Set();
@@ -21,6 +35,7 @@ export function projectTeamStatistics(users,candidates,period){
   }
   const records=[...unique.values()].map(row=>({...row,date:date(row.date)})).filter(row=>row.date.startsWith(period))
    .map(row=>({key:row.key,title:row.title||'Sin título',client:row.client||'Sin cliente',date:row.date,
+    ...(row.evidence?{evidence:row.evidence,evidence_id:row.evidence_id}:{}),
     href:row.visit_id?`/producciones?visita=${row.visit_id}`:`/workspace/tareas?task=${row.task_id}`}));
   return {id:person.id,name:user?.nombre||person.name,label:person.label,available:Boolean(user),count:user?records.length:null,unverified:[...missing].filter(key=>!unique.has(key)).length,records:user?records:[]};
  });
@@ -56,7 +71,24 @@ export async function readTeamStatistics(pool,auth,period){
     LEFT JOIN publicaciones p ON p.id=t.publicacion_id AND p.cliente_id=t.cliente_id
     WHERE t.tipo_tarea='edicion' AND (d.actor_id=9 OR EXISTS(SELECT 1 FROM progreso_edicion_entregas ep
       WHERE ep.tarea_id=t.id AND ep.delivery_id=d.id AND ep.editor_user_id=9 AND ep.origen_registro='canonical_delivery' AND ep.activa IS TRUE))`)).rows;
-  const result={period,rows:projectTeamStatistics(users,[...videos,...tasks,...deliveries],period)};
+  const historical=(await db.query(`SELECT t.id task_id,t.titulo title,c.nombre client,a.id audit_id,
+    CASE WHEN p.id IS NOT NULL THEN 'piece:'||p.id::text ELSE 'task:'||t.id::text END AS key,
+    a.detalles->>'eventId' event_id,
+    to_char(e.entregada_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') legacy_at,
+    to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') audit_at
+    FROM tareas t JOIN progreso_edicion_entregas e ON e.tarea_id=t.id
+    JOIN integracion_auditoria a ON a.tarea_id=t.id
+    LEFT JOIN clientes c ON c.id=t.cliente_id
+    LEFT JOIN publicaciones p ON p.id=t.publicacion_id AND p.cliente_id=t.cliente_id
+    WHERE t.tipo_tarea='edicion' AND t.estado IN ('en_revision','aprobada','finalizada','publicada')
+    AND e.editor_clave='luciano' AND e.origen_registro IS NULL AND e.activa IS TRUE
+    AND a.accion='entregar_evento_mia' AND a.resultado='ok'
+    AND a.detalles->>'eventId' LIKE t.id::text||':%:tarea_en_revision'
+    AND EXISTS(SELECT 1 FROM tarea_asignaciones x WHERE x.tarea_id=t.id AND x.usuario_id=9 AND x.tipo='responsable')
+    AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+    AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+    ORDER BY a.created_at,a.id`)).rows;
+  const result={period,rows:projectTeamStatistics(users,[...videos,...tasks,...deliveries,...recoverHistoricalEditingCandidates(historical)],period)};
   await db.query('COMMIT');return result;
  }catch(error){try{await db.query('ROLLBACK');}catch(rollback){discard=rollback;}throw error;}finally{db.release(discard);}
 }
