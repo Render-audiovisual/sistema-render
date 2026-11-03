@@ -64,7 +64,7 @@
 .igs-score{display:grid;gap:2px;margin-bottom:14px}.igs-score span{font-size:12px;color:var(--igs-muted)}.igs-score strong{font-size:34px;letter-spacing:-.03em}.igs-score small{font-size:11px;color:var(--igs-muted)}
 .igs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
 .igs-metrics div{background:var(--igs-bg);border-radius:10px;padding:10px;min-width:0}.igs-metrics dt{font-size:11px;color:var(--igs-muted)}
-.igs-metrics dd{margin:4px 0 2px;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}.igs-metrics small{font-size:11px}
+.igs-metrics dd{margin:4px 0 2px;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}.igs-metrics small{font-size:11px;display:block}
 .igs-detail-data h3{font-size:14px;margin:0 0 6px}
 @media(max-width:900px){.igs-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.igs-grid{grid-template-columns:1fr}.igs-detail-body{grid-template-columns:1fr}.igs-detail-media{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:start}.igs-detail-cover{grid-row:span 3}.igs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.igs-pub{grid-template-columns:44px minmax(0,1fr) 70px}.igs-pub-score{grid-column:2/-1}.igs-tile strong{font-size:22px}.igs-controls input,.igs-filters select{font-size:16px}}

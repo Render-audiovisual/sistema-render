@@ -111,6 +111,17 @@ test('unsupported crossposting never invents zero or removes valid Instagram met
   assert.equal(m.vistas_instagram, 7); assert.equal(m.vistas_total, null); assert.equal(m.vistas_facebook, null);
 });
 
+test('an incomplete successful combined response still requests the missing Facebook metric',async()=>{
+  const calls=[];
+  const client=createGraphClient({token:TOKEN,version:'v23.0'},{fetchImpl:async url=>{
+    const metric=new URL(url).searchParams.get('metric');calls.push(metric);
+    return json({data:metric.includes('crossposted_views')?[{name:'crossposted_views',values:[{value:100}]}]:
+      metric==='facebook_views'?[{name:'facebook_views',values:[{value:20}]}]:[{name:'views',values:[{value:80}]}]});
+  }});
+  const m=await client.mediaInsights('5');assert.equal(m.vistas_total,100);assert.equal(m.vistas_facebook,20);
+  assert.equal(calls.at(-1),'facebook_views');
+});
+
 test('errors are classified without leaking messages', async () => {
   const cases = [[{ code: 190 }, 400, 'auth'], [{ code: 4 }, 400, 'rate'], [{ code: 10 }, 400, 'permission'], [{ code: 1 }, 500, 'other']];
   for (const [error, status, kind] of cases) {

@@ -64,6 +64,13 @@ function graphDouble({ media = [], listMedia, mediaInsights, mediaCover } = {}) 
 }
 const proofs = h => h.committed.filter(a => a.action === FEED_SNAPSHOT_ACTION);
 
+test('explicit operator refresh remeasures even a recent combined measurement',async()=>{
+  const h=harness({existing:[{ig_media_id:'501',ultima:now,vistas_revisadas:true}]});let reads=0;
+  await runInstagramSync(h.pool,{now,refreshMetrics:true,env:{},graph:graphDouble({media:[piece()],
+    mediaInsights:async()=>{reads++;return{vistas:80,vistas_instagram:80,vistas_facebook:20,vistas_total:100};}})});
+  assert.equal(reads,1);assert.equal(h.committed.find(a=>a.action==='media_views_v1').details.total,100);
+});
+
 test('first combined measurement refreshes a recent legacy row and persists exact account-bound breakdown atomically', async () => {
   const h=harness({existing:[{ig_media_id:'501',ultima:now,vistas_revisadas:false}]});
   await runInstagramSync(h.pool,{now,env:{},graph:graphDouble({media:[piece()],mediaInsights:async()=>({
