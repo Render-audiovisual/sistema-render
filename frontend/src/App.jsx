@@ -42,6 +42,7 @@ const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "
 const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
 const InstagramPanelPage = lazyNamed(() => import("./pages/InstagramPanel.jsx"), "InstagramPanelPage");
 const InstagramClientReportPage = lazyNamed(loadInstagramReportModule, "InstagramClientReportPage");
+const InstagramClientStatsPage = lazyNamed(() => import("./pages/InstagramClientStats.jsx"), "InstagramClientStatsPage");
 const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.jsx"), "WorkspaceReadOnlyPage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
 const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
@@ -203,7 +204,7 @@ export function App() {
 
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/instagram", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
-    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", "/instagram", "/instagram/reporte", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
+    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", "/instagram", "/instagram/reporte", "/instagram/estadisticas", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
     esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -246,6 +247,9 @@ export function App() {
     }
     if (path === "/instagram/reporte") {
       return <InstagramClientReportPage sesion={sesion} />;
+    }
+    if (path === "/instagram/estadisticas") {
+      return <InstagramClientStatsPage sesion={sesion} />;
     }
     if (path === "/perfil") {
       return <PerfilPage />;

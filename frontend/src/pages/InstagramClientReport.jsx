@@ -212,6 +212,7 @@ function InstagramClientReportContent({ sesion, params, onPeriodChange }) {
     <div className="ig-client-report-toolbar">
       <a className="ig-client-report-back" onClick={event => handleAppLinkClick(window, event)} href={`/instagram?periodo=${encodeURIComponent(params.periodo)}`}>← Volver a Clientes</a>
       <div className="ig-client-report-controls"><label><span>Mes del reporte</span><input type="month" value={params.periodo} onChange={event => onPeriodChange(event.target.value)} /></label>
+        <a className="ig-client-report-back" style={{ paddingLeft: 16 }} onClick={event => handleAppLinkClick(window, event)} href={`/instagram/estadisticas?${new URLSearchParams({ cliente: params.cliente, periodo: params.periodo })}`}>Estadísticas</a>
         <button type="button" onClick={() => window.print()} disabled={!state.data || state.loading || Boolean(state.error)}>Imprimir / Guardar PDF</button></div>
     </div>
     {state.loading && <div className="ig-client-report-state" role="status">Cargando el reporte de {reportPeriodLabel(params.periodo)}…</div>}

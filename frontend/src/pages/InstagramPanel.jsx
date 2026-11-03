@@ -231,6 +231,7 @@ function ClientReportCard({client:c,period,onOpen}) {
     </div>
     <p className={`ig-client-card-note${state==='stale'?' is-stale':''}`}>{note}{c.format_counts?.checkedAt&&<> · <time dateTime={c.format_counts.checkedAt}>{dateLabel.format(new Date(c.format_counts.checkedAt))}</time></>}</p>
     <footer><a className="ig-client-report-link" onClick={event => handleAppLinkClick(window, event)} href={instagramReportHref(c.clave,period)} aria-label={`Ver reporte de ${c.nombre}`}>Ver reporte <span aria-hidden="true">↗</span></a>
+      {c.instagram?.length>0&&<a className="ig-client-posts-link" onClick={event => handleAppLinkClick(window, event)} href={`/instagram/estadisticas?${new URLSearchParams({cliente:c.clave,periodo:period})}`} aria-label={`Ver estadísticas de ${c.nombre}`}>Estadísticas</a>}
       {onOpen && <button type="button" className="ig-client-posts-link" onClick={()=>onOpen(c.clave)} aria-label={`Ver publicaciones de ${c.nombre}`}>Publicaciones</button>}</footer>
   </article>;
 }

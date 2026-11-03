@@ -4,6 +4,7 @@ import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority,
   retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
 import { computeAlerts } from './instagram-alerts.js';
+import { readClientStatsFromDb, readMediaStatsFromDb } from './instagram-stats.js';
 import { num, interactions, responsablesDe } from './instagram-metrics.js';
 import { loadGoalClients } from './client-goals.js';
 import { instagramFeedGroupCounts, validateFeedCountSnapshot,feedCountsAreTrusted } from '../../shared/instagram-feed-counts.mjs';
@@ -579,6 +580,33 @@ function publicReportPiece(piece) {
       guardados: m.guardados, compartidos: m.compartidos, interacciones: m.interacciones } };
 }
 
+// Estadísticas (equipo autenticado, solo lectura). Mismas reglas de acceso que el reporte.
+export async function readInstagramClientStats(pool, auth, clave, query) {
+  const key = clientKey(clave);
+  const period = panelPeriod(query);
+  return withInstagramRead(pool, auth, async db => {
+    const clients = (await db.query(CLIENTS_SQL)).rows.filter(c => c.clave === key);
+    if (!clients.length) throw fail(404, 'Cliente no encontrado.');
+    const ids = clients.map(c => c.id);
+    const accounts = (await db.query('SELECT ig_user_id, username FROM instagram_cuentas WHERE cliente_id = ANY($1::int[]) ORDER BY username', [ids])).rows;
+    const head = { clave: key, nombre: clients[0].grupo_nombre || clients[0].nombre, cuentas: accounts.map(a => a.username) };
+    if (!accounts.length) return { ...head, periodo: period, sin_cuenta: true };
+    const detail = await readClientPiecesFromDb(db, key, period, undefined, false);
+    const covers = new Map(detail.piezas.filter(p => p.portada_url).map(p => [p.ig_media_id, normalizeCoverUrl(p.portada_url)]));
+    return { ...head, ...(await readClientStatsFromDb(db, { accountIds: accounts.map(a => a.ig_user_id), period, covers })) };
+  });
+}
+
+export async function readInstagramMediaStats(pool, auth, igMediaId) {
+  if (typeof igMediaId !== 'string' || !/^[1-9]\d{0,39}$/.test(igMediaId)) throw fail(400, 'Publicación inválida.');
+  return withInstagramRead(pool, auth, async db => {
+    const stats = await readMediaStatsFromDb(db, igMediaId);
+    if (!stats) throw fail(404, 'Publicación no encontrada.');
+    const { ig_user_id, cliente_id, ...rest } = stats;
+    return rest;
+  });
+}
+
 export function createInstagramPanelRouter({ express, pool }) {
   const router = express.Router();
   const handle = run => async (req, res, next) => {
@@ -597,6 +625,8 @@ export function createInstagramPanelRouter({ express, pool }) {
   router.put('/cuentas/:igUserId', handle(req => writeInstagramAccountLink(pool, req.auth, req.params.igUserId, req.body)));
   router.get('/reportes', handle(req => { if (Object.keys(req.query).length) throw fail(400, 'Datos inválidos.'); return readInstagramReports(pool, req.auth); }));
   router.get('/reportes/:id', handle(req => readInstagramReport(pool, req.auth, req.params.id)));
+  router.get('/clientes/:clave/estadisticas', handle(req => readInstagramClientStats(pool, req.auth, req.params.clave, req.query)));
+  router.get('/media/:igMediaId/estadisticas', handle(req => readInstagramMediaStats(pool, req.auth, req.params.igMediaId)));
   router.get('/clientes/:clave/reporte', handle(req => readInstagramClientReport(pool, req.auth, req.params.clave, req.query)));
   router.put('/media/:igMediaId/vinculo', handle(req => writeInstagramMediaLink(pool, req.auth, req.params.igMediaId, req.body)));
   return router;
