@@ -8,7 +8,9 @@ const unconfigured = () => Promise.reject(Object.assign(
 ));
 // Disabled imports stay inert; neither pg defaults nor PGHOST may select an
 // unknown database when an explicit URL was not provided.
-export const pool = config ? new Pool(config) : Object.freeze({
+// Retain verified sockets across normal navigation pauses, not authorization
+// results. Every request still runs the existing current-user checks.
+export const pool = config ? new Pool({ ...config, idleTimeoutMillis: 120_000 }) : Object.freeze({
   query: unconfigured, connect: unconfigured, end: async () => {},
 });
 

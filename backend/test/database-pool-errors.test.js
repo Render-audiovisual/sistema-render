@@ -43,6 +43,16 @@ test('configured pool retains one idle-error listener without eager DB operation
   assert.deepEqual(f.calls, []);
 });
 
+test('navigation reuses idle sockets without caching identity or opening background connections', () => {
+  const f = fixture();
+  assert.equal(f.pool.config.idleTimeoutMillis, 120_000);
+  assert.equal(f.pool.config.connectionTimeoutMillis, 10_000);
+  assert.equal(f.pool.config.ssl.rejectUnauthorized, true);
+  assert.equal(Object.hasOwn(f.pool.config, 'min'), false);
+  assert.equal(Object.hasOwn(f.pool.config, 'max'), false);
+  assert.deepEqual(f.calls, []);
+});
+
 test('idle error is handled with a generic diagnostic and no reconnect/write retries', () => {
   const f = fixture();
   const error = Object.assign(new Error('postgresql://private:SECRET@host/db'), {
