@@ -4,6 +4,7 @@ import { getNavigationGroups, isNavigationActive } from "./navigation.js";
 import "./Sidebar.css";
 import { activeOwnerProfileLabel } from '../shared/session/owner-profiles.js';
 import { prefetchRoute } from '../shared/navigation/route-prefetch.js';
+import { getThemePreference, setThemePreference, subscribeThemePreference } from '../shared/theme/theme.js';
 
 function SidebarIcon({ name }) {
   if (name === "drive") return <svg className="sidebar-icon sidebar-drive-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0F9D58" d="m8.1 3-5.8 10 3.2 5.5 5.8-10z"/><path fill="#4285F4" d="M5.5 18.5h11.6l3.2-5.5H8.7z"/><path fill="#F4B400" d="M8.1 3h6.4l5.8 10h-6.4z"/></svg>;
@@ -25,6 +26,27 @@ function SidebarIcon({ name }) {
     users: <><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 15a5 5 0 0 1 7 4.5"/></>,
   };
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
+}
+
+const THEME_OPTIONS = [['light', 'Claro'], ['dark', 'Oscuro'], ['system', 'Auto']];
+
+// Mientras las pantallas pasan a variables de color, el tema oscuro queda en
+// prueba solo para el perfil Líder; el resto del equipo sigue en claro.
+export function canChooseTheme(rol) { return rol === 'admin'; }
+
+export function ThemeSwitch() {
+  const [preference, setPreference] = useState(getThemePreference);
+  useEffect(() => subscribeThemePreference(setPreference), []);
+  return (
+    <div className="theme-switch" role="group" aria-label="Tema de la interfaz">
+      <span className="theme-switch-label">Tema <small>beta</small></span>
+      <div className="theme-switch-options">
+        {THEME_OPTIONS.map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={preference === value} onClick={() => setThemePreference(value)}>{label}</button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
@@ -166,6 +188,7 @@ export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion,
             </div>
           </summary>
           <div className="account-menu-panel">
+            {canChooseTheme(sesion?.usuario?.rol) && <ThemeSwitch />}
             {renderLinksSección(enlacesCuenta)}
             <button
               className="sidebar-link logout-btn"

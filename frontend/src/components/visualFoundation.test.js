@@ -7,6 +7,9 @@ const legacy = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 const root = design.slice(design.indexOf(':root {'), design.indexOf('\n}\n'));
 const tokens = new Map([...root.matchAll(/(--render-[\w-]+):\s*([^;]+);/g)].map(([,key,value]) => [key,value]));
+const darkStart = design.indexOf(':root[data-theme="dark"] {');
+const darkBlock = darkStart < 0 ? '' : design.slice(darkStart, design.indexOf('\n}\n', darkStart));
+const darkTokens = new Map([...tokens, ...[...darkBlock.matchAll(/(--render-[\w-]+):\s*([^;]+);/g)].map(([,key,value]) => [key,value])]);
 const luminance = hex => {
   const rgb = hex.match(/[a-f\d]{2}/gi).map(value => parseInt(value,16)/255)
     .map(value => value <= .04045 ? value/12.92 : ((value+.055)/1.055)**2.4);
@@ -31,7 +34,16 @@ test('one shared foundation owns neutral light surfaces and system font without 
   assert.match(tokens.get('--render-font'), /-apple-system.*BlinkMacSystemFont.*SF Pro Text.*Segoe UI/);
   assert.doesNotMatch(html, /fonts.googleapis|fonts.gstatic|Poppins/);
   assert.doesNotMatch(legacy, /Poppins|fonts.googleapis/);
-  assert.doesNotMatch(design, /#b5fc00|#c4ff30|rgba\(181, 252/);
+  // El lima de marca existe solo como acción del tema oscuro, nunca en el claro.
+  assert.doesNotMatch(design.replace(darkBlock, ''), /#b5fc00|#c4ff30/);
+  assert.match(darkBlock, /--render-accent: #b5fc00;/);
+});
+test('el tema oscuro mantiene contraste legible en texto, acciones y estados', () => {
+  for (const [fg,bg,min] of [['--render-ink','--render-surface',7],['--render-ink-soft','--render-surface',4.5],['--render-muted','--render-surface',4.5],
+    ['--render-muted','--render-canvas',4.5],['--render-accent-ink','--render-accent',7],['--render-danger','--render-surface',4.5],
+    ['--render-warning','--render-surface',4.5],['--render-success','--render-surface',4.5],['--render-sidebar-muted','--render-sidebar',4.5]]) {
+    assert.ok(contrast(darkTokens.get(fg),darkTokens.get(bg)) >= min, `${fg} on ${bg} (oscuro)`);
+  }
 });
 test('primary, secondary and muted text/focus have measured contrast against intended surfaces', () => {
   for (const [fg,bg] of [['--render-accent-ink','--render-accent'],['--render-accent-ink','--render-accent-hover'],

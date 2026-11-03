@@ -4,12 +4,15 @@ import "./styles.css";
 import "./design-system.css";
 import { App } from "./App.jsx";
 import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
+import { installTheme } from "./shared/theme/theme.js";
 import { createApplicationSession } from './shared/session/application-session.js';
 import { installApplicationSession } from './shared/session/application-session-access.js';
 import { createBrowserSessionCoordination } from './shared/session/browser-session-coordination.js';
 import { calendarQuery, readPublicationCalendarSelection } from './pages/calendarModel.js';
 
 installUnsavedNavigation(window);
+// Antes del primer render: evita un destello claro a quien eligió el tema oscuro.
+installTheme(window);
 
 // The operational browser app and API must share an origin. A foreign legacy
 // API base fails closed; it must not silently restore XSS-readable bearer auth.
