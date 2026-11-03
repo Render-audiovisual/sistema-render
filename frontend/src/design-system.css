@@ -1605,23 +1605,15 @@ textarea {
 /* Selector de tema en el menú de la cuenta */
 .theme-switch { display: grid; gap: var(--render-space-2); padding: var(--render-space-2) var(--render-space-2) var(--render-space-3); margin-bottom: var(--render-space-1); border-bottom: 1px solid var(--render-line); }
 .theme-switch-label { font-size: var(--render-type-caption); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--render-muted); }
-.theme-switch-label small { margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: var(--render-accent-soft); color: var(--render-ink-soft); letter-spacing: .02em; text-transform: none; font-size: 10px; }
 .theme-switch-options { display: flex; gap: 2px; padding: 3px; border-radius: var(--render-radius-control); background: var(--render-surface-muted); }
 .theme-switch-options button { flex: 1; min-height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--render-ink-soft); font: inherit; font-size: var(--render-type-label); font-weight: 600; cursor: pointer; }
 .theme-switch-options button[aria-pressed="true"] { background: var(--render-surface); color: var(--render-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .18); }
 .theme-switch-options button:focus-visible { outline: none; box-shadow: var(--render-focus); }
 
 /* Tema oscuro · puentes para módulos con colores propios.
- * Clientes (objetivos) mapea sus variables; los módulos todavía no migrados
- * quedan como "isla clara" legible dentro del marco oscuro hasta su etapa. */
+ * Clientes (objetivos) mapea sus variables; el resto vive en theme-dark-modules.css. */
 :root[data-theme="dark"] .client-goals { --cg-paper: var(--render-surface); --cg-soft: var(--render-surface-soft); --cg-ink: var(--render-ink); --cg-muted: var(--render-muted); --cg-line: var(--render-line); --cg-done: var(--render-success); }
 :root[data-theme="dark"] .client-goals :is(.cg-month input, .cg-mobile-client select, .cg-content-editor input, .cg-content-editor textarea) { background: var(--render-surface-soft); border-color: var(--render-line-strong); color: var(--render-ink); }
-:root[data-theme="dark"] .personal-lists-page {
-  color-scheme: light;
-  --render-canvas: #f5f5f7; --render-surface: #ffffff; --render-surface-soft: #f8f9fb; --render-surface-muted: #eef0f4;
-  --render-ink: #1d1d1f; --render-ink-soft: #51545b; --render-muted: #656b76; --render-line: #e1e4ea; --render-line-strong: #cbd0d9;
-  border-radius: var(--render-radius-panel);
-}
 :root[data-theme="dark"] :is(.principal-calendar .principal-calendar-grid>button, .productions-page .prod-days>button, .render-workspace section.ros-calendar .ros-calendar-day):hover { background: var(--render-surface-soft); border-color: var(--render-line-strong); }
 :root[data-theme="dark"] :is(.principal-calendar .principal-calendar-grid>button.selected, .productions-page .prod-days>button[aria-pressed=true]) { background: var(--render-accent-soft); border-color: var(--render-accent-border); box-shadow: inset 0 0 0 1px var(--render-accent-border); }
 :root[data-theme="dark"] .render-workspace section.ros-calendar .ros-calendar-task { background: #14243b; color: #b9d4ff; border-left-color: #6aa8ff; }

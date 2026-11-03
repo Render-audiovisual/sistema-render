@@ -32,14 +32,14 @@ const THEME_OPTIONS = [['light', 'Claro'], ['dark', 'Oscuro'], ['system', 'Auto'
 
 // Mientras las pantallas pasan a variables de color, el tema oscuro queda en
 // prueba solo para el perfil Líder; el resto del equipo sigue en claro.
-export function canChooseTheme(rol) { return rol === 'admin'; }
+export function canChooseTheme(rol) { return Boolean(rol); }
 
 export function ThemeSwitch() {
   const [preference, setPreference] = useState(getThemePreference);
   useEffect(() => subscribeThemePreference(setPreference), []);
   return (
     <div className="theme-switch" role="group" aria-label="Tema de la interfaz">
-      <span className="theme-switch-label">Tema <small>beta</small></span>
+      <span className="theme-switch-label">Tema</span>
       <div className="theme-switch-options">
         {THEME_OPTIONS.map(([value, label]) => (
           <button key={value} type="button" aria-pressed={preference === value} onClick={() => setThemePreference(value)}>{label}</button>

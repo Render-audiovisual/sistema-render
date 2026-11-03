@@ -1,0 +1,1165 @@
+/* Tema oscuro · módulos con colores propios (Mi lista, Bloc de notas, Wilson, Drive, Usuarios).
+ * Solo aplica con data-theme="dark"; el tema claro no cambia. */
+
+/* pages/PersonalLists.css */
+:root[data-theme="dark"] .personal-lists-page {
+    --pl-ink: var(--render-ink);
+    --pl-muted: var(--render-muted);
+    --pl-line: var(--render-line);
+    --pl-soft: var(--render-surface-soft);
+    --pl-panel: var(--render-surface);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-list-rail {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-list-rail-heading > span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-list-rail-heading button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-list-rail-heading button:hover {
+    background: var(--render-surface-muted);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-list-tabs button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-list-tabs button:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-list-tabs button.active {
+    background: hsl(82 15% 17%);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-list-rail > p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-list-document {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-list-toolbar {
+    border-bottom: 1px solid var(--render-line);
+    background: rgb(22 24 27 / .9)
+}
+:root[data-theme="dark"] .personal-list-toolbar-start > span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-list-toolbar button {
+    background: var(--render-surface);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-list-toolbar button:hover {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-list-toolbar button.danger {
+    border-color: hsl(10 48% 32%);
+    color: hsl(6 44% 73%)
+}
+:root[data-theme="dark"] .personal-list-toolbar button.danger:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-save-status {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-save-status i {
+    background: hsl(96 5% 22%)
+}
+:root[data-theme="dark"] .personal-save-status.saving i {
+    background: hsl(40 45% 26%)
+}
+:root[data-theme="dark"] .personal-save-status.error {
+    color: hsl(6 47% 73%)
+}
+:root[data-theme="dark"] .personal-save-status.error i {
+    background: hsl(5 45% 26%)
+}
+:root[data-theme="dark"] .personal-save-status.pending {
+    color: hsl(39 63% 80%)
+}
+:root[data-theme="dark"] .personal-list-cover {
+    background: linear-gradient(135deg,var(--render-surface-soft) 0%,var(--render-surface-muted) 44%,var(--render-surface-soft) 100%)
+}
+:root[data-theme="dark"] .personal-list-emoji {
+    border: 1px solid var(--render-line);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-list-title {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-list-hint {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-emoji-popover {
+    background: rgb(22 24 27 / .97)
+}
+:root[data-theme="dark"] .personal-emoji-popover > input, :root[data-theme="dark"] .personal-emoji-manual input {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-emoji-grid button:hover, :root[data-theme="dark"] .personal-emoji-grid button.selected {
+    background: var(--render-surface-muted)
+}
+:root[data-theme="dark"] .personal-editor-block:hover, :root[data-theme="dark"] .personal-editor-block:focus-within {
+    border-color: var(--render-line);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-block-type {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-block-actions button, :root[data-theme="dark"] .personal-row-actions button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-block-actions button:hover, :root[data-theme="dark"] .personal-row-actions button:hover {
+    background: var(--render-surface-soft);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-block-actions button.danger {
+    color: hsl(6 39% 71%)
+}
+:root[data-theme="dark"] .personal-block-actions button.danger:hover, :root[data-theme="dark"] .personal-row-actions button.danger:hover {
+    background: var(--render-surface-soft);
+    color: hsl(5 49% 76%)
+}
+:root[data-theme="dark"] .personal-text-block {
+    border: 1px solid var(--render-line);
+    background: var(--render-surface);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-text-block:focus {
+    border-color: hsl(84 18% 32%);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-block-title {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-block-title:focus {
+    border-bottom-color: hsl(81 39% 32%)
+}
+:root[data-theme="dark"] .personal-block-item:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-block-item > input {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-block-item.complete > input {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-checkbox span, :root[data-theme="dark"] .personal-cell-check span {
+    border: 1.5px solid var(--render-line-strong);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-checkbox input:checked + span, :root[data-theme="dark"] .personal-cell-check input:checked + span {
+    border-color: var(--render-accent);
+    color: var(--render-accent-ink)
+}
+:root[data-theme="dark"] .personal-list-bullet {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-add-row {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-add-row input {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-table-title > span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-heading button, :root[data-theme="dark"] .personal-table-empty {
+    border: 1px solid var(--render-line-strong);
+    background: var(--render-surface);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-heading button > span {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-heading button:hover, :root[data-theme="dark"] .personal-table-empty:hover {
+    border-color: var(--render-line-strong);
+    background: var(--render-surface-soft);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-table-mobile-hint {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-navigator {
+    border: 1px solid var(--render-line-strong);
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-table-navigator > button {
+    background: var(--render-surface);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-navigator > button:hover {
+    background: var(--render-surface-muted)
+}
+:root[data-theme="dark"] .personal-table-navigator span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-navigator strong {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-navigator small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-scroll {
+    border: 1px solid var(--render-line-strong);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-table-scroll th, :root[data-theme="dark"] .personal-table-scroll td {
+    border-right: 1px solid var(--render-line);
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .personal-table-scroll th {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-table-column-head > input {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-column-head > input:focus {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-table-actions > summary {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-actions > summary:hover, :root[data-theme="dark"] .personal-table-actions[open] > summary {
+    background: var(--render-surface-muted);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-actions > div {
+    border: 1px solid var(--render-line-strong);
+    background: rgb(22 24 27 / .98)
+}
+:root[data-theme="dark"] .personal-table-actions button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-table-actions button:hover {
+    background: var(--render-surface-soft);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-table-actions button.danger {
+    color: hsl(6 40% 72%)
+}
+:root[data-theme="dark"] .personal-table-actions button.danger:hover {
+    background: var(--render-surface-soft);
+    color: hsl(6 49% 77%)
+}
+:root[data-theme="dark"] .personal-table-scroll td {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-table-scroll tbody tr:hover td {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-table-scroll td:focus-within {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-table-scroll td.complete {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-table-scroll td.complete textarea {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-table-scroll td textarea {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-table-scroll td textarea::placeholder {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-cell-check span {
+    border-color: var(--render-line-strong)
+}
+:root[data-theme="dark"] .personal-table-scroll .personal-table-row-tools {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] th.personal-table-row-tools {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-page-empty {
+    border: 1px dashed var(--render-line-strong);
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-page-empty small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-add-block {
+    background: var(--render-surface);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-add-block:hover {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-block-menu {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-block-menu > button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-block-menu > button:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-block-menu > button > span {
+    border: 1px solid var(--render-line-strong);
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-block-menu small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-template-modal, :root[data-theme="dark"] .personal-name-modal {
+    border: 1px solid rgb(64 68 77 / .8);
+    background: rgb(22 24 27 / .98)
+}
+:root[data-theme="dark"] .personal-template-modal .modal-header span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-template-modal h2, :root[data-theme="dark"] .personal-name-modal h2 {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-template-grid > button {
+    background: var(--render-surface);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-template-grid > button:hover {
+    border-color: var(--render-line-strong);
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-template-grid small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-custom-templates h3 {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-custom-templates > div > button:first-child:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-custom-templates button.danger {
+    color: hsl(6 36% 70%)
+}
+:root[data-theme="dark"] .personal-custom-templates button.danger:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .personal-name-modal p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-name-modal label {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .personal-name-modal input {
+    background: var(--render-surface);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .personal-name-modal footer button {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .personal-list-error {
+    border: 1px solid hsl(8 50% 32%);
+    background: var(--render-surface);
+    color: hsl(6 49% 77%)
+}
+:root[data-theme="dark"] .personal-list-empty p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-list-empty button {
+    color: var(--render-accent-ink)
+}
+:root[data-theme="dark"] .personal-list-loading {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .personal-list-loading i {
+    border: 2px solid var(--render-line);
+    border-top-color: hsl(80 31% 32%)
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-list-toolbar button.personal-list-delete {
+        color: hsl(6 44% 73%)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-block-actions button.danger::after {
+        color: hsl(6 44% 73%)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile>summary {
+        color: var(--render-ink-soft)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile>summary:hover, :root[data-theme="dark"] .personal-row-actions-mobile[open]>summary {
+        background: var(--render-surface-soft);
+        color: var(--render-ink)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile>div {
+        border: 1px solid var(--render-line-strong);
+        background: var(--render-surface)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile button {
+        color: var(--render-ink-soft)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile button:hover {
+        background: var(--render-surface-soft)
+    }
+}
+@media (max-width: 680px) {
+    :root[data-theme="dark"] .personal-row-actions-mobile button.danger {
+        color: hsl(6 44% 73%)
+    }
+}
+/* pages/BlocNotas.css */
+:root[data-theme="dark"] .notes-page {
+    --notes-ink: hsl(80 20% 93%);
+    --notes-ink-soft: var(--render-ink);
+    --notes-deep: hsl(86 16% 95%);
+    --notes-warm: var(--render-surface-soft);
+    --notes-muted: var(--render-muted);
+    --notes-line: var(--render-line-strong);
+    background: linear-gradient(145deg,var(--render-surface-soft) 0%,var(--render-surface) 55%,var(--render-surface-muted) 100%)
+}
+:root[data-theme="dark"] .notes-kicker {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-shell {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .notes-list {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .notes-search {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line-strong)
+}
+:root[data-theme="dark"] .notes-search:focus-within {
+    border-color: hsl(77 48% 32%)
+}
+:root[data-theme="dark"] .notes-search>span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-search input::placeholder {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-category-filters button {
+    background: var(--render-surface-muted);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-category-filters button:hover {
+    background: var(--render-surface);
+    border-color: var(--render-line-strong)
+}
+:root[data-theme="dark"] .notes-list-title small {
+    background: hsl(82 18% 17%);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-items::-webkit-scrollbar-thumb {
+    background: hsl(90 10% 22%);
+    border: 2px solid hsl(77 24% 32%)
+}
+:root[data-theme="dark"] .notes-items>button:hover {
+    background: var(--render-surface-soft);
+    border-color: var(--render-line-strong)
+}
+:root[data-theme="dark"] .notes-items>button.active {
+    background: var(--render-surface);
+    border-color: hsl(78 27% 32%)
+}
+:root[data-theme="dark"] .notes-item-category {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .note-category-general .notes-item-category {
+    background: var(--render-surface-muted);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .note-category-diseno .notes-item-category {
+    background: var(--render-surface-soft);
+    color: hsl(265 29% 74%)
+}
+:root[data-theme="dark"] .note-category-web .notes-item-category {
+    background: var(--render-surface-soft);
+    color: hsl(202 44% 78%)
+}
+:root[data-theme="dark"] .note-category-reunion .notes-item-category {
+    background: hsl(42 45% 17%);
+    color: hsl(41 62% 81%)
+}
+:root[data-theme="dark"] .note-category-contenido .notes-item-category {
+    background: var(--render-surface-muted);
+    color: hsl(114 26% 78%)
+}
+:root[data-theme="dark"] .notes-items p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-items small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-empty {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-trash-toggle {
+    background: var(--render-surface-muted);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-trash-toggle:hover {
+    background: hsl(82 15% 17%)
+}
+:root[data-theme="dark"] .notes-trash-toggle.active {
+    background: var(--render-surface-muted);
+    color: hsl(4 42% 77%)
+}
+:root[data-theme="dark"] .notes-editor {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .notes-category-picker::before {
+    background: hsl(104 5% 22%)
+}
+:root[data-theme="dark"] .notes-category-picker.is-diseno::before {
+    background: hsl(268 31% 26%)
+}
+:root[data-theme="dark"] .notes-category-picker.is-web::before {
+    background: hsl(202 36% 26%)
+}
+:root[data-theme="dark"] .notes-category-picker.is-reunion::before {
+    background: hsl(41 45% 26%)
+}
+:root[data-theme="dark"] .notes-category-picker.is-contenido::before {
+    background: hsl(112 24% 26%)
+}
+:root[data-theme="dark"] .notes-category-picker>span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-category-picker select {
+    background: var(--render-surface-soft);
+    border: 1px solid var(--render-line-strong);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-category-picker select:focus {
+    border-color: hsl(77 43% 32%)
+}
+:root[data-theme="dark"] .notes-editor textarea::placeholder {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-editor footer {
+    background: var(--render-surface);
+    border-top: 1px solid hsl(82 17% 32%)
+}
+:root[data-theme="dark"] .notes-editor footer span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-editor footer strong {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .notes-save-state {
+    color: hsl(90 16% 77%)
+}
+:root[data-theme="dark"] .notes-save-state.saved {
+    color: hsl(76 55% 85%)
+}
+:root[data-theme="dark"] .notes-save-state.pending {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-save-state.conflict, :root[data-theme="dark"] .notes-save-state.error {
+    background: var(--render-surface-soft);
+    color: hsl(3 49% 74%)
+}
+:root[data-theme="dark"] .notes-delete {
+    color: hsl(4 37% 74%)
+}
+:root[data-theme="dark"] .notes-delete:hover {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .notes-actions button {
+    background: var(--render-surface-muted);
+    border: 1px solid var(--render-line-strong)
+}
+:root[data-theme="dark"] .notes-actions button:hover {
+    background: hsl(84 19% 17%)
+}
+:root[data-theme="dark"] .notes-actions .danger {
+    background: var(--render-surface-soft);
+    border-color: hsl(6 47% 32%);
+    color: hsl(3 49% 74%)
+}
+:root[data-theme="dark"] .notes-welcome {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .notes-welcome>span {
+    border: 1px solid hsl(77 50% 32%);
+    color: hsl(75 53% 84%)
+}
+:root[data-theme="dark"] .notes-error {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(6 50% 32%);
+    color: hsl(4 47% 75%)
+}
+@media (max-width:980px) {
+    :root[data-theme="dark"] .notes-editor-mobile button {
+        background: var(--render-surface-muted);
+        color: hsl(76 55% 85%)
+    }
+}
+/* features/render-os/WilsonAssistant.css */
+:root[data-theme="dark"] .wilson-launcher {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .wilson-unread-badge {
+    background: hsl(4 45% 26%)
+}
+:root[data-theme="dark"] .wilson-launcher:focus-visible, :root[data-theme="dark"] .wilson-assistant button:focus-visible, :root[data-theme="dark"] .wilson-assistant input:focus-visible {
+    outline: 3px solid hsl(77 50% 32%)
+}
+:root[data-theme="dark"] .wilson-assistant {
+    background: var(--render-surface);
+    border: 1px solid hsl(84 15% 32%)
+}
+:root[data-theme="dark"] .wilson-mark {
+    background: hsl(77 45% 26%);
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .wilson-header-notification {
+    background: hsl(77 45% 26%);
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .wilson-status {
+    background: var(--render-surface-soft);
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-status span {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line-strong);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .wilson-status button {
+    color: hsl(83 21% 78%)
+}
+:root[data-theme="dark"] .wilson-messages {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .wilson-message {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-message>p {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .wilson-message>time {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-message.user {
+    background: hsl(80 45% 17%);
+    border-color: hsl(81 46% 32%);
+    color: hsl(84 41% 89%)
+}
+:root[data-theme="dark"] .wilson-task {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .wilson-task:hover {
+    background: var(--render-surface-soft);
+    border-color: hsl(82 27% 32%)
+}
+:root[data-theme="dark"] .wilson-task small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-task>svg {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-task em {
+    color: hsl(81 58% 83%)
+}
+:root[data-theme="dark"] .wilson-confirm-actions button {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .wilson-confirm-actions button+button {
+    background: var(--render-surface);
+    border-color: var(--render-line-strong);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .wilson-priority.p0 {
+    background: var(--render-surface-soft);
+    color: hsl(5 52% 74%)
+}
+:root[data-theme="dark"] .wilson-priority.p1 {
+    background: var(--render-surface-muted);
+    color: hsl(36 83% 82%)
+}
+:root[data-theme="dark"] .wilson-priority.p2 {
+    background: var(--render-surface-muted);
+    color: hsl(81 56% 83%)
+}
+:root[data-theme="dark"] .wilson-priority.p3, :root[data-theme="dark"] .wilson-priority.p4 {
+    background: var(--render-surface-soft);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .wilson-prompts button {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(85 18% 32%);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .wilson-prompts button:hover {
+    background: var(--render-surface-muted);
+    border-color: hsl(80 42% 32%)
+}
+:root[data-theme="dark"] .wilson-input {
+    border-top: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-input input {
+    background: var(--render-surface-soft);
+    border: 1px solid var(--render-line-strong);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .wilson-input button {
+    background: hsl(77 45% 26%);
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .wilson-input button:disabled {
+    background: hsl(82 14% 17%);
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-thinking {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-thinking i {
+    background: hsl(81 36% 26%)
+}
+:root[data-theme="dark"] .wilson-error {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(11 50% 32%);
+    color: hsl(6 37% 79%)
+}
+:root[data-theme="dark"] .wilson-error button {
+    background: var(--render-surface);
+    border: 1px solid hsl(11 40% 32%);
+    color: hsl(6 37% 79%)
+}
+/* pages/WilsonConversations.css */
+:root[data-theme="dark"] .wilson-admin-page {
+    background: var(--render-surface-soft);
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .wilson-admin-page header p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-admin-layout {
+    background: var(--render-surface);
+    border: 1px solid hsl(84 15% 32%)
+}
+:root[data-theme="dark"] .wilson-admin-layout > aside {
+    border-right: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-admin-layout > aside button {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .wilson-admin-layout > aside button:hover, :root[data-theme="dark"] .wilson-admin-layout > aside button.active {
+    background: var(--render-surface-muted)
+}
+:root[data-theme="dark"] .wilson-admin-layout > aside small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-admin-chat-header {
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-admin-chat-header small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-admin-avatar {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .wilson-admin-messages article {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .wilson-admin-messages article.usuario {
+    background: hsl(79 45% 17%)
+}
+:root[data-theme="dark"] .wilson-admin-messages article small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-admin-messages .empty {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-admin-error {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(11 46% 32%);
+    color: hsl(7 45% 77%)
+}
+:root[data-theme="dark"] .wilson-admin-notice {
+    background: var(--render-surface-muted);
+    border: 1px solid hsl(81 47% 32%);
+    color: hsl(83 53% 85%)
+}
+:root[data-theme="dark"] .wilson-reset-button {
+    background: var(--render-surface);
+    border: 1px solid hsl(9 31% 32%);
+    color: hsl(5 41% 76%)
+}
+:root[data-theme="dark"] .wilson-reset-button:hover {
+    background: var(--render-surface);
+    border-color: hsl(8 35% 32%)
+}
+:root[data-theme="dark"] .wilson-reset-button:focus-visible, :root[data-theme="dark"] .wilson-reset-dialog button:focus-visible {
+    outline: 3px solid hsl(77 50% 32%)
+}
+:root[data-theme="dark"] .wilson-admin-people-empty {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .wilson-reset-dialog {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .wilson-reset-icon {
+    background: var(--render-surface-soft);
+    color: hsl(5 46% 73%)
+}
+:root[data-theme="dark"] .wilson-reset-dialog p {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .wilson-reset-actions button {
+    background: var(--render-surface);
+    border: 1px solid hsl(84 15% 32%);
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .wilson-reset-actions button.danger {
+    background: hsl(5 45% 26%);
+    border-color: hsl(5 46% 32%)
+}
+@media (max-width: 760px) {
+    :root[data-theme="dark"] .wilson-admin-layout > aside {
+        border-bottom: 1px solid var(--render-line)
+    }
+}
+/* pages/Drive.css */
+:root[data-theme="dark"] .drive-page {
+    background: var(--render-surface-soft);
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .drive-page-header {
+    border-bottom: 1px solid hsl(78 17% 32%)
+}
+:root[data-theme="dark"] .drive-kicker {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .drive-page-header p {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .drive-page-header a {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .drive-connect {
+    background: var(--render-surface);
+    border: 1px solid hsl(78 17% 32%)
+}
+:root[data-theme="dark"] .drive-logo {
+    background: hsl(77 45% 26%)
+}
+:root[data-theme="dark"] .drive-connect p {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .drive-connect button {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .drive-connect small {
+    color: hsl(3 51% 75%)
+}
+:root[data-theme="dark"] .drive-roots {
+    background: hsl(70 23% 17%)
+}
+:root[data-theme="dark"] .drive-roots button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .drive-roots button.active {
+    color: hsl(77 100% 70%)
+}
+:root[data-theme="dark"] .drive-toolbar label {
+    background: var(--render-surface);
+    border: 1px solid hsl(78 16% 32%)
+}
+:root[data-theme="dark"] .drive-browser {
+    background: var(--render-surface);
+    border: 1px solid hsl(78 17% 32%)
+}
+:root[data-theme="dark"] .drive-breadcrumbs button {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .drive-breadcrumbs button:last-child {
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .drive-grid article {
+    border: 1px solid var(--render-line-strong)
+}
+:root[data-theme="dark"] .drive-file-main {
+    color: hsl(80 20% 93%)
+}
+:root[data-theme="dark"] .drive-file-main>span {
+    background: var(--render-surface-muted);
+    color: hsl(74 100% 85%)
+}
+:root[data-theme="dark"] .drive-file-main small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .drive-trash {
+    color: hsl(4 39% 73%)
+}
+:root[data-theme="dark"] .drive-empty, :root[data-theme="dark"] .drive-loading {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .drive-error-banner {
+    background: var(--render-surface-soft);
+    color: hsl(3 52% 76%)
+}
+:root[data-theme="dark"] .drive-folder-recovery>button {
+    background: var(--render-surface,var(--render-surface))
+}
+/* styles.css */
+:root[data-theme="dark"] .usuarios-header p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-stats {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-stat {
+    border-left: 1px solid hsl(216 15% 32%)
+}
+:root[data-theme="dark"] .usuarios-stat.is-ready::before {
+    background: hsl(157 45% 26%)
+}
+:root[data-theme="dark"] .usuarios-stat.is-pending::before {
+    background: hsl(38 45% 26%)
+}
+:root[data-theme="dark"] .usuarios-stat > span {
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .usuarios-stat strong {
+    color: hsl(210 24% 90%)
+}
+:root[data-theme="dark"] .usuarios-stat small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .alert.is-error, :root[data-theme="dark"] .usuarios-alert.is-error {
+    background: var(--render-surface);
+    border-color: hsl(0 50% 32%);
+    color: hsl(0 47% 74%)
+}
+:root[data-theme="dark"] .alert.is-success, :root[data-theme="dark"] .usuarios-alert.is-success {
+    background: var(--render-surface-soft);
+    border-color: hsl(151 44% 32%);
+    color: hsl(155 53% 82%)
+}
+:root[data-theme="dark"] .usuarios-listado {
+    background: var(--render-surface);
+    border: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-listado-header {
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-listado-header strong {
+    color: hsl(214 16% 90%)
+}
+:root[data-theme="dark"] .usuarios-listado-header span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-search {
+    background: var(--render-surface-soft);
+    border: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-search > span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-search input::placeholder {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-access-filter {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .usuarios-access-filter button {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-access-filter button.active {
+    background: var(--render-surface);
+    color: hsl(212 33% 87%)
+}
+:root[data-theme="dark"] .usuarios-access-filter b {
+    background: hsl(36 45% 17%);
+    color: hsl(34 62% 80%)
+}
+:root[data-theme="dark"] .usuarios-dot {
+    background: hsl(217 9% 22%)
+}
+:root[data-theme="dark"] .usuarios-dot.is-ready {
+    background: hsl(157 45% 26%)
+}
+:root[data-theme="dark"] .usuarios-dot.is-pending {
+    background: hsl(38 45% 26%)
+}
+:root[data-theme="dark"] .usuarios-columns {
+    background: var(--render-surface-soft);
+    border-bottom: 1px solid var(--render-line);
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-row {
+    border-bottom: 1px solid hsl(204 16% 32%)
+}
+:root[data-theme="dark"] .usuarios-row:hover {
+    background: var(--render-surface)
+}
+:root[data-theme="dark"] .usuarios-persona strong, :root[data-theme="dark"] .usuarios-access strong, :root[data-theme="dark"] .usuarios-email strong {
+    color: hsl(214 16% 90%)
+}
+:root[data-theme="dark"] .usuarios-access-status > span.is-ready {
+    color: hsl(156 53% 81%)
+}
+:root[data-theme="dark"] .usuarios-access-status > span.is-pending {
+    color: hsl(38 72% 79%)
+}
+:root[data-theme="dark"] .usuarios-persona span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-avatar {
+    border: 3px solid hsl(210 20% 32%)
+}
+:root[data-theme="dark"] .usuarios-role {
+    background: var(--render-surface-soft);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .usuarios-role.role-admin {
+    background: var(--render-surface-soft);
+    color: hsl(222 54% 74%)
+}
+:root[data-theme="dark"] .usuarios-role.role-diseno {
+    background: var(--render-surface-soft);
+    color: hsl(272 42% 73%)
+}
+:root[data-theme="dark"] .usuarios-role.role-edicion {
+    background: var(--render-surface-soft);
+    color: hsl(206 60% 77%)
+}
+:root[data-theme="dark"] .usuarios-role.role-produccion {
+    background: var(--render-surface-soft);
+    color: hsl(27 65% 77%)
+}
+:root[data-theme="dark"] .usuarios-role.role-community {
+    background: var(--render-surface-soft);
+    color: hsl(152 52% 82%)
+}
+:root[data-theme="dark"] .usuarios-manage {
+    background: var(--render-surface);
+    border-color: var(--render-line-strong);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .usuarios-manage:hover {
+    background: var(--render-surface-soft);
+    border-color: var(--render-line-strong)
+}
+:root[data-theme="dark"] .usuarios-manage span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-empty {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-loading {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-loading > span {
+    border: 2px solid var(--render-line-strong);
+    border-top-color: var(--render-line-strong)
+}
+:root[data-theme="dark"] .usuarios-modal, :root[data-theme="dark"] .usuarios-panel {
+    background: var(--render-surface);
+    border: 1px solid hsl(213 16% 32%)
+}
+:root[data-theme="dark"] .usuarios-modal-header {
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-eyebrow {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-modal h3, :root[data-theme="dark"] .usuarios-panel h3 {
+    color: hsl(215 16% 91%)
+}
+:root[data-theme="dark"] .usuarios-modal-header p {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-close {
+    background: var(--render-surface-soft);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .usuarios-close:hover {
+    background: var(--render-surface-muted);
+    color: hsl(215 16% 91%)
+}
+:root[data-theme="dark"] .usuarios-form-email small {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-modal-actions {
+    border-top: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-panel-header {
+    background: var(--render-surface-soft);
+    border-bottom: 1px solid hsl(210 15% 32%)
+}
+:root[data-theme="dark"] .usuarios-panel-section {
+    border-bottom: 1px solid var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-panel-section-title .btn {
+    background: var(--render-surface-soft);
+    border-color: var(--render-line)
+}
+:root[data-theme="dark"] .usuarios-panel-section-title strong, :root[data-theme="dark"] .usuarios-danger-zone > div strong {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .usuarios-panel-section-title span, :root[data-theme="dark"] .usuarios-danger-zone > div span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-detail-grid > div {
+    background: var(--render-surface-soft)
+}
+:root[data-theme="dark"] .usuarios-detail-grid span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-notification-card.is-ready {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(147 19% 32%)
+}
+:root[data-theme="dark"] .usuarios-notification-card.is-pending {
+    background: var(--render-surface-soft);
+    border: 1px solid hsl(42 45% 32%)
+}
+:root[data-theme="dark"] .usuarios-notification-card strong {
+    color: var(--render-ink)
+}
+:root[data-theme="dark"] .usuarios-notification-card span {
+    color: var(--render-muted)
+}
+:root[data-theme="dark"] .usuarios-security-note {
+    background: var(--render-surface-soft);
+    color: var(--render-ink-soft)
+}
+:root[data-theme="dark"] .usuarios-danger-zone {
+    background: var(--render-surface);
+    border: 1px solid hsl(0 48% 32%)
+}
+:root[data-theme="dark"] .usuarios-danger-btn {
+    border-color: hsl(0 42% 32%);
+    color: hsl(0 46% 73%)
+}
+:root[data-theme="dark"] .usuarios-danger-btn:hover {
+    background: hsl(0 45% 26%);
+    border-color: hsl(0 46% 32%)
+}
+@media (max-width: 900px) {
+    :root[data-theme="dark"] .usuarios-row {
+        border: 1px solid var(--render-line)
+    }
+}
+@media (max-width: 900px) {
+    :root[data-theme="dark"] .usuarios-access, :root[data-theme="dark"] .usuarios-email, :root[data-theme="dark"] .usuarios-access-status {
+        border-top: 1px solid hsl(204 16% 32%)
+    }
+}
+@media (max-width: 900px) {
+    :root[data-theme="dark"] .usuarios-mobile-label {
+        color: var(--render-muted)
+    }
+}

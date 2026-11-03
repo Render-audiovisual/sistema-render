@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import "./design-system.css";
+import "./theme-dark-modules.css";
 import { App } from "./App.jsx";
 import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
 import { installTheme } from "./shared/theme/theme.js";
