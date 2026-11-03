@@ -17,7 +17,7 @@ export function getNavigationGroups(role) {
       { href: "/producciones", label: "Producciones", icon: "video" },
     ] },
     { id: "resources", label: "Recursos y seguimiento", links: [
-      { href: "/instagram", label: "Reportes de clientes", icon: "reports" },
+      { href: "/instagram", label: "Reportes", icon: "reports" },
       ...(admin ? [{ href: "/sueldos", label: "Finanzas", icon: "salary" }] : []),
     ] },
     { id: "account", label: "Cuenta", links: [

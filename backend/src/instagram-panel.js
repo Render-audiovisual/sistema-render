@@ -1,4 +1,5 @@
 import { captureFinanceActor } from './finance-snapshot.js';
+import {readTeamStatistics} from './team-statistics.js';
 import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority,
   retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
@@ -590,6 +591,7 @@ export function createInstagramPanelRouter({ express, pool }) {
     }
   };
   router.get('/panel', handle(req => readInstagramPanel(pool, req.auth, req.query)));
+  router.get('/equipo',handle(req=>readTeamStatistics(pool,req.auth,req.query.periodo)));
   router.get('/clientes/:clave/piezas', handle(req => readInstagramClientPieces(pool, req.auth, req.params.clave, req.query)));
   router.get('/cuentas', handle(req => { if (Object.keys(req.query).length) throw fail(400, 'Datos inválidos.'); return readInstagramAccounts(pool, req.auth); }));
   router.put('/cuentas/:igUserId', handle(req => writeInstagramAccountLink(pool, req.auth, req.params.igUserId, req.body)));

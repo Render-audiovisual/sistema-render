@@ -12,9 +12,9 @@ test('only retired team routes redirect to client reports, dropping person filte
   }
 });
 
-test('retired Instagram team tab opens clients without changing period, selection or errors', () => {
+test('team statistics retain their own tab and chosen month', () => {
   const old = { tab: 'equipo', period: '2026-10', selected: null, error: '' };
-  assert.deepEqual(clientReportPanelLocation(old), { ...old, tab: 'clientes' });
+  assert.equal(clientReportPanelLocation(old),old);
   assert.equal(old.tab, 'equipo');
   for (const tab of ['clientes', 'reportes', 'cuentas']) {
     const location = { ...old, tab };

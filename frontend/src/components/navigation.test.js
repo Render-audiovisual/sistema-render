@@ -11,7 +11,7 @@ const shared = new Map([
   ["/producciones", ["Producciones"]],
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
-  ["/instagram", ["Reportes de clientes"]],
+  ["/instagram", ["Reportes"]],
   ["/perfil", ["Perfil"]],
 ]);
 const adminOnly = new Map([
@@ -26,7 +26,7 @@ test('reports are client-only for every role and deep links highlight the same d
   for (const role of ['admin', ...employeeRoles]) {
     const links = linksFor(role);
     assert.equal(links.some(link => link.href === '/reportes-historias' || link.href === '/equipo'), false);
-    assert.equal(links.filter(link => link.label === 'Reportes de clientes').length, 1);
+    assert.equal(links.filter(link => link.label === 'Reportes').length, 1);
     for (const route of ['/instagram/reporte', '/reportes-historias', '/equipo']) {
       assert.deepEqual(links.filter(link => isNavigationActive(link.href, route)).map(link => link.href), ['/instagram']);
     }

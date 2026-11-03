@@ -23,7 +23,7 @@ test('every role has exactly one client report navigation entry and no Instagram
   for (const role of ['admin', 'diseno', 'edicion', 'produccion', 'community', 'programacion']) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.filter(link => /report|instagram|equipo/.test(link.href) || /Reportes|Instagram/.test(link.label)), [
-      { href: '/instagram', label: 'Reportes de clientes', icon: 'reports' },
+      { href: '/instagram', label: 'Reportes', icon: 'reports' },
     ]);
   }
 });

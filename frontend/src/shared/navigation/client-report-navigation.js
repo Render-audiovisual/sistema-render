@@ -1,4 +1,4 @@
-/** Presentation-only compatibility: old team bookmarks now open client reports. */
+/** Presentation-only compatibility: old report bookmarks open the report hub. */
 export function clientReportDestination(route) {
   if (typeof route !== 'string' || /[\\\s\u0000-\u001f\u007f]/.test(route)) return null;
   const pathname = route.split(/[?#]/, 1)[0];
@@ -15,7 +15,7 @@ export function replaceClientReportRoute(win) {
   return true;
 }
 
-/** Retired person views retain the chosen month and client, not team context. */
+/** Preserve independent account/team sections and their chosen month. */
 export function clientReportPanelLocation(location) {
-  return location.tab === 'equipo' ? { ...location, tab: 'clientes' } : location;
+  return location;
 }

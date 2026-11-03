@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readInstagramLocation,instagramPanelHref,instagramReportHref} from './instagramNavigation.js';
 test('client month and tab survive direct links and browser history parsing',()=>{
+  assert.equal(readInstagramLocation('','2026-11').tab,'resumen');
+  assert.equal(readInstagramLocation(instagramPanelHref({period:'2026-11',tab:'clientes'}).split('?')[1],'2026-11').tab,'clientes');
+  assert.equal(readInstagramLocation('?periodo=2026-10&tab=equipo','2026-11').tab,'equipo');
   assert.deepEqual(readInstagramLocation('?periodo=2026-10&cliente=cliente-8','2026-11'),{period:'2026-10',tab:'clientes',selected:'cliente-8',error:''});
   const url=instagramPanelHref({period:'2026-10',tab:'cuentas'});assert.equal(url,'/instagram?periodo=2026-10&tab=cuentas');
   assert.equal(readInstagramLocation(url.split('?')[1],'2026-11').tab,'cuentas');

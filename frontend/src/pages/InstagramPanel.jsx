@@ -8,6 +8,7 @@ import { needsInstagramOverview } from './instagramLoading.js';
 import { handleAppLinkClick } from '../shared/navigation/location.js';
 import { clientReportPanelLocation } from '../shared/navigation/client-report-navigation.js';
 import './InstagramPanel.css';
+import {TeamStatistics} from '../components/TeamStatistics.jsx';
 
 // Shared read-only reports. Administration remains Leader-only on the server.
 const number = new Intl.NumberFormat('es-AR');
@@ -77,14 +78,19 @@ function InstagramPanelContent({ sesion }) {
   return <main className="page-shell ig-panel">
     <section className="salary-hero ig-hero">
       <div>
-        <h1>Reportes de clientes</h1>
+        <h1>Reportes</h1>
       </div>
       <label className="ig-period"><span>Mes</span>
         <input type="month" value={period} min="2026-01" onChange={e => { if (/^20\d{2}-(0[1-9]|1[0-2])$/.test(e.target.value)) navigate({period:e.target.value}); }} />
       </label>
     </section>
 
-    {(tab !== 'clientes' || selected) && <button type="button" className="ig-link" onClick={() => navigate({tab:'clientes',selected:null})}>← Volver a clientes</button>}
+    {tab !== 'resumen' && <button type="button" className="ig-link" onClick={() => navigate({tab:'resumen',selected:null})}>← Volver a Reportes</button>}
+    {!navigation.error&&tab==='resumen'&&<div className="ig-statistics-grid ig-statistics-hub" aria-label="Tipos de reporte">
+      <button type="button" className="ig-statistics-card" onClick={()=>navigate({tab:'clientes',selected:null})}><h2>Estadísticas de cuentas</h2><p>Feed, reels, carruseles y resultados de cada cliente.</p><span>Ver cuentas →</span></button>
+      <button type="button" className="ig-statistics-card" onClick={()=>navigate({tab:'equipo',selected:null})}><h2>Estadísticas del equipo</h2><p>Grabaciones, ediciones y carruseles entregados.</p><span>Ver equipo →</span></button>
+    </div>}
+    {!navigation.error&&tab==='equipo'&&<TeamStatistics sesion={sesion} period={period}/>}
 
     {navigation.error&&<div className="salary-state is-error" role="alert">{navigation.error}<button type="button" className="btn" onClick={()=>navigate({period:currentPeriod(),tab:'clientes',selected:null})}>Volver a clientes</button></div>}
     {needsOverview&&loading && data?.periodo !== period && <div className="salary-state">Cargando {labelPeriod(period)}…</div>}

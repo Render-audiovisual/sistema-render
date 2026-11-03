@@ -7,7 +7,8 @@ test('only visible overview views load the monthly aggregate', () => {
   for (const tab of ['cuentas', 'reportes']) assert.equal(needsInstagramOverview({ tab }), false);
   assert.equal(needsInstagramOverview({ tab: 'clientes', selected: 'cliente-11' }), false);
   assert.equal(needsInstagramOverview({ tab: 'clientes', selected: null }), true);
-  assert.equal(needsInstagramOverview({ tab: 'equipo' }), true);
+  assert.equal(needsInstagramOverview({ tab: 'equipo' }), false);
+  assert.equal(needsInstagramOverview({ tab: 'resumen' }), false);
   assert.equal(needsInstagramOverview({ tab: 'clientes', error: 'Invalid month' }), false);
 });
 
