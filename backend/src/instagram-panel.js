@@ -613,14 +613,29 @@ export async function readInstagramClientStats(pool, auth, clave, query) {
     const accounts = (await db.query('SELECT ig_user_id, username, cliente_id FROM instagram_cuentas WHERE cliente_id = ANY($1::int[]) ORDER BY username', [ids])).rows;
     const head = { clave: key, nombre: clients[0].grupo_nombre || clients[0].nombre, cuentas: accounts.map(a => a.username) };
     if (!accounts.length) return { ...head, periodo: period, sin_cuenta: true };
-    const detail = await readClientPiecesFromDb(db, key, period, undefined, false);
-    const covers = new Map(detail.piezas.filter(p => p.portada_url).map(p => [p.ig_media_id, normalizeCoverUrl(p.portada_url)]));
     const accountIds = accounts.map(a => a.ig_user_id), now = new Date();
+    // Read covers directly: building the entire pieces report repeats media,
+    // metrics, membership and client queries that statistics already performs.
+    const coverRows = (await db.query(COVER_ROWS_SQL, [ids, MEDIA_COVERS_ACTION])).rows;
+    const boundCovers = new Map(), covers = new Map();
+    for (const row of coverRows) {
+      if (!ids.includes(row.cliente_id) || !accounts.some(a => a.ig_user_id === row.ig_user_id && a.cliente_id === row.cliente_id)) continue;
+      const snapshot = normalizeCoverSnapshot(row.cover_details, {clientId: row.cliente_id, igUserId: row.ig_user_id, now});
+      for (const item of snapshot?.items ?? []) {
+        if (+now - Date.parse(item.checkedAt) <= COVER_MAX_AGE_MS)
+          boundCovers.set(`${row.cliente_id}:${row.ig_user_id}:${item.id}:${item.kind}`, item.url);
+      }
+    }
     return { ...head, ...(await readClientStatsFromDb(db, { accountIds, period, covers,
       selectMedia: async rows => {
         const periods = [...new Set(rows.map(row => row.periodo))];
         const snapshots = await readReportMembershipSnapshots(db, accountIds, periods);
-        return selectReportMedia(rows, { clientIds: ids, accounts, snapshots, now });
+        const selected = selectReportMedia(rows, { clientIds: ids, accounts, snapshots, now });
+        for (const row of selected) {
+          const cover = boundCovers.get(`${row.cliente_id}:${row.ig_user_id}:${row.ig_media_id}:${row.tipo}`);
+          if (cover) covers.set(row.ig_media_id, normalizeCoverUrl(cover));
+        }
+        return selected;
       },
     })) };
   });
