@@ -1,5 +1,6 @@
 // Cliente mínimo y de solo lectura para la Graph API de Meta.
-// El token viaja en el encabezado Authorization (nunca en URLs ni en logs).
+// Auth via Authorization. Only Meta's debug_token contract also requires an
+// input_token parameter; diagnostic URLs/bodies must never be logged/returned.
 const GRAPH_HOST = 'graph.facebook.com';
 const DEFAULT_VERSION = 'v23.0';
 export const MEDIA_COVERS_ACTION = 'media_covers_v1';
@@ -133,6 +134,42 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
   }
 
   return Object.freeze({
+    // Read-only diagnostics, isolated from the sync worker's existing methods.
+    async debugToken() {
+      return (await request(build('debug_token', { input_token: token }))).data;
+    },
+    async listConnectionPages() {
+      const found = new Map();
+      const collect = async (source, withTasks = true) => {
+        try { for await (const rows of pages(build(source, {
+          fields: `id,name,${withTasks ? 'tasks,' : ''}instagram_business_account{id}`, limit: 100,
+        }), 5)) for (const page of rows) {
+          if (!page?.id) continue;
+          const id = String(page.id), prior = found.get(id);
+          found.set(id, { ...page, tasks_known: prior?.tasks_known === true || Array.isArray(page.tasks),
+            tasks: [...new Set([...(Array.isArray(prior?.tasks) ? prior.tasks : []), ...(Array.isArray(page.tasks) ? page.tasks : [])])] });
+        } } catch(error) {
+          if (withTasks && error instanceof GraphError && error.kind === 'metric') return collect(source, false);
+          throw error;
+        }
+      };
+      try {
+        await collect('me/accounts');
+        if (found.size || !businessId) return [...found.values()];
+      } catch (error) {
+        if (!businessId || !(error instanceof GraphError) || !['permission', 'metric'].includes(error.kind)) throw error;
+      }
+      found.clear();
+      await collect(`${businessId}/owned_pages`);
+      await collect(`${businessId}/client_pages`);
+      return [...found.values()];
+    },
+    async listAdAccounts() {
+      const found = new Map();
+      for await (const rows of pages(build('me/adaccounts', { fields: 'id,name,account_status', limit: 100 }), 5))
+        for (const account of rows) if (account?.id) found.set(String(account.id), account);
+      return [...found.values()];
+    },
     // Páginas asignadas al usuario del sistema con su cuenta profesional de IG.
     async listInstagramAccounts() {
       const byId = new Map();

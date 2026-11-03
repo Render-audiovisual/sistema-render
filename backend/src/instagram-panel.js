@@ -4,6 +4,7 @@ import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority,
   retainCapturedOwnerProfileAuthority } from './owner-profile-authority.js';
 import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
 import { computeAlerts } from './instagram-alerts.js';
+import {inspectMetaConnection} from './instagram-connection.js';
 import { readClientStatsFromDb, readMediaStatsFromDb } from './instagram-stats.js';
 import { selectReportMedia, readReportMembershipSnapshots } from './instagram-report-membership.js';
 import { num, interactions, responsablesDe } from './instagram-metrics.js';
@@ -603,6 +604,10 @@ export async function readInstagramMediaStats(pool, auth, igMediaId) {
   });
 }
 
+export async function readInstagramConnectionState(pool,auth,options){
+  return withLeaderRead(pool,auth,()=>inspectMetaConnection(options?.env??process.env,options));
+}
+
 export function createInstagramPanelRouter({ express, pool }) {
   const router = express.Router();
   const handle = run => async (req, res, next) => {
@@ -615,6 +620,10 @@ export function createInstagramPanelRouter({ express, pool }) {
     }
   };
   router.get('/panel', handle(req => readInstagramPanel(pool, req.auth, req.query)));
+  router.get('/conexion/estado',handle(req=>{
+    if(Object.keys(req.query).length)throw fail(400,'Datos inválidos.');
+    return readInstagramConnectionState(pool,req.auth);
+  }));
   router.get('/equipo',handle(req=>readTeamStatistics(pool,req.auth,req.query.periodo)));
   router.get('/clientes/:clave/piezas', handle(req => readInstagramClientPieces(pool, req.auth, req.params.clave, req.query)));
   router.get('/cuentas', handle(req => { if (Object.keys(req.query).length) throw fail(400, 'Datos inválidos.'); return readInstagramAccounts(pool, req.auth); }));

@@ -27,6 +27,7 @@ test('real HTTP sessions: team reads Instagram, only Leader administers, anonymo
   };
   const panel='/instagram/panel?periodo=2026-10',report=`/instagram/clientes/cliente-${client.id}/reporte?periodo=2026-10`;
   assert.equal((await http(panel)).status,401);assert.equal((await http(report)).status,401);
+  assert.equal((await http('/instagram/conexion/estado')).status,401);
   const businessFingerprint=()=>fixture.query(`SELECT count(*)::int AS n,md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY id),'')) AS fingerprint FROM tareas t`);
   const before=await businessFingerprint();
   let last;
@@ -39,12 +40,16 @@ test('real HTTP sessions: team reads Instagram, only Leader administers, anonymo
     assert.equal(result.data.clave,`cliente-${client.id}`);
     assert.equal((await http('/instagram/reportes',{headers})).status,200);
     assert.equal((await http('/instagram/cuentas',{headers})).status,403);
+    assert.equal((await http('/instagram/conexion/estado',{headers})).status,403);
     assert.equal((await http('/instagram/cuentas/111',{method:'PUT',headers,body:{cliente_id:client.id}})).status,403);
     assert.equal((await http('/instagram/media/111/vinculo',{method:'PUT',headers,body:{publicacion_id:null}})).status,403);
     assert.equal((await http('/contratos',{headers})).status,403,'financial access unchanged');
   }
   const leader=await login('qa_franco');
   assert.equal((await http('/instagram/cuentas',{headers:leader})).status,200);
+  const connection=await http('/instagram/conexion/estado',{headers:leader});assert.equal(connection.status,200);
+  assert.equal(connection.data.configurado,false,'fixture must not load any real token');
+  assert.equal((await http('/instagram/conexion/estado?token=not-accepted',{headers:leader})).status,400);
   await fixture.query('UPDATE usuarios SET session_version=session_version+1 WHERE usuario=$1',[last.username]);
   assert.equal((await http(panel,{headers:last.headers})).status,401);
   assert.deepEqual(await businessFingerprint(),before,'requests cannot change tasks');

@@ -10,6 +10,7 @@ import { clientReportPanelLocation } from '../shared/navigation/client-report-na
 import './InstagramPanel.css';
 import {TeamStatistics} from '../components/TeamStatistics.jsx';
 import {ReportHub,ClientReportList} from '../components/ReportViews.jsx';
+import {MetaConnectionStatus} from '../components/MetaConnectionStatus.jsx';
 
 // Shared read-only reports. Administration remains Leader-only on the server.
 const number = new Intl.NumberFormat('es-AR');
@@ -88,6 +89,7 @@ function InstagramPanelContent({ sesion }) {
 
     {tab !== 'resumen' && <button type="button" className="ig-link" onClick={() => navigate({tab:'resumen',selected:null})}>← Volver a Reportes</button>}
     {!navigation.error&&tab==='resumen'&&<ReportHub onSelect={tab=>navigate({tab,selected:null})}/>}
+    {canManage&&!navigation.error&&tab==='resumen'&&<MetaConnectionStatus sesion={sesion}/>}
     {!navigation.error&&tab==='equipo'&&<TeamStatistics sesion={sesion} period={period}/>}
 
     {navigation.error&&<div className="salary-state is-error" role="alert">{navigation.error}<button type="button" className="btn" onClick={()=>navigate({period:currentPeriod(),tab:'clientes',selected:null})}>Volver a clientes</button></div>}
