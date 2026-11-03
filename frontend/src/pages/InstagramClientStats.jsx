@@ -10,6 +10,12 @@ import './InstagramClientStats.css';
 const nf = new Intl.NumberFormat('es-AR');
 const fmt = v => (typeof v === 'number' && Number.isFinite(v) ? nf.format(v) : '—');
 const viewNote = m => `Instagram: ${fmt(m.vistas_instagram)} · Facebook: ${fmt(m.vistas_facebook)}`;
+export function monthlyViewNote(m) {
+  const missing = (count, platform) => count > 0
+    ? `Falta ${platform} en ${count} ${count === 1 ? 'publicación' : 'publicaciones'}` : null;
+  return [`Instagram: ${fmt(m.vistas_instagram_disponibles)} · Facebook: ${fmt(m.vistas_facebook_disponibles)}`,
+    missing(m.publicaciones_sin_facebook, 'Facebook'), missing(m.publicaciones_sin_instagram, 'Instagram')].filter(Boolean).join(' · ');
+}
 const times = v => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1).replace('.', ',')}×` : '—');
 const TIPO = { reel: 'Reel', carrusel: 'Carrusel' };
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -212,7 +218,7 @@ function StatsContent({ sesion, params, navigate }) {
       <header className="igs-head"><h1>{d.nombre} · Estadísticas</h1><p>{d.cuentas.map(c => `@${c}`).join(' · ') || 'Sin cuenta vinculada'} · {periodLabel(d.periodo)}</p></header>
       {d.sin_cuenta ? <p className="igs-state">Este cliente todavía no tiene una cuenta de Instagram conectada.</p> : <>
         <section className="igs-tiles" aria-label="Resumen del mes">
-          <Tile label="Visualizaciones totales" value={a.vistas_total} previous={p.vistas_total} note={viewNote(a)} />
+          <Tile label="Visualizaciones disponibles" value={a.vistas_disponibles} previous={p.vistas_disponibles} note={monthlyViewNote(a)} />
           <Tile label="Interacciones" value={a.interacciones} previous={p.interacciones} spark={d.diario.map(x => x.interacciones)} />
           <Tile label="Publicaciones" value={a.piezas} previous={p.piezas} note={`${a.reels} reels · ${a.carruseles} carruseles`} />
           <Tile label="Seguidores ganados en el mes" value={d.seguidores.crecimiento} previous={d.seguidores.anterior}

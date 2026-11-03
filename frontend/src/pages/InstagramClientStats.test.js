@@ -13,6 +13,15 @@ Function('exports', 'React', 'useState', 'useMemo', 'useEffect', 'getSesion', 'u
   api, React, React.useState, React.useMemo, React.useEffect, stub, stub, () => false, stub, v => v, v => v);
 const bind = () => ({});
 
+test('monthly available-view note identifies missing Facebook without inventing or repeating totals',()=>{
+  const m={vistas_instagram_disponibles:2979499,vistas_facebook_disponibles:443190,
+    publicaciones_sin_facebook:1,publicaciones_sin_instagram:0};
+  assert.equal(api.monthlyViewNote(m),'Instagram: 2.979.499 · Facebook: 443.190 · Falta Facebook en 1 publicación');
+  assert.match(api.monthlyViewNote({...m,publicaciones_sin_facebook:2}),/Falta Facebook en 2 publicaciones/);
+  assert.doesNotMatch(api.monthlyViewNote({...m,publicaciones_sin_facebook:0}),/Falta/);
+  assert.match(api.monthlyViewNote({...m,vistas_facebook_disponibles:0,publicaciones_sin_facebook:0}),/Facebook: 0/);
+});
+
 test('stats URL params are closed: one client, one month and an optional numeric publication', () => {
   assert.deepEqual(api.readStatsParams('?cliente=cliente-11&periodo=2026-10'), { cliente: 'cliente-11', periodo: '2026-10', pub: null });
   assert.deepEqual(api.readStatsParams('?cliente=grupo-2&periodo=2026-10&pub=1789'), { cliente: 'grupo-2', periodo: '2026-10', pub: '1789' });
@@ -50,7 +59,7 @@ test('followers chart needs two days and labels the month start', () => {
 });
 
 test('views lead publication rows and the monthly summary; reach remains separately labelled',()=>{
-  assert.match(source,/<Tile label="Visualizaciones totales" value=\{a.vistas_total\}/);
+  assert.match(source,/<Tile label="Visualizaciones disponibles" value=\{a.vistas_disponibles\}/);
   assert.match(source,/fmt\(r.metricas.vistas_total\).*<small>vistas totales<\/small>/);
   assert.match(source,/\['vistas_total', 'Visualizaciones totales'\], \['alcance', 'Alcance'\]/);
   assert.match(source,/Instagram:.*vistas_instagram.*Facebook:.*vistas_facebook/);

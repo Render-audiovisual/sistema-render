@@ -10,6 +10,11 @@ impiden sincronizar las demás publicaciones de esa cuenta.
 Si Meta no ofrece un contador, se devuelve null, no cero. Un resumen mensual
 solo presenta un total combinado cuando todas sus publicaciones lo tienen.
 Los clientes sin cuenta vinculada no reciben cantidades inventadas.
+El resumen muestra además **Visualizaciones disponibles**: toma una sola vez el
+total combinado de cada publicación o, si falta, únicamente sus componentes
+conocidos. Presenta el desglose disponible y cuántas publicaciones no informan
+Facebook/Instagram. El total completo sigue siendo null cuando falta cobertura;
+no se lo confunde con esta suma parcial ni se reemplaza un desconocido por cero.
 
 Cada nueva medición conserva la fila histórica de `instagram_media_metricas`
 y agrega un registro `media_views_v1` en la auditoría existente, en la misma

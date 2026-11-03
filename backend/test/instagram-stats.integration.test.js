@@ -22,11 +22,19 @@ test('combined views agree in client stats, publication detail and report withou
     const before=await fingerprint();
     const stats=await readInstagramClientStats(pool,auth,`cliente-${client}`,{periodo:'2026-10'});
     assert.equal(stats.totales.actual.vistas_total,3320213);
+    assert.equal(stats.totales.actual.vistas_disponibles,3320213);
+    assert.equal(stats.totales.actual.publicaciones_sin_facebook,0);
     const detail=await readInstagramMediaStats(pool,auth,'777002');
     const report=await readInstagramClientPieces(pool,auth,`cliente-${client}`,{periodo:'2026-10'});
     for(const m of [stats.publicaciones[0].metricas,detail.metricas,report.piezas[0].metricas]){
       assert.equal(m.vistas_total,3320213);assert.equal(m.vistas_instagram,2934060);assert.equal(m.vistas_facebook,386153);
     }
+    await pool.query("INSERT INTO instagram_media(ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at) VALUES('777003','777001',$1,'reel','https://www.instagram.com/reel/partialqa/','QA','2026-10-16T15:00:00Z')",[client]);
+    await pool.query("INSERT INTO instagram_media_metricas(ig_media_id,medido_at,vistas) VALUES('777003','2026-11-03T20:00:00.000Z',100)");
+    const partial=await readInstagramClientStats(pool,auth,`cliente-${client}`,{periodo:'2026-10'});
+    assert.equal(partial.totales.actual.vistas_total,null);
+    assert.equal(partial.totales.actual.vistas_disponibles,3320313);
+    assert.equal(partial.totales.actual.publicaciones_sin_facebook,1);
     assert.deepEqual(await fingerprint(),before);
   }finally{await pool.end();}
 });

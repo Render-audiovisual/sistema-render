@@ -4,6 +4,18 @@ test('partial platform breakdowns are not presented as complete monthly totals',
   const t=monthTotals([{tipo:'reel',vistas_total:100,vistas_instagram:80,vistas_facebook:20},
     {tipo:'reel',vistas_total:null,vistas_instagram:50,vistas_facebook:null}]);
   assert.equal(t.vistas_total,null);assert.equal(t.vistas_facebook,null);assert.equal(t.vistas_instagram,130);
+  assert.equal(t.vistas_disponibles,150);assert.equal(t.vistas_facebook_disponibles,20);
+  assert.equal(t.publicaciones_sin_facebook,1);assert.equal(t.publicaciones_sin_instagram,0);
+});
+
+test('available monthly views count each combined publication once and retain partial and zero values',()=>{
+  const t=monthTotals([{tipo:'reel',vistas_total:3320246,vistas_instagram:2934083,vistas_facebook:386163},
+    {tipo:'reel',vistas_total:null,vistas_instagram:2240,vistas_facebook:null},
+    {tipo:'carrusel',vistas_total:0,vistas_instagram:0,vistas_facebook:0}]);
+  assert.equal(t.vistas_disponibles,3322486);assert.equal(t.vistas_total,null);
+  assert.equal(t.publicaciones_sin_facebook,1);
+  assert.equal(monthTotals([{tipo:'reel',vistas_total:null,vistas_instagram:null,vistas_facebook:null}]).vistas_disponibles,null);
+  assert.equal(monthTotals([]).vistas_disponibles,0);
 });
 import assert from 'node:assert/strict';
 import { valueAtHours, typicalBand, baselineByType, score, heatmap, slotOf, followerSeries, followerGrowth,

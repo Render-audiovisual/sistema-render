@@ -122,11 +122,22 @@ export function monthTotals(rows) {
     const values = rows.map(row => row[key]).filter(finite);
     return values.length ? values.reduce((a,b) => a+b,0) : rows.length ? null : 0;
   };
+  // Per publication: combined wins; otherwise add only known disjoint parts.
+  // A missing platform is never interpreted as zero or added to combined views.
+  const available = rows.map(row => {
+    if (finite(row.vistas_total)) return row.vistas_total;
+    const parts = [row.vistas_instagram, row.vistas_facebook].filter(finite);
+    return parts.length ? parts.reduce((a,b) => a+b,0) : null;
+  }).filter(finite);
   return { piezas: rows.length, reels: rows.filter(r => r.tipo === 'reel').length, carruseles: rows.filter(r => r.tipo === 'carrusel').length,
     medidas: measured.length, alcance: sum('alcance'), vistas: sum('vistas'),
     vistas_instagram: rows.every(r => finite(r.vistas_instagram)) ? sum('vistas_instagram') : null,
     vistas_facebook: rows.every(r => finite(r.vistas_facebook)) ? sum('vistas_facebook') : null,
     vistas_total: rows.every(r => finite(r.vistas_total)) ? sum('vistas_total') : null,
+    vistas_disponibles: available.length ? available.reduce((a,b) => a+b,0) : rows.length ? null : 0,
+    vistas_instagram_disponibles: sum('vistas_instagram'), vistas_facebook_disponibles: sum('vistas_facebook'),
+    publicaciones_sin_facebook: rows.filter(r => !finite(r.vistas_facebook)).length,
+    publicaciones_sin_instagram: rows.filter(r => !finite(r.vistas_instagram)).length,
     interacciones: sum('interacciones'),
     guardados: sum('guardados'), compartidos: sum('compartidos') };
 }
