@@ -6,6 +6,7 @@ import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
 import { computeAlerts } from './instagram-alerts.js';
 import {inspectMetaConnection} from './instagram-connection.js';
 import { readClientStatsFromDb, readMediaStatsFromDb } from './instagram-stats.js';
+import { readViewBreakdowns } from './instagram-view-breakdown.js';
 import { selectReportMedia, readReportMembershipSnapshots } from './instagram-report-membership.js';
 import { num, interactions, responsablesDe } from './instagram-metrics.js';
 import { loadGoalClients } from './client-goals.js';
@@ -91,11 +92,16 @@ export async function withLeaderWrite(pool, auth, mutate) {
 // ---------- Agregación (pura, testeable) ----------
 
 function emptyTotals() {
-  return { piezas: 0, reels: 0, carruseles: 0, imagenes: 0, medidas: 0, alcance: 0, vistas: 0, interacciones: 0, guardados: 0, compartidos: 0 };
+  return { piezas: 0, reels: 0, carruseles: 0, imagenes: 0, medidas: 0, alcance: 0, vistas: 0,
+    vistas_total: 0, vistas_instagram: 0, vistas_facebook: 0, interacciones: 0, guardados: 0, compartidos: 0 };
 }
 function addMedia(totals, row) {
   totals.piezas += 1;
   totals[{ reel: 'reels', carrusel: 'carruseles', imagen: 'imagenes' }[row.tipo]] += 1;
+  for (const key of ['vistas_total', 'vistas_instagram', 'vistas_facebook']) {
+    const value = num(row[key]);
+    totals[key] = totals[key] !== null && Number.isSafeInteger(value) && value >= 0 ? totals[key] + value : null;
+  }
   if (row.medido_at) {
     totals.medidas += 1;
     totals.alcance += num(row.alcance) ?? 0;
@@ -302,7 +308,7 @@ async function readPanelFromDb(db, period, now = new Date()) {
   const [clients, accounts, media, objectives, followers, pieces] = [
     (await db.query(CLIENTS_SQL)).rows,
     (await db.query('SELECT ig_user_id, username, cliente_id, activa, sincronizada_at FROM instagram_cuentas')).rows,
-    (await db.query(MEDIA_SQL, [`${previous}-01`, `${period}-01`])).rows,
+    await readViewBreakdowns(db, (await db.query(MEDIA_SQL, [`${previous}-01`, `${period}-01`])).rows),
     (await db.query(`SELECT clave, reels, carruseles FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`])).rows,
     (await db.query(FOLLOWERS_SQL, [`${period}-01`])).rows,
     (await db.query(`SELECT o.clave, p.tipo, p.estado, p.responsables FROM cliente_objetivo_piezas p
@@ -386,10 +392,11 @@ async function readReportPanelFromDb(db, key, period, now = new Date()) {
     { igUserId: r.ig_user_id, clientId: r.cliente_id, period })).filter(Boolean);
   const manualObservations = inputs.manual.map(r => validateInstagramMonthlyObservation(r.detalles, { period })).filter(Boolean);
   const effectiveQuotas = await loadGoalClients(db, period);
-  const panel = buildPanel({ period, clients, accounts, media: inputs.media, objectives: inputs.objectives,
+  const enriched = await readViewBreakdowns(db, inputs.media);
+  const panel = buildPanel({ period, clients, accounts, media: enriched, objectives: inputs.objectives,
     followers: inputs.followers, pieces: [], snapshots, manualObservations,monthlyAdjustments:inputs.adjustments??[], effectiveQuotas, now });
   return { panel, clients, accounts, snapshots, now, coverRows:inputs.covers,
-    reportMedia:inputs.media.filter(row=>row.periodo===period).map(row=>({...row,
+    reportMedia:enriched.filter(row=>row.periodo===period).map(row=>({...row,
       publicado_at:new Date(row.publicado_at),medido_at:row.medido_at?new Date(row.medido_at):null}))
       .sort((a,b)=>+b.publicado_at-+a.publicado_at) };
 }
@@ -430,8 +437,9 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
         covers.set(`${row.cliente_id}:${row.ig_user_id}:${item.id}:${item.kind}`, item.url);
     }
   }
-  const media = selectReportMedia(observed.filter(row => row.periodo === period),
+  const selected = selectReportMedia(observed.filter(row => row.periodo === period),
     { clientIds: ids, accounts, snapshots, now });
+  const media = evidence?.reportMedia ? selected : await readViewBreakdowns(db, selected);
   const candidates = includeCandidates ? (await db.query(`SELECT p.id, p.cliente_id, p.tipo, p.fecha_programada::text AS fecha, p.idea, p.estado
     FROM publicaciones p WHERE p.cliente_id = ANY($1::int[])
       AND p.fecha_programada >= $2::date AND p.fecha_programada < ($2::date + interval '1 month')
@@ -448,7 +456,8 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
       publicado_at: row.publicado_at, vinculo: row.vinculo, publicacion_id: row.publicacion_id,
       pieza: row.publicacion_id ? { idea: row.pieza_idea, fecha: row.pieza_fecha } : null,
       responsables: responsablesDe(row), medido_at: row.medido_at,
-      metricas: { alcance: num(row.alcance), vistas: num(row.vistas), likes: num(row.likes), comentarios: num(row.comentarios),
+      metricas: { alcance: num(row.alcance), vistas: num(row.vistas),
+        vistas_instagram: num(row.vistas_instagram), vistas_facebook: num(row.vistas_facebook), vistas_total: num(row.vistas_total), likes: num(row.likes), comentarios: num(row.comentarios),
         guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) },
     })),
     candidatas: candidates,
@@ -566,7 +575,8 @@ function publicReportPiece(piece) {
   const m = piece.metricas;
   return { tipo: piece.tipo, permalink: piece.permalink, publicado_at: piece.publicado_at, medido_at: piece.medido_at,
     caption: piece.caption, portada_url: normalizeCoverUrl(piece.portada_url),
-    metricas: { alcance: m.alcance, vistas: m.vistas, likes: m.likes, comentarios: m.comentarios,
+    metricas: { alcance: m.alcance, vistas: m.vistas,
+      vistas_instagram: m.vistas_instagram, vistas_facebook: m.vistas_facebook, vistas_total: m.vistas_total, likes: m.likes, comentarios: m.comentarios,
       guardados: m.guardados, compartidos: m.compartidos, interacciones: m.interacciones } };
 }
 

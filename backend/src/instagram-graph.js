@@ -250,7 +250,27 @@ export function createGraphClient({ token, version, businessId = null }, { fetch
       for (const metric of METRIC_SETS) {
         try {
           const body = await request(build(`${igMediaId}/insights`, { metric }));
-          return normalizeInsights(body.data);
+          const result = normalizeInsights(body.data);
+          // Combined views already include Facebook. Fetch separately so an
+          // unsupported crossposting metric cannot remove ordinary insights.
+          const extra = {};
+          for (const names of ['crossposted_views,facebook_views', 'crossposted_views', 'facebook_views']) {
+            if (names === 'crossposted_views' && extra.crossposted_views !== undefined) continue;
+            if (names === 'facebook_views' && extra.facebook_views !== undefined) continue;
+            try {
+              const cross = await request(build(`${igMediaId}/insights`, { metric: names }));
+              for (const row of cross.data ?? []) {
+                if (!['crossposted_views', 'facebook_views'].includes(row?.name)) continue;
+                const value = row.total_value?.value ?? row.values?.[0]?.value;
+                if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) extra[row.name] = value;
+              }
+              if (names.includes(',') && extra.crossposted_views !== undefined && extra.facebook_views !== undefined) break;
+            } catch (error) {
+              if (!(error instanceof GraphError) || !['metric', 'permission'].includes(error.kind)) throw error;
+            }
+          }
+          return { ...result, vistas_instagram: result.vistas,
+            vistas_total: extra.crossposted_views ?? null, vistas_facebook: extra.facebook_views ?? null };
         } catch (error) {
           if (error instanceof GraphError && error.kind === 'metric') continue;
           throw error;

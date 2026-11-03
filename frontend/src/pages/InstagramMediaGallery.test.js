@@ -10,7 +10,7 @@ const code = ts.transpileModule(source.replace(/^import .*;$/gm, ''), { compiler
 const api = {};
 Function('exports', 'React', 'useState', 'useMemo', code)(api, React, React.useState, React.useMemo);
 const piece = (tipo, vistas, slug = tipo) => ({ tipo, permalink: `https://www.instagram.com/p/${slug}/`,
-  publicado_at: '2026-10-15T15:00:00Z', caption: 'Publicación de prueba', metricas: { vistas, alcance: 100 },
+  publicado_at: '2026-10-15T15:00:00Z', caption: 'Publicación de prueba', metricas: { vistas, vistas_total: vistas, vistas_instagram: vistas, vistas_facebook: vistas === null ? null : 0, alcance: 100 },
   portada_url: 'https://scontent.cdninstagram.com/v/image.jpg?signature=example' });
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 
@@ -34,7 +34,7 @@ test('cover is lazy loaded at fixed dimensions, not video autoplay; views and re
   const html = render(api.InstagramMediaCard, { piece: piece('reel', 1200) });
   assert.match(html, /loading="lazy"/); assert.match(html, /decoding="async"/);
   assert.match(html, /width="480" height="600"/); assert.match(html, /referrerPolicy="no-referrer"/i);
-  assert.match(html, /Reproducciones/); assert.match(html, /Alcance/);
+  assert.match(html, /Visualizaciones totales/); assert.match(html, /Alcance/);
   assert.match(html, /target="_blank"/); assert.doesNotMatch(html, /<video|autoplay|iframe/);
 });
 test('missing cover and missing metric stay explicit rather than fabricated or rendered as zero', () => {
@@ -54,8 +54,8 @@ test('printed gallery explicitly identifies the active format and sort instead o
 test('simple gallery keeps formats and visible metrics without a sort menu or nested results',()=>{
   const html=render(api.InstagramMediaGallery,{pieces:[piece('reel',0),piece('carrusel',null)]});
   assert.doesNotMatch(html,/Ordenar por|Qué contenido funciona mejor|Ver resultados|<select/);
-  for(const label of ['Reproducciones','Me gusta','Comentarios'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,1);
-  for(const label of ['Alcance','Guardados','Compartidos'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,2);
+  for(const label of ['Me gusta','Comentarios'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,1);
+  for(const label of ['Visualizaciones totales','Alcance','Guardados','Compartidos'])assert.equal((html.match(new RegExp(`<dt>${label}</dt>`,'g'))||[]).length,2);
   assert.match(html,/<dd>0<\/dd>/);assert.match(html,/<dd>—<\/dd>/);
   assert.match(html,/aria-pressed="true">Todo/);
 });
@@ -78,7 +78,7 @@ test('reels and carousels expose the entire original copy outside the Instagram 
 test('carousel uses the Feed card: uncovered 4:5 cover, three carousel KPIs and secondary likes/comments',()=>{
   const html=render(api.InstagramMediaCard,{piece:{...piece('carrusel',900),metricas:{vistas:900,alcance:2719,guardados:3,compartidos:8,likes:108,comentarios:5}}});
   assert.match(html,/ig-carousel-card/);assert.doesNotMatch(html,/ig-media-type|ig-media-open|Reproducciones/);
-  assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(m=>m[1]),['Alcance','Guardados','Compartidos']);
+  assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(m=>m[1]),['Visualizaciones totales','Alcance','Guardados','Compartidos']);
   assert.match(html,/<dd>2\.719<\/dd>/);assert.match(html,/108 me gusta · 5 comentarios/);
   assert.match(html,/Ver en IG ↗/);assert.match(html,/loading="lazy"/);
   const reel=render(api.InstagramMediaCard,{piece:piece('reel',10)});assert.match(reel,/ig-media-type/);assert.doesNotMatch(reel,/ig-carousel-card/);

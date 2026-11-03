@@ -78,7 +78,7 @@ test('client report shares one authorized RR, isolates A from B and strips all p
   assertClosed(report);
   assert.doesNotMatch(JSON.stringify(report), /account_b|Client B|Public21/);
   assert.equal(h.calls.some(c => /^(INSERT|UPDATE|DELETE|ALTER|CREATE)\b/.test(c.sql)), false);
-  assert.equal(h.calls.length, 5, 'authorization, two data reads and transaction boundaries only');
+  assert.equal(h.calls.length, 6, 'authorization, three batched data reads and transaction boundaries only');
   const batch=h.calls.find(c=>c.sql.startsWith('WITH ig_report_clients'));
   assert.deepEqual(batch.params, ['2020-09-01','2020-10-01','cliente-1','2020-10',MEDIA_COVERS_ACTION]);
   assert.match(batch.sql,/c\.clave=\$3/);

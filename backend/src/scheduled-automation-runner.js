@@ -30,6 +30,10 @@ export async function runScheduledAutomations(options = {}) {
   try {
     const policy = resolveScheduledAutomationPolicy(options.env ?? process.env);
     if (policy.paused) return result('PAUSED');
+    // Explicit operator-only refresh retains every guard and never rewrites
+    // hourly checkpoints. This option is not reachable through an HTTP route.
+    const manualInstagram = options.manualInstagramRefresh === true;
+    if (manualInstagram && (policy.jobs.length !== 1 || policy.jobs[0] !== 'instagram')) throw failure();
     // Capture callbacks and closed policy before the first asynchronous wait.
     const factory = options.createPool, handlers = options.handlers;
     const inspect = options.inspectSchema ?? inspectCurrentSchema;
@@ -84,7 +88,7 @@ export async function runScheduledAutomations(options = {}) {
         alive();
         const interval = name === 'supervisor' ? 300000 : 3600000;
         const slot = new Date(Math.floor(time / interval) * interval).toISOString();
-        const checkpoint = await db.query(checkpointSQL, [name, slot]);
+        const checkpoint = manualInstagram ? { rows: [] } : await db.query(checkpointSQL, [name, slot]);
         alive();
         if (!Array.isArray(checkpoint.rows) || checkpoint.rows.length > 1) throw failure();
         if (checkpoint.rows.length) continue;
@@ -97,7 +101,7 @@ export async function runScheduledAutomations(options = {}) {
         // Autocommit only after domain work succeeds. This is a completion
         // checkpoint, not exactly-once delivery: a crash after domain COMMIT
         // but before this INSERT relies on each domain's existing idempotence.
-        const marked = await db.query(completeSQL, [JSON.stringify({ version: 1, job: name, slot })]);
+        const marked = manualInstagram ? { rowCount: 1 } : await db.query(completeSQL, [JSON.stringify({ version: 1, job: name, slot })]);
         alive();
         if (marked.rowCount !== 1) throw failure();
         completed.push(name);

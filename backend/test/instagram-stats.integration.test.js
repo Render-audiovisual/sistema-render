@@ -6,6 +6,30 @@ import { startLocalHarness, assertFixtureIdentity } from '../scripts/render2-loc
 
 const enabled = process.env.RENDER2_RUN_LOCAL_INTEGRATION === 'true';
 let url, fixture;
+test('combined views agree in client stats, publication detail and report without changing tasks', {skip:!enabled},async()=>{
+  const {AuthorityBoundPool}=await import('../src/database-authority-context.js');
+  const {readInstagramClientStats,readInstagramMediaStats,readInstagramClientPieces}=await import('../src/instagram-panel.js');
+  const pool=new AuthorityBoundPool({connectionString:url,max:3});
+  try{
+    const auth=(await pool.query('SELECT id,rol,session_version FROM usuarios WHERE id=91001')).rows[0];
+    const client=(await pool.query("INSERT INTO clientes(nombre) VALUES('Combined views QA') RETURNING id")).rows[0].id;
+    await pool.query("INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES('777001','combined_qa',$1)",[client]);
+    await pool.query("INSERT INTO instagram_media(ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at) VALUES('777002','777001',$1,'reel','https://www.instagram.com/reel/combinedqa/','QA','2026-10-15T15:00:00Z')",[client]);
+    await pool.query("INSERT INTO instagram_media_metricas(ig_media_id,medido_at,vistas,alcance) VALUES('777002','2026-11-03T20:00:00.000Z',2934060,2263963)");
+    await pool.query("INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,resultado,detalles) VALUES('instagram_graph','system','render-worker','QA','media_views_v1','ok',$1::jsonb)",[
+      JSON.stringify({version:1,igMediaId:'777002',igUserId:'777001',clientId:client,measuredAt:'2026-11-03T20:00:00.000Z',instagram:2934060,facebook:386153,total:3320213})]);
+    const fingerprint=async()=>(await pool.query("SELECT count(*)::int n,md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY id),'')) hash FROM tareas t")).rows[0];
+    const before=await fingerprint();
+    const stats=await readInstagramClientStats(pool,auth,`cliente-${client}`,{periodo:'2026-10'});
+    assert.equal(stats.totales.actual.vistas_total,3320213);
+    const detail=await readInstagramMediaStats(pool,auth,'777002');
+    const report=await readInstagramClientPieces(pool,auth,`cliente-${client}`,{periodo:'2026-10'});
+    for(const m of [stats.publicaciones[0].metricas,detail.metricas,report.piezas[0].metricas]){
+      assert.equal(m.vistas_total,3320213);assert.equal(m.vistas_instagram,2934060);assert.equal(m.vistas_facebook,386153);
+    }
+    assert.deepEqual(await fingerprint(),before);
+  }finally{await pool.end();}
+});
 test.before(async () => {
   if (!enabled) return;
   fixture = await startLocalHarness({ port: 55994, clusterOnly: true });

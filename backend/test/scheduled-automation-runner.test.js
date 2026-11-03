@@ -14,6 +14,21 @@ const sanitized = error => {
   return true;
 };
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+
+test('manual Instagram refresh retains guards and mutex without modifying scheduler checkpoints', async () => {
+  const f=fixture(); f.options.env.RENDER_AUTOMATION_JOBS='instagram';
+  f.options.manualInstagramRefresh=true;
+  f.options.handlers={instagram:async()=>{assert.equal(f.mutex.owned,true);f.calls.push('instagram');}};
+  const outcome=await runScheduledAutomations(f.options);
+  assert.deepEqual(outcome,{state:'COMPLETED',jobs:['instagram']});
+  assert.ok(f.calls.includes('inspect'));assert.ok(f.calls.includes('instagram'));
+  assert.equal(f.checkpointReads.length,0);assert.equal(f.markers.length,0);assert.equal(f.mutex.owned,false);
+  const wrong=fixture();wrong.options.manualInstagramRefresh=true;
+  await assert.rejects(runScheduledAutomations(wrong.options),sanitized);assert.deepEqual(wrong.calls,[]);
+  const busy=fixture({mutex:{owned:true}});busy.options.env.RENDER_AUTOMATION_JOBS='instagram';
+  busy.options.manualInstagramRefresh=true;busy.options.handlers={instagram:()=>assert.fail('busy')};
+  assert.deepEqual(await runScheduledAutomations(busy.options),{state:'BUSY',jobs:[]});
+});
 function fixture(overrides = {}) {
   const calls = [], releases = [], mutex = overrides.mutex ?? { owned: false };
   const checkpoints = overrides.checkpoints ?? new Set(), markers = [], checkpointReads = [];

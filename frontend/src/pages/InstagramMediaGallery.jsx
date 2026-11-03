@@ -62,6 +62,8 @@ function CarouselCard({ piece, cover, href, date, title, failed, setFailed }) {
       {href && <a href={href} target="_blank" rel="noopener noreferrer">Ver en IG ↗</a>}
     </div>
     <h3 className="ig-carousel-title">{title}</h3>
+    <dl className="ig-media-results"><div><dt>Visualizaciones totales</dt><dd>{mediaNumber(m.vistas_total)}</dd>
+      <small>Instagram: {mediaNumber(m.vistas_instagram)} · Facebook: {mediaNumber(m.vistas_facebook)}</small></div></dl>
     <dl className="ig-carousel-kpis">
       {CAROUSEL_KPIS.map(([label, key]) => <div key={key}><dd>{mediaNumber(m[key])}</dd><dt>{label}</dt></div>)}
     </dl>
@@ -90,8 +92,9 @@ export function InstagramMediaCard({ piece }) {
       <details className="ig-media-copy"><summary>Ver copy completo</summary><p>{piece.caption}</p></details> :
       <p className="ig-media-copy-empty">Sin copy disponible</p>}
     <dl className="ig-media-results">
-      {[['Reproducciones', 'vistas'], ['Alcance', 'alcance'], ['Me gusta', 'likes'], ['Comentarios', 'comentarios'], ['Guardados', 'guardados'], ['Compartidos', 'compartidos']].map(([label, key]) =>
-        <div key={key}><dt>{label}</dt><dd>{mediaNumber(piece.metricas?.[key])}</dd></div>)}
+      {[['Visualizaciones totales', 'vistas_total'], ['Alcance', 'alcance'], ['Me gusta', 'likes'], ['Comentarios', 'comentarios'], ['Guardados', 'guardados'], ['Compartidos', 'compartidos']].map(([label, key]) =>
+        <div key={key}><dt>{label}</dt><dd>{mediaNumber(piece.metricas?.[key])}</dd>{key === 'vistas_total' &&
+          <small>Instagram: {mediaNumber(piece.metricas?.vistas_instagram)} · Facebook: {mediaNumber(piece.metricas?.vistas_facebook)}</small>}</div>)}
     </dl>
   </article>;
 }

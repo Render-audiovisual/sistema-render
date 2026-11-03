@@ -24,12 +24,15 @@ async function createInstagramPool(env) {
     lock_timeout:10000,idleTimeoutMillis:1000});
 }
 
-export async function runInstagramScheduled({env=process.env,now,createPool,sync=runInstagramSync,report=runInstagramWeeklyReport}={}) {
-  const selected=instagramWorkerEnvironment(env);
+export async function runInstagramScheduled({env=process.env,now,createPool,sync=runInstagramSync,report=runInstagramWeeklyReport,manualRefresh=false}={}) {
+  const authorized=instagramWorkerEnvironment(env);
+  const selected=manualRefresh && authorized.RENDER_MAINTENANCE!=='true'
+    ? {...authorized,RENDER_AUTOMATION_JOBS:'instagram'} : authorized;
   return runScheduledAutomations({env:selected,...(now?{now}:{}),
+    ...(manualRefresh?{manualInstagramRefresh:true}:{}),
     createPool:createPool??(()=>createInstagramPool(selected)),
     handlers:{instagram:async(pool,{now})=>{
-      await sync(pool,{now,env:{META_SYSTEM_USER_TOKEN:selected.META_SYSTEM_USER_TOKEN,
+      await sync(pool,{now,refreshMetrics:manualRefresh,env:{META_SYSTEM_USER_TOKEN:selected.META_SYSTEM_USER_TOKEN,
         META_GRAPH_VERSION:selected.META_GRAPH_VERSION,META_BUSINESS_ID:selected.META_BUSINESS_ID}});
     },
     instagram_reporte:async(pool,{now})=>{

@@ -1,6 +1,7 @@
 import { createGraphClient, resolveGraphConfig, GraphError, MEDIA_COVERS_ACTION,
   normalizeCoverUrl, normalizeCoverSnapshot } from './instagram-graph.js';
 import { buildFeedCountSnapshots, FEED_SNAPSHOT_ACTION } from '../../shared/instagram-feed-counts.mjs';
+import { VIEWS_ACTION } from './instagram-view-breakdown.js';
 
 // Sincronización programada de Instagram (job 'instagram' del ejecutor).
 // Lee de Meta fuera de transacciones y escribe en instagram_* y su auditoría,
@@ -142,6 +143,11 @@ async function storeAccountData(pool, account, media, metrics, snapshots, covers
       [igMediaId, now, values.alcance, values.vistas, values.likes, values.comentarios,
         values.guardados, values.compartidos, values.interacciones]);
       stored += result.rowCount;
+      if (result.rowCount === 1) await db.query(auditSQL, [VIEWS_ACTION, 'ok', JSON.stringify({
+        version: 1, igMediaId, igUserId: account.ig_user_id, clientId: account.cliente_id,
+        measuredAt: now.toISOString(), instagram: values.vistas_instagram ?? values.vistas ?? null,
+        facebook: values.vistas_facebook ?? null, total: values.vistas_total ?? null,
+      })]);
     }
     await db.query(matchSQL, [account.ig_user_id]);
     if (covers) {
@@ -201,12 +207,16 @@ async function refreshAccountCovers(pool, graph, account, media, now) {
     checkedAt: now.toISOString(), items: [...items.values()].slice(0, 1000) };
 }
 
-async function syncAccount(pool, graph, account, now) {
+async function syncAccount(pool, graph, account, now, refreshMetrics = false) {
   // One exact boundary for the stored inventory, Graph read and shared proof.
   // The 35-day window controls metric refresh only, never feed coverage.
   const from = new Date(now - BACKFILL_DAYS * DAY);
   const existing = (await pool.query(`SELECT m.ig_media_id, m.publicado_at,
-      (SELECT max(medido_at) FROM instagram_media_metricas x WHERE x.ig_media_id=m.ig_media_id) AS ultima
+      (SELECT max(medido_at) FROM instagram_media_metricas x WHERE x.ig_media_id=m.ig_media_id) AS ultima,
+      EXISTS (SELECT 1 FROM integracion_auditoria a WHERE a.integracion='instagram_graph'
+        AND a.accion='media_views_v1' AND a.resultado='ok' AND a.canal='system' AND a.actor_id='render-worker'
+        AND a.detalles->>'igMediaId'=m.ig_media_id AND a.detalles->>'igUserId'=m.ig_user_id
+        AND a.detalles->>'clientId'=m.cliente_id::text) AS vistas_revisadas
     FROM instagram_media m WHERE m.ig_user_id=$1 AND m.publicado_at >= $2`,
   [account.ig_user_id, from])).rows;
   const listed = await graph.listMedia(account.ig_user_id, from, now);
@@ -222,7 +232,7 @@ async function syncAccount(pool, graph, account, now) {
   for (const item of media) {
     const prior = known.get(item.igMediaId);
     const lastMeasuredAt = prior?.ultima ? new Date(prior.ultima) : null;
-    if (!needsMetrics({ publishedAt: item.publishedAt, lastMeasuredAt }, now)) continue;
+    if (!refreshMetrics && prior?.vistas_revisadas && !needsMetrics({ publishedAt: item.publishedAt, lastMeasuredAt }, now)) continue;
     try {
       metrics.set(item.igMediaId, await graph.mediaInsights(item.igMediaId));
     } catch (error) {
@@ -236,7 +246,7 @@ async function syncAccount(pool, graph, account, now) {
   return { media: media.length, metricas: stored };
 }
 
-export async function runInstagramSync(pool, { now = new Date(), env = process.env, graph } = {}) {
+export async function runInstagramSync(pool, { now = new Date(), env = process.env, graph, refreshMetrics = false } = {}) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('Fecha inválida');
   const client = graph ?? createGraphClient(resolveGraphConfig(env));
   await storeAccounts(pool, await client.listInstagramAccounts(), now);
@@ -248,7 +258,7 @@ export async function runInstagramSync(pool, { now = new Date(), env = process.e
   const summary = { version: 1, cuentas: accounts.length, ok: 0, errores: 0, media: 0, metricas: 0 };
   for (const account of accounts) {
     try {
-      const result = await syncAccount(pool, client, account, now);
+      const result = await syncAccount(pool, client, account, now, refreshMetrics);
       summary.ok += 1; summary.media += result.media; summary.metricas += result.metricas;
     } catch (error) {
       const kind = error instanceof GraphError ? error.kind : 'interno';

@@ -9,10 +9,11 @@ import './InstagramClientStats.css';
 // Estadísticas por cliente y por publicación. La API revalida la sesión en cada pedido.
 const nf = new Intl.NumberFormat('es-AR');
 const fmt = v => (typeof v === 'number' && Number.isFinite(v) ? nf.format(v) : '—');
+const viewNote = m => `Instagram: ${fmt(m.vistas_instagram)} · Facebook: ${fmt(m.vistas_facebook)}`;
 const times = v => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1).replace('.', ',')}×` : '—');
 const TIPO = { reel: 'Reel', carrusel: 'Carrusel' };
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const METRIC_LABELS = [['vistas', 'Visualizaciones'], ['alcance', 'Alcance'], ['interacciones', 'Interacciones'], ['likes', 'Me gusta'],
+const METRIC_LABELS = [['vistas_total', 'Visualizaciones totales'], ['alcance', 'Alcance'], ['interacciones', 'Interacciones'], ['likes', 'Me gusta'],
   ['comentarios', 'Comentarios'], ['guardados', 'Guardados'], ['compartidos', 'Compartidos']];
 const validClient = v => typeof v === 'string' && /^(cliente|grupo)-[1-9]\d{0,9}$/.test(v);
 const validPeriod = v => typeof v === 'string' && /^20\d\d-(0[1-9]|1[0-2])$/.test(v);
@@ -157,6 +158,7 @@ function PublicationDetail({ capture, id, cover, bind, onClose }) {
         <div className="igs-score"><span>Rendimiento contra el promedio de la cuenta</span><strong className={d.puntaje >= 1 ? 'is-up' : 'is-down'}>{times(d.puntaje)}</strong>
           <small>Promedio de {d.promedio.piezas} {d.tipo === 'reel' ? 'reels' : 'carruseles'} de los últimos {d.promedio.dias} días</small></div>
         <dl className="igs-metrics">{METRIC_LABELS.map(([k, label]) => <div key={k}><dt>{label}</dt><dd>{fmt(d.metricas[k])}</dd>
+          {k === 'vistas_total' && <small>{viewNote(d.metricas)}</small>}
           <small className={d.comparacion[k] === null ? '' : d.comparacion[k] >= 1 ? 'is-up' : 'is-down'}>{d.comparacion[k] === null ? 'sin promedio' : `${times(d.comparacion[k])} promedio`}</small></div>)}</dl>
         <h3>Cómo creció el alcance</h3>
         <CurveChart curva={d.curva} bind={bind} />
@@ -210,7 +212,7 @@ function StatsContent({ sesion, params, navigate }) {
       <header className="igs-head"><h1>{d.nombre} · Estadísticas</h1><p>{d.cuentas.map(c => `@${c}`).join(' · ') || 'Sin cuenta vinculada'} · {periodLabel(d.periodo)}</p></header>
       {d.sin_cuenta ? <p className="igs-state">Este cliente todavía no tiene una cuenta de Instagram conectada.</p> : <>
         <section className="igs-tiles" aria-label="Resumen del mes">
-          <Tile label="Visualizaciones" value={a.vistas} previous={p.vistas} />
+          <Tile label="Visualizaciones totales" value={a.vistas_total} previous={p.vistas_total} note={viewNote(a)} />
           <Tile label="Interacciones" value={a.interacciones} previous={p.interacciones} spark={d.diario.map(x => x.interacciones)} />
           <Tile label="Publicaciones" value={a.piezas} previous={p.piezas} note={`${a.reels} reels · ${a.carruseles} carruseles`} />
           <Tile label="Seguidores ganados en el mes" value={d.seguidores.crecimiento} previous={d.seguidores.anterior}
@@ -229,7 +231,7 @@ function StatsContent({ sesion, params, navigate }) {
             return <li key={r.ig_media_id}><button type="button" className={`igs-pub${params.pub === r.ig_media_id ? ' is-active' : ''}`} onClick={() => { navigate({ ...params, pub: r.ig_media_id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
               <span className="igs-thumb">{img ? <img src={img} alt="" width="48" height="60" loading="lazy" referrerPolicy="no-referrer" /> : TIPO[r.tipo]?.[0]}</span>
               <span className="igs-pub-text"><b>{r.caption?.trim() || `${TIPO[r.tipo]} sin copy`}</b><small>{TIPO[r.tipo]} · {shortDate(r.publicado_at)}</small><small>{measurementLabel(r.medido_at)}</small></span>
-              <span className="igs-pub-num"><b>{fmt(r.metricas.vistas)}</b><small>vistas</small></span>
+              <span className="igs-pub-num"><b>{fmt(r.metricas.vistas_total)}</b><small>vistas totales</small><small>{viewNote(r.metricas)}</small></span>
               <span className="igs-pub-score"><span className="igs-scorebar"><i className={r.puntaje >= 1 ? '' : 'is-low'} style={{ width: `${pct}%` }} /><em style={{ left: `${(1 / maxScore) * 100}%` }} /></span>
                 <b className={r.puntaje === null ? '' : r.puntaje >= 1 ? 'is-up' : 'is-down'}>{times(r.puntaje)}</b></span>
             </button></li>; })}</ul> : <p className="igs-empty">No hay {tipo === 'reel' ? 'reels' : tipo === 'carrusel' ? 'carruseles' : 'publicaciones'} en este mes.</p>}

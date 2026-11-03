@@ -3,11 +3,11 @@
 async function main(){
   const args=process.argv.slice(2);
   if(args.length===1&&['--help','-h'].includes(args[0])){
-    console.log('Uso: node backend/scripts/run-instagram-automation.js run');return;
+    console.log('Uso: node backend/scripts/run-instagram-automation.js run|refresh');return;
   }
-  if(args.length!==1||args[0]!=='run')throw new Error('Argumentos inválidos');
+  if(args.length!==1||!['run','refresh'].includes(args[0]))throw new Error('Argumentos inválidos');
   const {runInstagramScheduled}=await import('../src/instagram-scheduled-worker.js');
-  const outcome=await runInstagramScheduled();
+  const outcome=await runInstagramScheduled({manualRefresh:args[0]==='refresh'});
   console.log(JSON.stringify({worker:'instagram',at:new Date().toISOString(),...outcome}));
 }
 void main().catch(()=>{

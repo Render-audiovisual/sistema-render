@@ -1,4 +1,5 @@
 import { num, interactions } from './instagram-metrics.js';
+import { readViewBreakdowns } from './instagram-view-breakdown.js';
 
 // Estadísticas por cliente y por publicación (solo lectura). Todo sale de lo
 // que ya guarda la sincronización: mediciones horarias por pieza y seguidores
@@ -9,7 +10,7 @@ const DAY = 86400000, HOUR = 3600000;
 export const BASELINE_DAYS = 90;
 export const CURVE_OFFSETS_H = Object.freeze([1, 2, 3, 6, 12, 24, 48, 72, 96, 120, 144, 168]);
 export const SLOTS = Object.freeze([['manana', 'Mañana', 6, 12], ['mediodia', 'Mediodía', 12, 15], ['tarde', 'Tarde', 15, 19], ['noche', 'Noche', 19, 30]]);
-export const METRICS = Object.freeze(['alcance', 'vistas', 'interacciones', 'likes', 'comentarios', 'guardados', 'compartidos']);
+export const METRICS = Object.freeze(['alcance', 'vistas', 'vistas_instagram', 'vistas_facebook', 'vistas_total', 'interacciones', 'likes', 'comentarios', 'guardados', 'compartidos']);
 
 const round2 = v => Math.round(v * 100) / 100;
 const finite = v => typeof v === 'number' && Number.isFinite(v);
@@ -122,7 +123,10 @@ export function monthTotals(rows) {
     return values.length ? values.reduce((a,b) => a+b,0) : rows.length ? null : 0;
   };
   return { piezas: rows.length, reels: rows.filter(r => r.tipo === 'reel').length, carruseles: rows.filter(r => r.tipo === 'carrusel').length,
-    medidas: measured.length, alcance: sum('alcance'), vistas: sum('vistas'), interacciones: sum('interacciones'),
+    medidas: measured.length, alcance: sum('alcance'), vistas: sum('vistas'),
+    vistas_instagram: sum('vistas_instagram'), vistas_facebook: sum('vistas_facebook'),
+    vistas_total: rows.every(r => finite(r.vistas_total)) ? sum('vistas_total') : null,
+    interacciones: sum('interacciones'),
     guardados: sum('guardados'), compartidos: sum('compartidos') };
 }
 
@@ -157,7 +161,8 @@ const prevMonth = period => { const [y, m] = period.split('-').map(Number); cons
 export function normalizeRow(row) {
   return { ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption ?? '',
     publicado_at: new Date(row.publicado_at).toISOString(), medido_at: row.medido_at ? new Date(row.medido_at).toISOString() : null,
-    alcance: num(row.alcance), vistas: num(row.vistas), likes: num(row.likes), comentarios: num(row.comentarios),
+    alcance: num(row.alcance), vistas: num(row.vistas), vistas_instagram: num(row.vistas_instagram),
+    vistas_facebook: num(row.vistas_facebook), vistas_total: num(row.vistas_total), likes: num(row.likes), comentarios: num(row.comentarios),
     guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) };
 }
 
@@ -165,7 +170,7 @@ export async function readClientStatsFromDb(db, { accountIds, period, covers = n
   const start = monthStart(period), end = monthStart(nextMonth(period)), prevStart = monthStart(prevMonth(period));
   const baseStart = new Date(+end - BASELINE_DAYS * DAY);
   const observations = (await db.query(MEDIA_RANGE_SQL, [accountIds, new Date(Math.min(+prevStart, +baseStart)), end])).rows;
-  const rows = (await selectMedia(observations)).map(normalizeRow);
+  const rows = (await readViewBreakdowns(db, await selectMedia(observations))).map(normalizeRow);
   const inMonth = rows.filter(r => Date.parse(r.publicado_at) >= +start);
   const inPrev = rows.filter(r => Date.parse(r.publicado_at) >= +prevStart && Date.parse(r.publicado_at) < +start);
   const baseRows = rows.filter(r => Date.parse(r.publicado_at) >= +baseStart);
@@ -195,15 +200,15 @@ export async function readMediaStatsFromDb(db, igMediaId) {
       m.publicado_at, u.medido_at, u.alcance, u.vistas, u.likes, u.comentarios, u.guardados, u.compartidos, u.interacciones
     FROM instagram_media m ${latest('m')} WHERE m.ig_media_id=$1 AND m.cliente_id IS NOT NULL`, [igMediaId])).rows[0];
   if (!media) return null;
-  const row = normalizeRow(media);
+  const row = normalizeRow((await readViewBreakdowns(db, [media]))[0]);
   const published = Date.parse(row.publicado_at);
   const snapshotsFor = async ids => (await db.query(`SELECT ig_media_id, medido_at, alcance, vistas, likes, comentarios, guardados, compartidos, interacciones
     FROM instagram_media_metricas WHERE ig_media_id = ANY($1::text[]) ORDER BY ig_media_id, medido_at`, [ids])).rows;
-  const peers = (await db.query(`SELECT m.ig_media_id, m.tipo, m.publicado_at, u.medido_at, u.alcance, u.vistas, u.likes, u.comentarios,
+  const peers = (await readViewBreakdowns(db, (await db.query(`SELECT m.ig_media_id, m.ig_user_id, m.cliente_id, m.tipo, m.publicado_at, u.medido_at, u.alcance, u.vistas, u.likes, u.comentarios,
       u.guardados, u.compartidos, u.interacciones
     FROM instagram_media m ${latest('m')}
     WHERE m.ig_user_id=$1 AND m.tipo=$2 AND m.ig_media_id<>$3 AND m.publicado_at >= $4 AND m.publicado_at < $5`,
-  [media.ig_user_id, row.tipo, igMediaId, new Date(published - BASELINE_DAYS * DAY), new Date(published + 30 * DAY)])).rows.map(normalizeRow);
+  [media.ig_user_id, row.tipo, igMediaId, new Date(published - BASELINE_DAYS * DAY), new Date(published + 30 * DAY)])).rows)).map(normalizeRow);
   const all = await snapshotsFor([igMediaId, ...peers.map(p => p.ig_media_id)]);
   const toSeries = (id, publishedAt) => all.filter(s => s.ig_media_id === id).map(s => ({
     horas: round2((Date.parse(new Date(s.medido_at).toISOString()) - publishedAt) / HOUR),

@@ -49,7 +49,7 @@ function harness({ accounts = [{ ig_user_id: '111', username: 'test', cliente_id
     }
     if (sql.startsWith('SELECT detalles FROM integracion_auditoria')) return { rows: previousCovers ? [{ detalles: previousCovers }] : [] };
     if (sql.includes('SELECT a.ig_user_id')) return { rows: accounts };
-    if (sql.includes('SELECT m.ig_media_id')) return { rows: existing };
+    if (sql.includes('SELECT m.ig_media_id')) return { rows: existing.map(row => ({ vistas_revisadas: true, ...row })) };
     if (sql.includes('SELECT cliente_id,activa')) return { rows: current ? current(params[0]) : [{ cliente_id: accounts.find(a => a.ig_user_id === params[0]).cliente_id, activa: true }] };
     if (failWrite && sql.includes('INSERT INTO instagram_media\n')) throw new Error('write failure');
     return { rows: [], rowCount: 1 };
@@ -63,6 +63,18 @@ function graphDouble({ media = [], listMedia, mediaInsights, mediaCover } = {}) 
     listMedia: listMedia ?? (async () => media), mediaInsights: mediaInsights ?? (async () => ({ alcance: 100 })), mediaCover };
 }
 const proofs = h => h.committed.filter(a => a.action === FEED_SNAPSHOT_ACTION);
+
+test('first combined measurement refreshes a recent legacy row and persists exact account-bound breakdown atomically', async () => {
+  const h=harness({existing:[{ig_media_id:'501',ultima:now,vistas_revisadas:false}]});
+  await runInstagramSync(h.pool,{now,env:{},graph:graphDouble({media:[piece()],mediaInsights:async()=>({
+    vistas:2934060,vistas_instagram:2934060,vistas_facebook:386153,vistas_total:3320213,
+  })})});
+  const side=h.committed.find(a=>a.action==='media_views_v1');
+  assert.deepEqual(side.details,{version:1,igMediaId:'501',igUserId:'111',clientId:1,
+    measuredAt:now.toISOString(),instagram:2934060,facebook:386153,total:3320213});
+  assert.equal(h.calls.find(c=>c.params[0]==='media_views_v1').transaction,true);
+  assert.equal(h.calls.some(c=>/(?:INSERT INTO|UPDATE|DELETE FROM) (?:tareas|publicaciones|cliente_objetivos)/i.test(c.sql)),false);
+});
 
 test('older reels inside the inventory are remeasured instead of freezing their original views',async()=>{
   const old=piece('501',{publishedAt:new Date(now-40*D)});

@@ -165,7 +165,9 @@ export function ClientReportStatistics({ data }) {
         <dl className="ig-client-report-metrics">
           <ReportMetric label="Publicaciones registradas" value={actual.piezas} previous={previous.piezas} />
           <ReportMetric label="Alcance acumulado por publicación" value={actual.alcance} previous={previous.alcance} />
-          <ReportMetric label="Reproducciones" value={actual.vistas} previous={previous.vistas} />
+          <ReportMetric label="Visualizaciones totales" value={actual.vistas_total} previous={previous.vistas_total} />
+          <ReportMetric label="Instagram" value={actual.vistas_instagram} previous={previous.vistas_instagram} />
+          <ReportMetric label="Facebook" value={actual.vistas_facebook} previous={previous.vistas_facebook} />
           <ReportMetric label="Interacciones" value={actual.interacciones} previous={previous.interacciones} />
         </dl>
       </section>

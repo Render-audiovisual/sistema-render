@@ -50,9 +50,10 @@ test('followers chart needs two days and labels the month start', () => {
 });
 
 test('views lead publication rows and the monthly summary; reach remains separately labelled',()=>{
-  assert.match(source,/<Tile label="Visualizaciones" value=\{a.vistas\}/);
-  assert.match(source,/fmt\(r.metricas.vistas\).*<small>vistas<\/small>/);
-  assert.match(source,/\['vistas', 'Visualizaciones'\], \['alcance', 'Alcance'\]/);
+  assert.match(source,/<Tile label="Visualizaciones totales" value=\{a.vistas_total\}/);
+  assert.match(source,/fmt\(r.metricas.vistas_total\).*<small>vistas totales<\/small>/);
+  assert.match(source,/\['vistas_total', 'Visualizaciones totales'\], \['alcance', 'Alcance'\]/);
+  assert.match(source,/Instagram:.*vistas_instagram.*Facebook:.*vistas_facebook/);
   assert.match(api.measurementLabel('2026-11-03T18:00:00.000Z'),/^Actualizado/);
   assert.equal(api.measurementLabel(null),'Sin fecha de medición');
   assert.equal(api.measurementLabel('bad'),'Sin fecha de medición');

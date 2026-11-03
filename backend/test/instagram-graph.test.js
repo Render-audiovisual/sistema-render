@@ -84,7 +84,31 @@ test('insights fall back to smaller metric sets on code 100', async () => {
   };
   const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl });
   assert.equal((await client.mediaInsights('5')).alcance, 7);
-  assert.equal(metrics.length, 2);
+  assert.equal(metrics.length, 5);
+});
+
+test('combined views are independent from Instagram views and never added twice', async () => {
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async url => {
+    const metric = new URL(url).searchParams.get('metric');
+    const data = metric.includes('crossposted_views') ? [
+      { name: 'crossposted_views', values: [{ value: 3320213 }] },
+      { name: 'facebook_views', total_value: { value: 386153 } },
+    ] : [{ name: 'views', values: [{ value: 2934060 }] }];
+    return json({ data });
+  } });
+  const m = await client.mediaInsights('5');
+  assert.equal(m.vistas, 2934060); assert.equal(m.vistas_instagram, 2934060);
+  assert.equal(m.vistas_facebook, 386153); assert.equal(m.vistas_total, 3320213);
+});
+
+test('unsupported crossposting never invents zero or removes valid Instagram metrics', async () => {
+  const client = createGraphClient({ token: TOKEN, version: 'v23.0' }, { fetchImpl: async url => {
+    const metric = new URL(url).searchParams.get('metric');
+    return metric.includes('facebook') || metric.includes('crossposted')
+      ? json({ error: { code: 100 } }, 400) : json({ data: [{ name: 'views', values: [{ value: 7 }] }] });
+  } });
+  const m = await client.mediaInsights('5');
+  assert.equal(m.vistas_instagram, 7); assert.equal(m.vistas_total, null); assert.equal(m.vistas_facebook, null);
 });
 
 test('errors are classified without leaking messages', async () => {
