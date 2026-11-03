@@ -1,4 +1,10 @@
 import test from 'node:test';
+
+test('partial platform breakdowns are not presented as complete monthly totals',()=>{
+  const t=monthTotals([{tipo:'reel',vistas_total:100,vistas_instagram:80,vistas_facebook:20},
+    {tipo:'reel',vistas_total:null,vistas_instagram:50,vistas_facebook:null}]);
+  assert.equal(t.vistas_total,null);assert.equal(t.vistas_facebook,null);assert.equal(t.vistas_instagram,130);
+});
 import assert from 'node:assert/strict';
 import { valueAtHours, typicalBand, baselineByType, score, heatmap, slotOf, followerSeries, followerGrowth,
   monthTotals, dailyTotals, percentile } from '../src/instagram-stats.js';

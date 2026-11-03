@@ -124,7 +124,8 @@ export function monthTotals(rows) {
   };
   return { piezas: rows.length, reels: rows.filter(r => r.tipo === 'reel').length, carruseles: rows.filter(r => r.tipo === 'carrusel').length,
     medidas: measured.length, alcance: sum('alcance'), vistas: sum('vistas'),
-    vistas_instagram: sum('vistas_instagram'), vistas_facebook: sum('vistas_facebook'),
+    vistas_instagram: rows.every(r => finite(r.vistas_instagram)) ? sum('vistas_instagram') : null,
+    vistas_facebook: rows.every(r => finite(r.vistas_facebook)) ? sum('vistas_facebook') : null,
     vistas_total: rows.every(r => finite(r.vistas_total)) ? sum('vistas_total') : null,
     interacciones: sum('interacciones'),
     guardados: sum('guardados'), compartidos: sum('compartidos') };
