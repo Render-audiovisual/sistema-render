@@ -124,7 +124,8 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
       {data && <>
         <dl className="qh-summary" aria-label="Resumen de tus tareas">
           {SUMMARY.map(([key, label]) => {
-            const href = key === "awaiting_review" ? homeReviewTaskHref("personal") : personalTaskHref(userId);
+            const base = personalTaskHref(userId);
+            const href = key === "awaiting_review" ? homeReviewTaskHref("personal") : key === "overdue" && base ? `${base}&vencidas=1` : base;
             return <div key={key} className={key === "overdue" && data.summary[key] ? "is-overdue" : ""}>
               <dt>{label}</dt><dd>{href ? <HomeLink className="qh-summary-link" href={href} onNavigate={onNavigate} aria-label={`${label}: ${data.summary[key]}. Ver en Tareas`}>{data.summary[key]}</HomeLink> : data.summary[key]}</dd>
             </div>;

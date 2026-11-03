@@ -52,6 +52,7 @@ export function getTaskViewState(search = "") {
     priority: params.get("priority") || "all",
     area: params.get("area") || "all",
     query: params.get("q") || "",
+    overdue: params.get("vencidas") === "1",
     calendarMonth,
   };
 }
@@ -73,6 +74,7 @@ export function updateTaskViewUrl(currentUrl, state) {
     sector: state.sector === "all" ? null : state.sector,
     priority: state.priority === "all" ? null : state.priority,
     area: state.area === "all" ? null : state.area,
+    vencidas: state.overdue ? "1" : null,
     q: state.query?.trim() ? state.query : null,
     month: state.calendarMonth || null,
   };

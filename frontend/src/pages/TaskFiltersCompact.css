@@ -1,0 +1,26 @@
+/* Etapa 4 · Tareas: filtros en una línea, columna vacía chica y etiquetas en oscuro.
+ * Archivo aparte para no tocar la base revisada de WorkspaceReadOnly.css. */
+/* ===== Etapa 4 · Tareas ===== */
+/* Filtros en una línea (escritorio): cada filtro es una pastilla "Etiqueta: valor"; el activo se pinta. */
+@media (min-width:981px){
+  .render-workspace.render-workspace .ros-filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 30px 4px;margin:0 0 16px;background:transparent;border:0;border-radius:0}
+  .render-workspace.render-workspace .ros-filter-bar label.render-filter-field{flex:0 0 auto;display:inline-flex;align-items:center;gap:2px;min-height:32px;padding:0 0 0 12px;border:1px solid var(--render-line-strong);border-radius:999px;background:var(--render-surface);color:var(--render-muted);font-size:12px}
+  .render-workspace.render-workspace .ros-filter-bar label.render-filter-field>span::after{content:":"}
+  .render-workspace.render-workspace .ros-filter-bar select.render-filter-select{width:auto;field-sizing:content;max-width:220px;min-height:30px;padding:0 28px 0 2px;border:0;border-radius:999px;background-color:transparent;color:var(--render-ink);font-size:12px;font-weight:600;background-position:right 10px center}
+  .render-workspace.render-workspace .ros-filter-bar label.render-filter-field:has(option:checked:not([value="all"])){background:var(--render-accent-soft);border-color:var(--render-accent-border)}
+  .render-workspace.render-workspace .ros-filter-bar label.render-filter-field:focus-within{box-shadow:var(--render-focus)}
+  .render-workspace.render-workspace .ros-filter-bar select.render-filter-select:focus-visible{outline:none}
+  .render-workspace.render-workspace .ros-filter-bar>button:not(.render-chip){min-height:32px;padding:0 10px;border:0;background:transparent;color:var(--render-accent);font-size:12px;font-weight:600}
+  .render-workspace.render-workspace .ros-filter-bar>.render-chip{min-height:32px;padding:0 12px;border:1px solid var(--render-line-strong);border-radius:999px;background:var(--render-surface);color:var(--render-ink);font-size:12px;font-weight:500}
+  .render-workspace.render-workspace .ros-filter-bar>.render-chip[aria-pressed="true"]{background:var(--render-accent-soft);border-color:var(--render-accent-border);font-weight:650}
+}
+:root[data-theme="dark"] .render-workspace.render-workspace .ros-filter-bar>button:not(.render-chip){color:#c6ff3d}
+/* Columna vacía chica */
+.render-workspace.render-workspace .ros-empty-column{min-height:72px;margin:4px;border:1px dashed var(--render-line-strong);border-radius:10px;flex-direction:row;font-size:12px}
+.render-workspace.render-workspace .ros-empty-column span{width:22px;height:22px;font-size:13px}
+/* Etiquetas de área y fase en oscuro */
+:root[data-theme="dark"] .ros-area-badge{background:color-mix(in srgb,var(--area) 18%,#16181b);border-color:color-mix(in srgb,var(--area) 35%,#16181b);color:color-mix(in srgb,var(--area) 55%,#ffffff)}
+:root[data-theme="dark"] .render-workspace.render-workspace .ros-phase-badge{background:var(--render-surface-muted);border-color:var(--render-line-strong);color:var(--render-ink-soft)}
+:root[data-theme="dark"] .render-workspace.render-workspace .ros-phase-badge:is(.grabacion,.grabacion_completa){background:#33280f;border-color:#5a4718;color:#f2b84b}
+:root[data-theme="dark"] .render-workspace.render-workspace .ros-phase-badge:is(.publicada,.grabacion_confirmada,.edicion){background:#12301f;border-color:#1f4d33;color:#5fd39a}
+:root[data-theme="dark"] .render-workspace.render-workspace .ros-phase-badge.programada{background:#241a38;border-color:#3d2c5e;color:#c7aaff}
