@@ -108,10 +108,21 @@ test('local HTTP team statistics deduplicate linked tasks and preserve source re
  await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,10,'responsable')",[filming.id]);
  const visit=randomUUID();await f.query("INSERT INTO produccion_visitas(id,tarea_origen_id,cliente_id,fecha,titulo,creado_por_id,actualizado_por_id) VALUES($1,$2,$3,'2026-11-04','QA visit',91001,91001)",[visit,filming.id,client.id]);
  await f.query("INSERT INTO produccion_videos(id,visita_id,titulo,estado,creado_por_id,actualizado_por_id) VALUES($1,$2,'QA filmed','grabado',91001,91001)",[randomUUID(),visit]);
+ const batch=(id,changes={})=>({id,fecha:'2026-11-04',cantidad:4,usuario_id:10,usuario:'QA',created_at:'2026-11-04T12:00:00.000Z',...changes});
+ const [legacyFilming]=await f.query(`INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado,propiedades_extra)
+  VALUES('QA visit 04/11',$1,'QA','produccion','en_revision',$2::jsonb) RETURNING id`,[client.id,JSON.stringify({produccion_registros:[
+   batch('legacy-main',{corregido_desde:8}),batch('legacy-main',{corregido_desde:8}),
+   batch('uncertain-a',{cantidad:2,fecha:'2026-11-05'}),batch('uncertain-b',{cantidad:2,fecha:'2026-11-05',created_at:'2026-11-04T12:00:06.000Z'})]})]);
+ const [dateConflict]=await f.query(`INSERT INTO tareas(titulo,cliente_id,asignado_a,tipo_tarea,estado,propiedades_extra)
+  VALUES('QA visit 30/10',$1,'QA','produccion','en_revision',$2::jsonb) RETURNING id`,[client.id,JSON.stringify({produccion_registros:[batch('date-conflict')]})]);
+ for(const task of [legacyFilming,dateConflict])await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,10,'responsable')",[task.id]);
+ await f.query("UPDATE tareas SET propiedades_extra=$2::jsonb WHERE id=$1",[filming.id,JSON.stringify({produccion_registros:[batch('already-normalized',{cantidad:8})]})]);
  const before=await f.query('SELECT to_jsonb(t) AS row FROM tareas t ORDER BY id');
  const login=await request(f.base,'/api/login',{method:'POST',body:{usuario:'qa_luciano',password:fixturePassword}});assert.equal(login.status,200);
  const result=await request(f.base,'/api/instagram/equipo?periodo=2026-11',{token:login.body.token});assert.equal(result.status,200);
- assert.deepEqual(result.body.rows.map(r=>r.count),[1,3,1]);assert.doesNotMatch(JSON.stringify(result.body),/importe|sueldo|password|email/);
+ assert.deepEqual(result.body.rows.map(r=>r.count),[5,3,1]);assert.doesNotMatch(JSON.stringify(result.body),/importe|sueldo|password|email/);
+ assert.equal(result.body.rows[0].records.length,2);assert.equal(result.body.rows[0].productionPending.length,4);
+ assert.deepEqual((await request(f.base,'/api/instagram/equipo?periodo=2026-11',{token:login.body.token})).body,result.body);
  assert.equal(result.body.rows[1].records.filter(r=>r.evidence==='historical_review').length,1);
  assert.equal(result.body.rows[1].records.filter(r=>r.evidence==='review_activity').length,1);
  const october=await request(f.base,'/api/instagram/equipo?periodo=2026-10',{token:login.body.token});

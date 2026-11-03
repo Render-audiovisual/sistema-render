@@ -1,4 +1,5 @@
 import {SYSTEM_USER_ROLES} from './user-roles.js';
+import {projectHistoricalProduction} from './team-production-statistics.js';
 const people=[{id:10,role:'produccion',name:'Germán',label:'Videos grabados'},{id:9,role:'edicion',name:'Luciano',label:'Videos editados y entregados'},{id:8,role:'diseno',name:'Augusto',label:'Carruseles entregados'}];
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Cordoba',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -57,9 +58,13 @@ export function projectTeamStatistics(users,candidates,period){
   }
   const records=[...unique.values()].map(row=>({...row,date:date(row.date)})).filter(row=>row.date.startsWith(period))
    .map(row=>({key:row.key,title:row.title||'Sin título',client:row.client||'Sin cliente',date:row.date,
+    ...(person.id===10&&row.quantity!=null?{quantity:row.quantity}:{}),
     ...(row.evidence?{evidence:row.evidence,evidence_id:row.evidence_id}:{}),
     href:row.visit_id?`/producciones?visita=${row.visit_id}`:`/workspace/tareas?task=${row.task_id}`}));
-  return {id:person.id,name:user?.nombre||person.name,label:person.label,available:Boolean(user),count:user?records.length:null,unverified:[...missing].filter(key=>!unique.has(key)).length,records:user?records:[]};
+  const count=records.reduce((total,row)=>{const amount=row.quantity??1;
+   if(!Number.isSafeInteger(amount)||amount<=0||!Number.isSafeInteger(total+amount))throw fail('Cantidad de producción inválida.',503);
+   return total+amount;},0);
+  return {id:person.id,name:user?.nombre||person.name,label:person.label,available:Boolean(user),count:user?count:null,unverified:[...missing].filter(key=>!unique.has(key)).length,records:user?records:[]};
  });
 }
 export async function readTeamStatistics(pool,auth,period){
@@ -131,8 +136,21 @@ export async function readTeamStatistics(pool,auth,period){
     AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
     AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
     ORDER BY cm.created_at,cm.id`)).rows;
-  const result={period,rows:projectTeamStatistics(users,[...videos,...tasks,...deliveries,
-    ...recoverHistoricalEditingCandidates(historical),...recoverReviewActivityCandidates(activities)],period)};
+  const productionTasks=(await db.query(`SELECT t.id,t.titulo title,t.cliente_id client_id,c.nombre client,
+    t.propiedades_extra->'produccion_registros' records,
+    EXISTS(SELECT 1 FROM produccion_visitas v JOIN produccion_videos pv ON pv.visita_id=v.id
+      WHERE v.tarea_origen_id=t.id) has_normalized_videos
+    FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+    WHERE t.tipo_tarea='produccion'
+    AND EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=10 AND a.tipo='responsable')
+    AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+    AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+    ORDER BY t.id`)).rows;
+  const production=projectHistoricalProduction(productionTasks);
+  const rows=projectTeamStatistics(users,[...videos,...tasks,...deliveries,...production.candidates,
+    ...recoverHistoricalEditingCandidates(historical),...recoverReviewActivityCandidates(activities)],period);
+  const result={period,rows:rows.map(person=>person.id===10?{...person,
+    productionPending:production.pending.filter(row=>!row.date||row.date.startsWith(period))}:person)};
   await db.query('COMMIT');return result;
  }catch(error){try{await db.query('ROLLBACK');}catch(rollback){discard=rollback;}throw error;}finally{db.release(discard);}
 }

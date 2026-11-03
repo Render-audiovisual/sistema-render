@@ -16,9 +16,10 @@ export function TeamStatistics({sesion,period}){
   <p className="ig-statistics-note">Entregas registradas, no publicaciones. Los trabajos sin registro comprobable no se suman.</p>
   {error?<div role="alert">{error} <button type="button" className="btn" onClick={()=>setRetry(v=>v+1)}>Reintentar</button></div>:data?.period!==period?<p role="status">Cargando estadísticas del equipo…</p>:
   <div className="ig-statistics-grid">{data.rows.map(person=><article className="ig-statistics-card" key={person.id}>
-   <h3>{person.name}</h3><p>{person.label}</p><strong className="ig-statistics-total">{person.available?person.count:'—'}</strong><small>registros únicos del mes</small>
+   <h3>{person.name}</h3><p>{person.label}</p><strong className="ig-statistics-total">{person.available?person.count:'—'}</strong><small>{person.id===10?'videos registrados · cantidades por visita':'registros únicos del mes'}</small>
    {!person.available&&<p>Sin identidad verificable.</p>}{person.unverified>0&&<p className="ig-statistics-note">{person.unverified} trabajos sin fecha de entrega comprobada. No incluidos.</p>}
-   <details><summary>Ver detalle</summary>{person.records.length?<ul>{person.records.map(record=><li key={record.key}><a href={record.href} onClick={event=>handleAppLinkClick(window,event)}>{record.title}</a><small>{record.client} · {record.date.split('-').reverse().join('/')}</small></li>)}</ul>:<p>Sin entregas registradas en este mes.</p>}</details>
+   <details><summary>Ver detalle</summary>{person.records.length?<ul>{person.records.map(record=><li key={record.key}><a href={record.href} onClick={event=>handleAppLinkClick(window,event)}>{record.title}</a><small>{record.client} · {record.date.split('-').reverse().join('/')}{record.quantity!=null&&` · ${record.quantity} video${record.quantity===1?'':'s'}`}</small></li>)}</ul>:<p>{person.id===10?'Sin grabaciones registradas en este mes.':'Sin entregas registradas en este mes.'}</p>}</details>
+   {person.productionPending?.length>0&&<details><summary>{person.productionPending.length} cargas por revisar · no incluidas</summary><ul>{person.productionPending.map(record=><li key={record.key}><a href={record.href} onClick={event=>handleAppLinkClick(window,event)}>{record.title}</a><small>{record.client} · {record.date?record.date.split('-').reverse().join('/'):'Sin fecha comprobable'}</small><p className="ig-statistics-note">{record.reason}</p></li>)}</ul></details>}
   </article>)}</div>}
  </section>;
 }
