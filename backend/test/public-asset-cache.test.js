@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,symlink,rm} from 'node:fs/promises';
-import {preservePublicAssets,publicAssetFilename} from '../src/public-asset-cache.js';
+import {preservePublicAssets,publicAssetFilename,preserveCurrentPublicAssets} from '../src/public-asset-cache.js';
 async function fixture(t){const root=await mkdtemp('/private/tmp/render-public-assets-');t.after(()=>rm(root,{recursive:true,force:true}));const sourceDir=path.join(root,'assets'),cacheRoot=path.join(root,'cache');await mkdir(sourceDir);await writeFile(path.join(sourceDir,'Clients-Ab123456.js'),'export const name="Clients";');await writeFile(path.join(sourceDir,'Clients-Ab123456.css'),'.client{color:black}');return {root,sourceDir,cacheRoot};}
 test('public code archive is immutable, deterministic and does not remove source assets',async t=>{
  const f=await fixture(t),a=await preservePublicAssets(f),b=await preservePublicAssets(f);
@@ -28,4 +28,12 @@ test('symlink source files or cache roots fail closed instead of exposing privat
 test('existing modified archives are rejected, never silently overwritten',async t=>{
  const f=await fixture(t),saved=await preservePublicAssets(f);await writeFile(path.join(f.cacheRoot,saved.key,'Clients-Ab123456.js'),'MODIFIED');
  await assert.rejects(preservePublicAssets(f),/Public asset archive changed/);assert.equal(await readFile(path.join(f.cacheRoot,saved.key,'Clients-Ab123456.js'),'utf8'),'MODIFIED');
+});
+test('runtime archive is automatic for the actual Hostinger layout, even with a custom build command',async t=>{
+ const root=await mkdtemp('/private/tmp/render-runtime-assets-');t.after(()=>rm(root,{recursive:true,force:true}));
+ const distDir=path.join(root,'hbuilds/versions/01234567-89ab-4cde-8123-0123456789ab/nodejs/frontend/dist');
+ await mkdir(path.join(distDir,'assets'),{recursive:true});await writeFile(path.join(distDir,'assets','Runtime-Ab123456.js'),'export const ready=true;');
+ const saved=await preserveCurrentPublicAssets(distDir);assert.equal(saved.files,1);
+ assert.equal(await readFile(path.join(root,'hbuilds/public-assets/assets/Runtime-Ab123456.js'),'utf8'),'export const ready=true;');
+ const local=path.join(root,'local/dist');await mkdir(path.join(local,'assets'),{recursive:true});assert.deepEqual(await preserveCurrentPublicAssets(local),{files:0});
 });

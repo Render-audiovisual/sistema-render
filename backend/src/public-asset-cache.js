@@ -10,6 +10,12 @@ export async function resolvePublicAssetCacheRoot(distDir){
  return match?path.join(match[1],'public-assets'):null;
 }
 async function directory(target){const s=await lstat(target);if(!s.isDirectory()||s.isSymbolicLink())throw Error('Invalid public asset directory.');}
+// Hostinger can use a custom build command instead of package.json's build.
+// The actual runtime therefore also archives its own public code once at boot.
+export async function preserveCurrentPublicAssets(distDir){
+ const cacheRoot=await resolvePublicAssetCacheRoot(distDir);
+ return cacheRoot?preservePublicAssets({sourceDir:path.join(distDir,'assets'),cacheRoot}):{files:0};
+}
 export async function preservePublicAssets({sourceDir,cacheRoot}){
  await directory(sourceDir);const root=await realpath(sourceDir);
  const records=[];let total=0;

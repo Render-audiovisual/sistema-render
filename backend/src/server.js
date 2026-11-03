@@ -75,6 +75,7 @@ import { createClientOperationRouter } from "./client-operation.js";
 import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
 import {createClientMonthlyControlRouter,clientMonthlyLegacyOwnerGuard} from './client-monthly-control.js';
 import {createRetainedAssetMiddleware} from './retained-assets.js';
+import {preserveCurrentPublicAssets} from './public-asset-cache.js';
 import { createTeamPaymentsRouter } from './team-payments.js';
 import { createInstagramPanelRouter } from './instagram-panel.js';
 import { projectDomainConflict } from "./project-errors.js";
@@ -2839,6 +2840,9 @@ try {
   if (error.code !== 'ENOENT') throw error;
 }
 if (indexHtml !== null) {
+  // Also covers custom hosting build commands. Public code only; a filesystem
+  // cache issue must not prevent the operational API from starting.
+  try{await preserveCurrentPublicAssets(distDir);}catch{console.warn('No se pudieron conservar los archivos públicos de esta versión.');}
   // Los archivos dentro de /assets llevan un hash en el nombre (los genera
   // Vite en el build) — si cambia el contenido, cambia el nombre. Por eso
   // son seguros para cachear "para siempre" en el navegador, evitando

@@ -31,6 +31,8 @@ public code preservation and the live/local browser checks. Disjoint write scope
   A bounded archive fallback is also available. No HTML, maps, private files,
   uploads, credentials, API responses or business rows enter this cache.
 - Missing assets return 404, not SPA HTML. Entry HTML is no-store under Node.
+- The runtime also archives its own code at boot: actual Hostinger uses a
+  custom build command, so the package build hook alone is not a guarantee.
 - Shared client report return links align with existing role permissions;
   financial and administrative destinations remain protected.
 
