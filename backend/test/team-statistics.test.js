@@ -10,7 +10,8 @@ test('historical delivery requires corroboration, exact task ID and Córdoba day
  assert.equal(recoverHistoricalEditingCandidates([{...row,audit_id:'100'}]).length,1);
  assert.equal(projectTeamStatistics(users,recovered,'2026-10')[1].records[0].date,'2026-10-20');
  for(const patch of [{event_id:null},{event_id:'22:2026-10-21T02:47:12.749Z:tarea_en_revision'},
-  {legacy_at:'2026-09-24T03:00:00Z'},{audit_at:'2026-10-20T02:00:00Z'},{audit_id:null},
+  {legacy_at:'2026-09-24T03:00:00Z'},{legacy_at:'2026-10-21T01:47:12.749Z'},
+  {audit_at:'2026-10-20T02:00:00Z'},{audit_id:null},
   {event_id:'21:2026-10-21T02:47:12.749Z:tarea_finalizada'}]){
   assert.deepEqual(recoverHistoricalEditingCandidates([{...row,...patch}]),[]);
  }

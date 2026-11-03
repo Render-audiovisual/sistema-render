@@ -10,7 +10,7 @@ function date(value){
  return day.format(new Date(value));
 }
 // Legacy dates alone are not evidence: the old trigger fell back to updated_at.
-// Require the independently recorded review event, the same task and local day.
+// Require the review event for the same task, local day and timestamp (1s tolerance).
 // This recovers a recorded review delivery, never approval or publication.
 export function recoverHistoricalEditingCandidates(rows){
  return rows.flatMap(row=>{
@@ -18,6 +18,7 @@ export function recoverHistoricalEditingCandidates(rows){
   if(!Number.isSafeInteger(row.task_id)||row.task_id<=0||!Number.isSafeInteger(auditId)||auditId<=0)return [];
   const match=typeof row.event_id==='string'&&row.event_id.match(/^(\d+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z):tarea_en_revision$/);
   if(!match||Number(match[1])!==row.task_id||!date(match[2])||date(row.legacy_at)!==date(match[2])
+    ||Math.abs(Date.parse(row.legacy_at)-Date.parse(match[2]))>1000
     ||!date(row.audit_at)||Date.parse(row.audit_at)<Date.parse(match[2]))return [];
   return [{person_id:9,key:row.key,task_id:row.task_id,title:row.title,client:row.client,date:match[2],priority:2,
    evidence:'historical_review',evidence_id:auditId}];
