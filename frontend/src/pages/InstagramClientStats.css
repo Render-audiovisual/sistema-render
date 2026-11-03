@@ -68,4 +68,4 @@
 .igs-detail-data h3{font-size:14px;margin:0 0 6px}
 @media(max-width:900px){.igs-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.igs-grid{grid-template-columns:1fr}.igs-detail-body{grid-template-columns:1fr}.igs-detail-media{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:start}.igs-detail-cover{grid-row:span 3}.igs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.igs-pub{grid-template-columns:44px minmax(0,1fr) 70px}.igs-pub-score{grid-column:2/-1}.igs-tile strong{font-size:22px}.igs-controls input,.igs-filters select{font-size:16px}}
-@media(prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .igs-page{--igs-grid:#262624;--igs-band:#25272b;--igs-ref:#5c5f66;--igs-s1:#3987e5;--igs-good:#4cc38a;--igs-bad:#ff7a6e;--igs-q1:#17283d;--igs-q2:#1d3d63;--igs-q3:#245a93;--igs-q4:#2f7bcc;--igs-q5:#5ea2ee}}
+:root[data-theme="dark"] .igs-page{--igs-grid:#262624;--igs-band:#25272b;--igs-ref:#5c5f66;--igs-s1:#3987e5;--igs-good:#4cc38a;--igs-bad:#ff7a6e;--igs-q1:#17283d;--igs-q2:#1d3d63;--igs-q3:#245a93;--igs-q4:#2f7bcc;--igs-q5:#5ea2ee}
