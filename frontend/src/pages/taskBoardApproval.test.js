@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
-import { canonicalTaskState, STATUSES } from '../features/render-os/constants.js';
+import { canonicalTaskState, STATUSES, BOARD_COLUMNS } from '../features/render-os/constants.js';
+import {isTaskUpdatePending} from '../features/render-os/utils/working-task-view.js';
 import { effectiveTaskFilterState, getTaskViewState } from '../features/render-os/utils/task-view-state.js';
 import { canUserMoveTaskToState, canUserMoveTask, canUserEditTask } from '../workspace-task-state.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
@@ -39,7 +40,7 @@ function fixture({ rows = [task], role = 'admin', transport = async () => ({ ...
   win.history = { state: {}, pushState(value, _title, url) { effects.push(['push', String(url)]); this.state = value; win.location = new URL(url, win.location); }, replaceState(value, _title, url) { effects.push(['replace', String(url)]); this.state = value; win.location = new URL(url, win.location); }, back() { effects.push(['back']); } };
   const captureRequest = () => { const observed = generation; return createCapturedRequest({ session, readSession: store.getSession, isActive: () => live && generation === observed,
     request: async (url, options = {}) => { requests.push({ url, options }); assert.ok(!options.method || options.method === 'GET', 'review navigation must never mutate HTTP'); return transport(url, options); } }); };
-  const deps = { captureRequest, window: win, AbortController, requestAppNavigation, isSessionFailure,
+  const deps = { BOARD_COLUMNS, isTaskUpdatePending, captureRequest, window: win, AbortController, requestAppNavigation, isSessionFailure,
     tasksLatestRef: { current: rows }, openRequestRef: { current: null },
     setSelectedId: value => { state.selected = value; effects.push(['selected', value]); },
     setReviewRequestedTaskId: value => { state.review = value; effects.push(['review', value]); },

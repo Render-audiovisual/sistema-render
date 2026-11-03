@@ -1255,8 +1255,12 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       void onApprove(task).catch(() => {}); return 'approval';
     }
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
+    if (compactBoard) {
+      const destination = BOARD_COLUMNS.find(column => column.states.includes(status));
+      if (destination) setMobileBoardColumn(destination.id);
+    }
     return 'move';
-  }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked]);
+  }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked, compactBoard]);
   const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setTaskStatus("all"); setReviewScope(''); };
   const changeTaskStatus = value => { if (value !== 'en_revision') setReviewScope(''); setTaskStatus(value); };
   const changeArchiveMode = value => { setReviewScope(''); setArchiveMode(value); };
