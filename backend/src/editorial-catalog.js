@@ -32,11 +32,20 @@ export const EDITORIAL_CATALOG_SQL = Object.freeze({
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const stale = () => Object.assign(new Error('La sesión cambió. Volvé a iniciar sesión.'), { status: 401 });
 
-export async function loadEditorialCatalogSnapshot(pool, auth, domain, { includeArchived = false } = {}) {
+export async function loadEditorialCatalogSnapshot(pool, auth, domain, { includeArchived = false, period } = {}) {
   if (!Object.hasOwn(EDITORIAL_CATALOG_SQL, domain) || typeof includeArchived !== 'boolean') throw new TypeError('Consulta editorial inválida.');
+  if(period !== undefined && (domain !== 'publicacion' || typeof period !== 'string' || !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(period)))
+    throw Object.assign(new Error('Período editorial inválido.'),{status:400});
   if (!positive(auth?.id) || !positive(auth?.session_version) || typeof auth?.rol !== 'string' || !auth.rol.trim()) throw stale();
   const observed = Object.freeze({ id: auth.id, rol: auth.rol, session_version: auth.session_version });
   const values = domain === 'publicacion' ? [includeArchived] : [];
+  let sql=EDITORIAL_CATALOG_SQL[domain];
+  if(period !== undefined){
+    const [year,month]=period.split('-').map(Number);
+    values.push(`${period}-01`,`${month===12?year+1:year}-${String(month===12?1:month+1).padStart(2,'0')}-01`);
+    sql=sql.replace("WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'",
+      "WHERE ($1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true') AND p.fecha_programada >= $2::date AND p.fecha_programada < $3::date");
+  }
   const db = await pool.connect();
   let discard;
   try {
@@ -45,7 +54,7 @@ export async function loadEditorialCatalogSnapshot(pool, auth, domain, { include
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const actor = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [observed.id])).rows[0];
     if (!actor || actor.id !== observed.id || actor.activo !== true || actor.rol !== observed.rol || actor.session_version !== observed.session_version) throw stale();
-    const result = await db.query(EDITORIAL_CATALOG_SQL[domain], values);
+    const result = await db.query(sql, values);
     const rows = (await annotateEditorialEvidence(db, domain, result.rows)).map(row => editorialOperationalDto(row, actor));
     await db.query('COMMIT');
     return rows;

@@ -67,10 +67,9 @@ test('external process dropped on approved card bubbles only into en_revision, n
   assert.equal(row.estado, 'en_progreso', 'No optimistic state mutation');
 });
 
-test('task header removes Feedback only; dedicated application route/sidebar remain in source', () => {
+test('task board does not reintroduce the retired Feedback section', () => {
   assert.doesNotMatch(owner.getText(file), /openFeedback|newFeedbackCount|refreshFeedbackCount|ros-feedback-link/);
-  // The dedicated feature remains owned by the application, not the task board.
   const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-  assert.match(app, /feedback/i);
+  assert.doesNotMatch(app, /FeedbackPage/);
   assert.match(source, /canonicalTaskState\(task.estado\) === 'aprobada'.*Aprobada/);
 });

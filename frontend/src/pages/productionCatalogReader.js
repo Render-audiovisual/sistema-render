@@ -8,7 +8,8 @@ export function createProductionCatalogReader({ now = Date.now, maxAge = 15000 }
       const cached = entries.get(url);
       if (cached && now() - cached.at < maxAge) return cached.value;
       const value = await request(url, options);
-      if (!options?.signal?.aborted && Array.isArray(value)) entries.set(url, { at: now(), value });
+      const valid=Array.isArray(value)||(url==='/api/producciones/catalogos'&&Array.isArray(value?.usuarios)&&Array.isArray(value?.clientes));
+      if (!options?.signal?.aborted && valid) entries.set(url, { at: now(), value });
       return value;
     },
   };

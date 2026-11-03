@@ -36,7 +36,7 @@ function fixture(initial = [visit(1)]) {
     apiRequest: async url => {
       if (url === '/api/producciones?mes=2026-10&cliente_id=7') return collection.promise;
       if (url === `/api/producciones/${id}`) return visit(3);
-      if (url === '/api/usuarios' || url === '/api/clientes') return [];
+      if (url === '/api/producciones/catalogos') return {usuarios:[],clientes:[]};
       assert.fail(`Unexpected request: ${url}`);
     },
     setVisits(value) { visits = typeof value === 'function' ? value(visits) : value; paints.push(['visits', visits]); },

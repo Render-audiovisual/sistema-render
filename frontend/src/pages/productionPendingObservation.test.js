@@ -29,7 +29,7 @@ function fixture(){
     month:'2026-10',clientId:'7',tab:'pending',contextError:'',readEpoch:{current:0},positiveId:value=>Number.isSafeInteger(value)&&value>0,
     apiRequest(url){requests.push(url);if(url==='/api/producciones?mes=2026-10&cliente_id=7')return collection.promise;
       if(url===productionReadUrl({month:'2026-10',clientId:'7',tab:'pending'}))return bank.promise;
-      if(url==='/api/usuarios'||url==='/api/clientes')return Promise.resolve([]);assert.fail(url);},
+      if(url==='/api/producciones/catalogos')return Promise.resolve({usuarios:[],clientes:[]});assert.fail(url);},
     setVisits(value){visits=typeof value==='function'?value(visits):value;writes.push('visits');},
     setSelected(value){selected=typeof value==='function'?value(selected):value;writes.push('selected');},
     setPending(value){pending=value;writes.push('pending');},setPendingPhotos(value){pendingPhotos=value;writes.push('photos');},
@@ -41,11 +41,11 @@ function fixture(){
     available:()=>evaluate(available.initializer,{...deps,bankObservation}),
     get pending(){return pending;},get photos(){return pendingPhotos;},get observation(){return bankObservation;}};
 }
-async function startBank(f){f.collection.resolve({visitas:[visit(2)]});await settle();assert.equal(f.requests.length,4);}
+async function startBank(f){f.collection.resolve({visitas:[visit(2)]});await settle();assert.equal(f.requests.length,3);}
 
 test('actual effect starts bank only after validating and observing the collection; admits independent bank membership',async()=>{
   const f=fixture(),cleanup=f.run();try{
-    assert.equal(f.requests.length,3);assert.equal(f.available(),false);
+    assert.equal(f.requests.length,2);assert.equal(f.available(),false);
     await startBank(f);const token=f.deps.visitObserver.current.token;
     // A bank photo need not appear in this month aggregate (lineage/all-period membership).
     f.bank.resolve({videos:[],fotos:[photo]});await settle();
@@ -71,7 +71,7 @@ test('rejected bank recovers through actual manual reload in the same instance a
     f.deps.observeProductionVisit(visit(3));const freshToken=observer.token;
     f.bank.resolve({videos:[],fotos:[photo]});await settle();
     assert.match(f.errors.at(-1),/cambiaron/);assert.equal(f.available(),false);
-    assert.equal(f.observation,null);assert.equal(f.requests.length,4);
+    assert.equal(f.observation,null);assert.equal(f.requests.length,3);
 
     const collection=deferred(),bank=deferred();let reload=0;
     const retry=nodes.find(node=>ts.isVariableDeclaration(node)&&node.name.getText(ast)==='retryPendingBank');
@@ -87,16 +87,16 @@ test('rejected bank recovers through actual manual reload in the same instance a
       if(url===productionReadUrl({month:'2026-10',clientId:'7',tab:'pending'})){f.requests.push(url);return bank.promise;}
       return priorRequest(url);
     };
-    cleanup=f.run();assert.equal(f.requests.length,7);
+    cleanup=f.run();assert.equal(f.requests.length,5);
     collection.resolve({visitas:[visit(3)]});await settle();
-    assert.equal(f.requests.length,8);assert.equal(observer.token,freshToken);
+    assert.equal(f.requests.length,6);assert.equal(observer.token,freshToken);
     assert.equal(f.observation,null);assert.equal(f.writes.includes('selected'),false);
     bank.resolve({videos:[],fotos:[]});await settle();
     assert.equal(f.available(),true);assert.deepEqual(f.pending,[]);assert.deepEqual(f.photos,[]);
     assert.deepEqual(f.observation,{epoch,token:freshToken});assert.equal(f.errors.at(-1),'');
     assert.equal(f.deps.visitObserver.current,observer);assert.equal(f.deps.readEpoch.current,epoch);
     assert.equal(f.draft,draft);assert.deepEqual(f.draft,{copy:'Unsaved exact text',revision:2});
-    await settle();assert.equal(f.requests.length,8,'No automatic retry requests');
+    await settle();assert.equal(f.requests.length,6,'No automatic retry requests');
   }finally{cleanup();}
 });
 
@@ -121,7 +121,7 @@ for(const bank of [{videos:[],fotos:null},{videos:[],fotos:[{...photo,cliente_id
 
 test('invalid collection never dispatches the sequential bank GET',async()=>{
   const f=fixture(),cleanup=f.run();try{f.collection.resolve({visitas:[{...visit(2),fotos:null}]});await settle();
-    assert.equal(f.requests.length,3);assert.equal(f.observation,null);assert.ok(f.errors.at(-1));
+    assert.equal(f.requests.length,2);assert.equal(f.observation,null);assert.ok(f.errors.at(-1));
   }finally{cleanup();}
 });
 

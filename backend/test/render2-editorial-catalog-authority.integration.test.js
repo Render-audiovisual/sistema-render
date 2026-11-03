@@ -62,6 +62,18 @@ test('QA156 editorial catalogs retain current authority and coherent piece/evide
   };
   const commonFields = ['id','cliente_id','cliente_nombre','estado','fecha_programada','idea','copy','material_referencia','aclaraciones','prioridad','responsable',
     'responsable_diseño','responsable_revisión','responsable_publicacion','fecha_diseño_entrega','fecha_revisión_aprobación','fecha_publicación_real','metadata','created_at','updated_at','publicacion_evidencia'];
+  await t.test('monthly card read equals the full catalog filtered by planned month, without writes',async()=>{
+    const [{period}]=await f.query("SELECT to_char(current_date,'YYYY-MM') AS period");
+    const before=await snapshot();
+    for(const token of [owner,staff]){
+      const all=checked(await http('/api/publicaciones',token));
+      const monthly=checked(await http(`/api/publicaciones?periodo=${period}`,token));
+      assert.deepEqual(monthly,all.filter(row=>row.fecha_programada?.startsWith(period)));
+      const empty=checked(await http('/api/publicaciones?periodo=2099-01',token));assert.deepEqual(empty,[]);
+      checked(await http('/api/publicaciones?periodo=2026-13',token),400);
+    }
+    assert.deepEqual(await snapshot(),before);
+  });
   const domainFields = {
     historia: ['responsable_planificacion','fecha_planificacion_inicio','fecha_diseño_inicio','fecha_revisión_inicio','notas_planificacion','notas_diseño','notas_revisión','notas_bloqueador'],
     publicacion: ['tipo','duracion_segundos','num_imagenes','responsable_edición','fecha_edición_entrega','origen_calendario','calendario_clave','fecha_bloqueada'],

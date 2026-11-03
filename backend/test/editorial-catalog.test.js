@@ -17,7 +17,7 @@ function fixture({ actor = current, rows = [row], failAt, rollbackFailure, lease
   const calls = [], released = []; let leases = 0;
   const failure = Error('simulated query failure');
   const db = { async query(sql, values) {
-    const stage = sql === BEGIN ? 'begin' : sql === ACTOR ? 'actor' : Object.values(EDITORIAL_CATALOG_SQL).includes(sql) ? 'catalog' : sql === 'COMMIT' ? 'commit' : sql === 'ROLLBACK' ? 'rollback' : 'evidence';
+    const stage = sql === BEGIN ? 'begin' : sql === ACTOR ? 'actor' : Object.values(EDITORIAL_CATALOG_SQL).includes(sql) || sql.includes('AND p.fecha_programada >= $2::date') ? 'catalog' : sql === 'COMMIT' ? 'commit' : sql === 'ROLLBACK' ? 'rollback' : 'evidence';
     calls.push({ sql, values, stage });
     if (stage === 'rollback' && rollbackFailure) throw rollbackFailure;
     if (stage === failAt) throw failure;
@@ -35,6 +35,19 @@ function fixture({ actor = current, rows = [row], failAt, rollbackFailure, lease
   return { pool, db, calls, released, failure, leases: () => leases };
 }
 
+test('month-bounded catalog preserves authority, archive grouping and publication evidence',async()=>{
+ for(const [period,end] of [['2026-11','2026-12-01'],['2026-12','2027-01-01']]){
+  const f=fixture();const result=await load(f.pool,auth,'publicacion',{period});
+  assert.deepEqual(f.calls.map(c=>c.stage),['begin','actor','catalog','evidence','commit']);
+  const query=f.calls.find(c=>c.stage==='catalog');
+  assert.deepEqual(query.values,[false,period+'-01',end]);
+  assert.match(query.sql,/WHERE \(\$1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'\) AND p.fecha_programada >= \$2::date AND p.fecha_programada < \$3::date/);
+  assert.equal(result[0].publicacion_evidencia.classification,'confirmada_manualmente');
+ }
+ for(const period of [null,'2026-13','2026-00',[],{},'2026-11 OR true']){
+  const f=fixture();await assert.rejects(load(f.pool,auth,'publicacion',{period}),{status:400});assert.equal(f.leases(),0);
+ }
+});
 test('constant SQL preserves explicit story/publication fields, archive predicates and stable ordering', () => {
   assert.equal(Object.isFrozen(EDITORIAL_CATALOG_SQL), true); assert.deepEqual(Object.keys(EDITORIAL_CATALOG_SQL), ['historia', 'publicacion']);
   const shared = ['id', 'cliente_id', 'estado', 'idea', 'copy', 'material_referencia', 'aclaraciones', 'prioridad', 'responsable', 'metadata', 'created_at', 'updated_at'];

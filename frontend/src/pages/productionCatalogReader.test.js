@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProductionCatalogReader } from './productionCatalogReader.js';
+test('combined production references reuse the bounded cache without accepting malformed objects',async()=>{
+ const reader=createProductionCatalogReader();let calls=0;
+ const request=async()=>{calls++;return{usuarios:[],clientes:[]};};
+ await reader.read(request,'/api/producciones/catalogos');await reader.read(request,'/api/producciones/catalogos');assert.equal(calls,1);
+ reader.clear();await reader.read(async()=>({usuarios:[]}),'/api/producciones/catalogos');
+ await reader.read(request,'/api/producciones/catalogos');assert.equal(calls,2);
+});
 
 test('reference lists reuse successful reads for 15s, then renew or explicitly clear', async () => {
   let time = 0, calls = 0;

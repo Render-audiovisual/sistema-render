@@ -3,6 +3,9 @@ import { confirmationDate, isConfirmedPublication } from '../shared/editorial/pu
 
 export const CALENDAR_KINDS = { all: 'Todos', tarea: 'Entregas de tareas', visita: 'Visitas', hito: 'Hitos de proyectos', programacion: 'Programación', publicacion: 'Publicaciones confirmadas' };
 export const CALENDAR_PAGE_LIMIT = 200;
+// Exact session-object identity; display-only, never reused as authority/data
+// for writes or as a replacement for the fresh read on a new page mount.
+const monthPreviews = new WeakMap();
 export const MAX_CALENDAR_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / CALENDAR_PAGE_LIMIT);
 const pageNumber = value => typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value) && String(Number(value)) === value && Number.isSafeInteger(Number(value)) && Number(value) <= MAX_CALENDAR_PAGE ? Number(value) : 0;
 const calendarSnapshot = value => typeof value === 'string' && value.length === 67 && /^c1:[a-f0-9]{64}$/.test(value);
@@ -213,7 +216,7 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
   const recentDays = new Map();
   let completeMonth=null;
   let monthFallback=null;
-  let previousMonth=null;
+  let previousMonth=monthly&&sesion&&typeof sesion==='object'?monthPreviews.get(sesion)||null:null;
   const guard = createEditorialSessionGuard(sesion, readSession, onInvalidated);
   return {
     // Display-only while renewing; never authorizes a write or suppresses the
@@ -251,7 +254,7 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
             const raw=await guard.request(request,url.pathname+url.search,{method:'GET',cache:'no-store',signal});
             if(stale())return undefined;
             const data=decodeCalendarMonth(raw,monthSelection);
-            if(data){completeMonth={key,data,at:now()};previousMonth=completeMonth;}else {monthFallback={key,at:now()};previousMonth=null;}
+            if(data){completeMonth={key,data,at:now()};previousMonth=completeMonth;monthPreviews.set(sesion,completeMonth);}else {monthFallback={key,at:now()};previousMonth=null;monthPreviews.delete(sesion);}
           }
           if(completeMonth)return calendarMonthDay(completeMonth.data,selection);
         }
@@ -282,6 +285,7 @@ export function createCalendarLoader({ request, sesion, readSession, onInvalidat
         completeMonth=null;
         monthFallback=null;
         previousMonth=null;
+        if(sesion&&typeof sesion==='object')monthPreviews.delete(sesion);
         if (error?.status === 409) throw new Error('El calendario cambió. Reintentá explícitamente para consultar una versión actualizada.');
         throw new Error('No se pudo cargar el calendario. Reintentá la consulta.');
       }

@@ -32,7 +32,6 @@ const lazyNamed = (loader, name) => {
   Section.retry=()=>{module.retry();current=React.lazy(module.load);};
   return Section;
 };
-const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
 const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
 const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
@@ -206,7 +205,7 @@ export function App() {
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/instagram", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", "/instagram", "/instagram/reporte", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
-    esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
+    esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -228,9 +227,6 @@ export function App() {
     }
     if (path === "/lista") {
       return <PersonalListsPage />;
-    }
-    if (path === "/bloc-notas" || path === "/feedback") {
-      return <FeedbackPage sesion={sesion} />;
     }
     if (path === "/clientes/operacion") {
       return <ClientOperationPage sesion={sesion} />;

@@ -11,7 +11,6 @@ const shared = new Map([
   ["/producciones", ["Producciones"]],
   ["/clientes", ["Clientes", "Clientes y objetivos"]],
   ["/lista", ["Lista", "Mi lista"]],
-  ["/feedback", ["Feedback"]],
   ["/instagram", ["Reportes de clientes"]],
   ["/perfil", ["Perfil"]],
 ]);
@@ -126,7 +125,7 @@ test("client management is an admin account link and never simultaneously active
 });
 
 test("legacy notes and story-calendar paths activate only their canonical destination", () => {
-  assert.equal(isNavigationActive("/feedback", "/bloc-notas"), true);
+  assert.equal(isNavigationActive("/feedback", "/bloc-notas"), false);
   assert.equal(isNavigationActive("/planificacion-historias", "/calendario-estructura"), true);
   for (const href of [...shared.keys(), ...adminOnly.keys()]) {
     if (href !== "/feedback") assert.equal(isNavigationActive(href, "/bloc-notas"), false);

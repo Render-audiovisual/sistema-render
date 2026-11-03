@@ -15,7 +15,6 @@ const WORK_AREAS = [
   { href: "/workspace/tareas", title: "Tareas" },
   { href: "/lista", title: "Mi lista" },
   { href: "/producciones", title: "Producciones" },
-  { href: "/feedback", title: "Feedback" },
   { href: "/calendario", title: "Calendario" },
 ];
 const SUMMARY = [

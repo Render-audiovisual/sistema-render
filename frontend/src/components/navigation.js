@@ -16,9 +16,6 @@ export function getNavigationGroups(role) {
       { href: "/clientes", label: "Clientes", icon: "clients" },
       { href: "/producciones", label: "Producciones", icon: "video" },
     ] },
-    { id: "content", label: "Contenido", links: [
-      { href: "/feedback", label: "Feedback", icon: "feedback" },
-    ] },
     { id: "resources", label: "Recursos y seguimiento", links: [
       { href: "/instagram", label: "Reportes de clientes", icon: "reports" },
       ...(admin ? [{ href: "/sueldos", label: "Finanzas", icon: "salary" }] : []),
@@ -34,7 +31,7 @@ export function getNavigationGroups(role) {
 export function isNavigationActive(href, pathname, search = "") {
   if (pathname === '/instagram/reporte' || pathname === '/reportes-historias' || pathname === '/equipo') return href === '/instagram';
   if (pathname === '/clientes/operacion') return href === '/clientes';
-  const aliases = { "/bloc-notas": "/feedback", "/calendario-estructura": "/planificacion-historias" };
+  const aliases = { "/calendario-estructura": "/planificacion-historias" };
   if (pathname === "/clientes" && ["/clientes", "/clientes?gestion=1"].includes(href)) {
     const management = new URLSearchParams(search).get("gestion") === "1";
     return href === (management ? "/clientes?gestion=1" : "/clientes");

@@ -507,8 +507,10 @@ export function ProductionsPage({sesion}) {
     const controller = new AbortController(),epoch=readEpoch.current;setLoading(true);setListAvailable(false);setError('');
     if(contextError){setLoading(false);return;}
     const current=()=>!controller.signal.aborted && epoch===readEpoch.current;
-    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),productionCatalog.current.reader.read(apiRequest,'/api/usuarios',{signal:controller.signal}),productionCatalog.current.reader.read(apiRequest,'/api/clientes',{signal:controller.signal})])
-      .then(async([data,people,brands])=>{if(current()){
+    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),productionCatalog.current.reader.read(apiRequest,'/api/producciones/catalogos',{signal:controller.signal})])
+      .then(async([data,catalog])=>{if(current()){
+        if(!Array.isArray(catalog?.usuarios)||!Array.isArray(catalog?.clientes))throw new Error('No se pudo verificar el catálogo de producción.');
+        const people=catalog.usuarios,brands=catalog.clientes;
         if(!Array.isArray(data?.visitas))throw new Error('No se pudo verificar la lista de producciones.');
         const verifiedVisits=data.visitas.map(visit=>assertProductionClient(verifiedProductionDraftVisit(visit),clientId));
         const observedVisits=verifiedVisits.map(observeProductionVisit);

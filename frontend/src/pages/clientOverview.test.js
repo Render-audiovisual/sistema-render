@@ -257,6 +257,13 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+test('monthly cards request only clients and publications for the chosen month',async()=>{
+ const calls=[],scope={current:()=>true,request:async(url)=>{calls.push(url);return url.startsWith('/api/clientes')?[{id:1}]:[{id:9}];}};
+ const loader=createClientOverviewLoader(()=>scope,{monthlyCards:true});
+ assert.deepEqual(await loader.load('2026-11'),{clientes:[{id:1}],historias:[],publicaciones:[{id:9}]});
+ assert.deepEqual(calls,['/api/clientes?periodo=2026-11','/api/publicaciones?periodo=2026-11']);
+ assert.equal(calls.some(url=>url==='/api/historias'||url==='/api/publicaciones'),false);
+});
 function transport() {
   const calls = [];
   let live = { token: 'qa-client-overview', usuario: { id: 7, nombre: 'QA owner', rol: 'admin' } };

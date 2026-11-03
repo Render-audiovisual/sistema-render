@@ -1505,7 +1505,7 @@ router.get("/publicaciones", async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   try {
     const incluirArchivadas = req.query.incluir_archivadas === "true";
-    res.json(await loadEditorialCatalogSnapshot(pool, req.auth, 'publicacion', { includeArchived: incluirArchivadas }));
+    res.json(await loadEditorialCatalogSnapshot(pool, req.auth, 'publicacion', { includeArchived: incluirArchivadas, period: req.query.periodo }));
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);

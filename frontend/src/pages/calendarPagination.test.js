@@ -53,6 +53,19 @@ test('renewal exposes a bounded display-only preview but still performs a fresh 
   assert.equal(loader.peek(filters).pagination.snapshot,nextSnapshot);
   time=150000;assert.equal(loader.peek(filters),undefined);loader.dispose();assert.equal(loader.peek(filters),undefined);
 });
+test('returning to calendar previews the exact same session but always refreshes from server',async()=>{
+ const filters={...selection,vista:'publicaciones'},current=legacySession();let calls=0;
+ const request=async()=>{calls++;return monthlyPublicationPayload(filters);};
+ const first=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>100,request});
+ await first.load(filters);first.dispose();
+ const second=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>200,request});
+ assert.ok(second.peek(filters));await second.load(filters);assert.equal(calls,2);second.dispose();
+ const clone={...current};
+ const other=createCalendarLoader({monthly:true,sesion:clone,readSession:()=>clone,now:()=>200,request});
+ assert.equal(other.peek(filters),undefined);other.dispose();
+ const expired=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>121000,request});
+ assert.equal(expired.peek(filters),undefined);expired.dispose();
+});
 test('a failed renewal clears its display-only preview rather than claiming success',async()=>{
   const filters={...selection,vista:'publicaciones'},current=legacySession();let time=0,calls=0;
   const loader=createCalendarLoader({monthly:true,sesion:current,readSession:()=>current,now:()=>time,request:async()=>{if(++calls===1)return monthlyPublicationPayload(filters);throw Error('offline');}});

@@ -122,7 +122,7 @@ function ClientMonthlyOverviewPage({sesion}) {
     if(!scope.current()||locationError)return;
     setLoading(true);setError('');setResult(null);
     try {
-      const loader=createClientOverviewLoader(capture);reader.current?.cancel();reader.current=loader;
+      const loader=createClientOverviewLoader(capture,{monthlyCards:true});reader.current?.cancel();reader.current=loader;
       const value=await loader.load(period);
       if(value&&scope.current()&&generation.current===held)setResult({period,...value});
     } catch(reason){if(scope.current()&&generation.current===held&&!isSessionFailure(reason))setError('No se pudo cargar el avance de clientes. Los datos no se modificaron.');}

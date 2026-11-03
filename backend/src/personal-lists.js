@@ -98,22 +98,29 @@ export function nestPersonalLists(lists, sections, items, blocks) {
   }));
 }
 
-async function loadPersonalLists(pool, userId) {
-  const [lists, sections, items, blocks] = await Promise.all([
-    pool.query(`SELECT id,titulo,emoji,posicion,version,created_at,updated_at
-      FROM listas_personales WHERE usuario_id=$1 ORDER BY posicion,id`, [userId]),
-    pool.query(`SELECT s.id,s.lista_id,s.titulo,s.posicion,s.version,s.created_at,s.updated_at
-      FROM lista_secciones s JOIN listas_personales l ON l.id=s.lista_id
-      WHERE l.usuario_id=$1 ORDER BY s.posicion,s.id`, [userId]),
-    pool.query(`SELECT i.id,i.seccion_id,i.texto,i.completado,i.posicion,i.version,i.created_at,i.updated_at
+export async function loadPersonalLists(pool, userId) {
+  // One statement/snapshot and one pool lease, rather than four cold leases.
+  // BIGINT IDs must be text before JSON conversion to retain exact identities.
+  const result = await pool.query(`WITH
+    own_lists AS MATERIALIZED (SELECT id,titulo,emoji,posicion,version,created_at,updated_at
+      FROM listas_personales WHERE usuario_id=$1),
+    lists AS (SELECT id::text,titulo,emoji,posicion,version,created_at,updated_at FROM own_lists),
+    sections AS (SELECT s.id::text,s.lista_id::text,s.titulo,s.posicion,s.version,s.created_at,s.updated_at
+      FROM lista_secciones s JOIN own_lists l ON l.id=s.lista_id),
+    items AS (SELECT i.id::text,i.seccion_id::text,i.texto,i.completado,i.posicion,i.version,i.created_at,i.updated_at
       FROM lista_items i JOIN lista_secciones s ON s.id=i.seccion_id
-      JOIN listas_personales l ON l.id=s.lista_id
-      WHERE l.usuario_id=$1 ORDER BY i.posicion,i.id`, [userId]),
-    pool.query(`SELECT b.id,b.lista_id,b.tipo,b.contenido,b.posicion,b.version,b.created_at,b.updated_at
-      FROM lista_bloques b JOIN listas_personales l ON l.id=b.lista_id
-      WHERE l.usuario_id=$1 ORDER BY b.posicion,b.id`, [userId]),
-  ]);
-  return nestPersonalLists(lists.rows, sections.rows, items.rows, blocks.rows);
+      JOIN own_lists l ON l.id=s.lista_id),
+    blocks AS (SELECT b.id::text,b.lista_id::text,b.tipo,b.contenido,b.posicion,b.version,b.created_at,b.updated_at
+      FROM lista_bloques b JOIN own_lists l ON l.id=b.lista_id)
+    SELECT COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.posicion,r.id::bigint) FROM lists r),'[]'::jsonb) AS lists,
+      COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.posicion,r.id::bigint) FROM sections r),'[]'::jsonb) AS sections,
+      COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.posicion,r.id::bigint) FROM items r),'[]'::jsonb) AS items,
+      COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.posicion,r.id::bigint) FROM blocks r),'[]'::jsonb) AS blocks`, [userId]);
+  const data=result.rows[0];
+  if(!data||['lists','sections','items','blocks'].some(key=>!Array.isArray(data[key])))throw new Error('Respuesta personal no válida.');
+  // Match pg's former root timestamptz -> Date -> JSON representation.
+  const rows=key=>data[key].map(row=>({...row,created_at:row.created_at==null?row.created_at:new Date(row.created_at),updated_at:row.updated_at==null?row.updated_at:new Date(row.updated_at)}));
+  return nestPersonalLists(rows('lists'), rows('sections'), rows('items'), rows('blocks'));
 }
 
 async function requireOwnedList(db, listId, userId) {

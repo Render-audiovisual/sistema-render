@@ -1,6 +1,6 @@
 // Shared editorial inputs only: task completion is never publication evidence.
 import { isSessionFailure } from '../shared/session/captured-request.js';
-export function createClientOverviewLoader(capture) {
+export function createClientOverviewLoader(capture, { monthlyCards = false } = {}) {
   let generation = 0;
   let controller = null;
   function cancel() {
@@ -18,15 +18,15 @@ export function createClientOverviewLoader(capture) {
     controller = active;
     const scope = capture();
     try {
-      const results = await Promise.all([
-        `/api/clientes?periodo=${period}`, "/api/historias", "/api/publicaciones",
-      ].map(async url => {
+      const urls = monthlyCards ? [`/api/clientes?periodo=${period}`, `/api/publicaciones?periodo=${period}`]
+        : [`/api/clientes?periodo=${period}`, "/api/historias", "/api/publicaciones"];
+      const results = await Promise.all(urls.map(async url => {
         const data = await scope.request(url, { signal: active.signal });
         if (!Array.isArray(data)) throw new Error("El servidor devolvió información inválida.");
         return data;
       }));
       if (current !== generation || active.signal.aborted || !scope.current()) return undefined;
-      return { clientes: results[0], historias: results[1], publicaciones: results[2] };
+      return { clientes: results[0], historias: monthlyCards ? [] : results[1], publicaciones: results[monthlyCards ? 1 : 2] };
     } catch (error) {
       if (current !== generation || active.signal.aborted || !scope.current()) return undefined;
       active.abort();

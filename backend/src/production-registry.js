@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {loadProductionCatalog} from './production-catalog.js';
 import { effectiveTaskStateSql } from './task-review-query.js';
 import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
 import { withProductionReadSnapshot } from './production-read-snapshot.js';
@@ -264,6 +265,10 @@ export function createProductionRegistryRouter({ express, pool }) {
       return next(error); }
   };
   const routeId = req => { if (!uuid(req.params.id)) throw fail('Visita inválida.'); return req.params.id; };
+  router.get('/catalogos',handle(async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    return res.json(await loadProductionCatalog(pool,req.auth));
+  }));
   registerProductionReconciliationRoutes(router,{pool,handle});
   registerProductionVisitResultRoutes(router,{pool,handle,lockVisit,checkRevision,bump,sourceTask});
   registerProductionEditorialRoutes(router,{pool,handle,transaction,readVisits,bump,lockVisit,activeClient});
