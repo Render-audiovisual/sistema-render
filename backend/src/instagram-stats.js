@@ -140,7 +140,8 @@ export function dailyTotals(rows, period) {
 const latest = alias => `LEFT JOIN LATERAL (SELECT * FROM instagram_media_metricas x WHERE x.ig_media_id=${alias}.ig_media_id
     ORDER BY x.medido_at DESC LIMIT 1) u ON TRUE`;
 
-const MEDIA_RANGE_SQL = `SELECT m.ig_media_id, m.ig_user_id, m.tipo, m.permalink, left(m.caption, 2200) AS caption, m.publicado_at,
+const MEDIA_RANGE_SQL = `SELECT m.ig_media_id, m.ig_user_id, m.cliente_id, m.tipo, m.permalink, left(m.caption, 2200) AS caption, m.publicado_at,
+    to_char(m.publicado_at AT TIME ZONE '${TIME_ZONE}','YYYY-MM') AS periodo,
     u.medido_at, u.alcance, u.vistas, u.likes, u.comentarios, u.guardados, u.compartidos, u.interacciones
   FROM instagram_media m ${latest('m')}
   WHERE m.ig_user_id = ANY($1::text[]) AND m.tipo IN ('reel','carrusel')
@@ -157,10 +158,11 @@ export function normalizeRow(row) {
     guardados: num(row.guardados), compartidos: num(row.compartidos), interacciones: interactions(row) };
 }
 
-export async function readClientStatsFromDb(db, { accountIds, period, covers = new Map() }) {
+export async function readClientStatsFromDb(db, { accountIds, period, covers = new Map(), selectMedia }) {
   const start = monthStart(period), end = monthStart(nextMonth(period)), prevStart = monthStart(prevMonth(period));
   const baseStart = new Date(+end - BASELINE_DAYS * DAY);
-  const rows = (await db.query(MEDIA_RANGE_SQL, [accountIds, new Date(Math.min(+prevStart, +baseStart)), end])).rows.map(normalizeRow);
+  const observations = (await db.query(MEDIA_RANGE_SQL, [accountIds, new Date(Math.min(+prevStart, +baseStart)), end])).rows;
+  const rows = (await selectMedia(observations)).map(normalizeRow);
   const inMonth = rows.filter(r => Date.parse(r.publicado_at) >= +start);
   const inPrev = rows.filter(r => Date.parse(r.publicado_at) >= +prevStart && Date.parse(r.publicado_at) < +start);
   const baseRows = rows.filter(r => Date.parse(r.publicado_at) >= +baseStart);

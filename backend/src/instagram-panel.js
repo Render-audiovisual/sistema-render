@@ -5,6 +5,7 @@ import { captureOwnerProfileWriteAuthority, checkCapturedOwnerProfileAuthority,
 import { linkInstagramAccountInTransaction } from './instagram-accounts.js';
 import { computeAlerts } from './instagram-alerts.js';
 import { readClientStatsFromDb, readMediaStatsFromDb } from './instagram-stats.js';
+import { selectReportMedia, readReportMembershipSnapshots } from './instagram-report-membership.js';
 import { num, interactions, responsablesDe } from './instagram-metrics.js';
 import { loadGoalClients } from './client-goals.js';
 import { instagramFeedGroupCounts, validateFeedCountSnapshot,feedCountsAreTrusted } from '../../shared/instagram-feed-counts.mjs';
@@ -428,20 +429,8 @@ async function readClientPiecesFromDb(db, key, period, evidence, includeCandidat
         covers.set(`${row.cliente_id}:${row.ig_user_id}:${item.id}:${item.kind}`, item.url);
     }
   }
-  const media = observed.filter(row => {
-    // Bind proof membership to this client/account/month, not merely an ID
-    // returned by a different account. Missing proof preserves observations.
-    if (!ids.includes(row.cliente_id) || row.periodo !== period) return false;
-    if (!accounts.some(a => a.ig_user_id === row.ig_user_id && a.cliente_id === row.cliente_id)) return false;
-    const input = inputs.find(c => c.id === row.cliente_id && c.instagram_account_id === row.ig_user_id);
-    const proof = input?.instagram_feed_snapshot;
-    if (!proof || Date.parse(proof.checkedAt) > +now) return true;
-    // A later publication was not in scope of this older observation. Keep it
-    // as an unaccredited profile observation; certified counts stay unchanged.
-    if (+new Date(row.publicado_at) > Date.parse(proof.checkedAt)) return true;
-    return proof.posts.some(post => post.id === row.ig_media_id && post.kind === row.tipo &&
-      Date.parse(post.publishedAt) === +new Date(row.publicado_at));
-  });
+  const media = selectReportMedia(observed.filter(row => row.periodo === period),
+    { clientIds: ids, accounts, snapshots, now });
   const candidates = includeCandidates ? (await db.query(`SELECT p.id, p.cliente_id, p.tipo, p.fecha_programada::text AS fecha, p.idea, p.estado
     FROM publicaciones p WHERE p.cliente_id = ANY($1::int[])
       AND p.fecha_programada >= $2::date AND p.fecha_programada < ($2::date + interval '1 month')
@@ -588,12 +577,19 @@ export async function readInstagramClientStats(pool, auth, clave, query) {
     const clients = (await db.query(CLIENTS_SQL)).rows.filter(c => c.clave === key);
     if (!clients.length) throw fail(404, 'Cliente no encontrado.');
     const ids = clients.map(c => c.id);
-    const accounts = (await db.query('SELECT ig_user_id, username FROM instagram_cuentas WHERE cliente_id = ANY($1::int[]) ORDER BY username', [ids])).rows;
+    const accounts = (await db.query('SELECT ig_user_id, username, cliente_id FROM instagram_cuentas WHERE cliente_id = ANY($1::int[]) ORDER BY username', [ids])).rows;
     const head = { clave: key, nombre: clients[0].grupo_nombre || clients[0].nombre, cuentas: accounts.map(a => a.username) };
     if (!accounts.length) return { ...head, periodo: period, sin_cuenta: true };
     const detail = await readClientPiecesFromDb(db, key, period, undefined, false);
     const covers = new Map(detail.piezas.filter(p => p.portada_url).map(p => [p.ig_media_id, normalizeCoverUrl(p.portada_url)]));
-    return { ...head, ...(await readClientStatsFromDb(db, { accountIds: accounts.map(a => a.ig_user_id), period, covers })) };
+    const accountIds = accounts.map(a => a.ig_user_id), now = new Date();
+    return { ...head, ...(await readClientStatsFromDb(db, { accountIds, period, covers,
+      selectMedia: async rows => {
+        const periods = [...new Set(rows.map(row => row.periodo))];
+        const snapshots = await readReportMembershipSnapshots(db, accountIds, periods);
+        return selectReportMedia(rows, { clientIds: ids, accounts, snapshots, now });
+      },
+    })) };
   });
 }
 

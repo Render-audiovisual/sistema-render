@@ -14,6 +14,39 @@ test.before(async () => {
     host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
   assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port: 55994, url, identity });
 });
+
+test('Litoral-style retained eighth reel is excluded by the same proof as the report; reads preserve all source rows', {skip:!enabled},async()=>{
+  const {AuthorityBoundPool}=await import('../src/database-authority-context.js');
+  const {readInstagramClientStats,readInstagramClientReport,readInstagramClientPieces}=await import('../src/instagram-panel.js');
+  const pool=new AuthorityBoundPool({connectionString:url,max:3});
+  try{
+    const auth=(await pool.query("SELECT id,rol,session_version FROM usuarios WHERE id=91001")).rows[0];
+    const client=(await pool.query("INSERT INTO clientes(nombre,cuota_reels,cuota_carruseles) VALUES('Litoral QA membership',8,2) RETURNING id")).rows[0].id;
+    await pool.query("INSERT INTO instagram_cuentas(ig_user_id,username,cliente_id) VALUES('5550011','litoral_qa_membership',$1)",[client]);
+    const posts=[];
+    for(let i=1;i<=8;i++){
+      const id=String(8000000+i),at=`2026-10-${String(i).padStart(2,'0')}T15:00:00.000Z`;
+      await pool.query("INSERT INTO instagram_media(ig_media_id,ig_user_id,cliente_id,tipo,permalink,caption,publicado_at) VALUES($1,'5550011',$2,'reel',$3,'QA',$4)",[id,client,`https://www.instagram.com/reel/QA${i}/`,at]);
+      for(const hour of [1,24])await pool.query('INSERT INTO instagram_media_metricas(ig_media_id,medido_at,alcance) VALUES($1,$2,100)',[id,new Date(Date.parse(at)+hour*3600000)]);
+      if(i<=7)posts.push({id,kind:'reel',publishedAt:at});
+    }
+    const proof={version:1,source:'meta_graph_feed',clientId:client,igUserId:'5550011',username:'litoral_qa_membership',period:'2026-10',windowStart:'2026-09-01T03:00:00.000Z',checkedAt:'2026-11-01T12:00:00.000Z',posts};
+    await pool.query("INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,resultado,detalles) VALUES('instagram_graph','system','render-worker','Fixture','feed_snapshot_v1','ok',$1::jsonb)",[JSON.stringify(proof)]);
+    const fingerprint=async()=>Promise.all(['instagram_media','instagram_media_metricas','integracion_auditoria','tareas','publicaciones'].map(async table=>
+      (await pool.query(`SELECT count(*)::int AS count,md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),'')) AS hash FROM ${table} t`)).rows[0]));
+    const before=await fingerprint(),key=`cliente-${client}`;
+    const stats=await readInstagramClientStats(pool,auth,key,{periodo:'2026-10'});
+    const report=await readInstagramClientReport(pool,auth,key,{periodo:'2026-10'});
+    const gallery=await readInstagramClientPieces(pool,auth,key,{periodo:'2026-10'});
+    assert.equal(stats.totales.actual.reels,7);assert.equal(stats.totales.actual.alcance,700);
+    assert.equal(stats.publicaciones.length,7);assert.equal(new Set(stats.publicaciones.map(p=>p.ig_media_id)).size,7);
+    assert.deepEqual(stats.publicaciones.map(p=>p.ig_media_id).sort(),gallery.piezas.map(p=>p.ig_media_id).sort());
+    assert.equal(report.format_counts.reels,7);
+    assert.equal(stats.diario.reduce((n,d)=>n+d.piezas,0),7);assert.equal(stats.promedio.reel.piezas,7);
+    assert.deepEqual(await fingerprint(),before);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM instagram_media WHERE ig_user_id='5550011'")).rows[0].n,8);
+  }finally{await pool.end();}
+});
 test.after(async () => {
   await fixture?.cleanup();
   if (fixture) await assert.rejects(access(fixture.root), { code: 'ENOENT' });
