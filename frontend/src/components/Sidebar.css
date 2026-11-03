@@ -120,3 +120,9 @@
   .sidebar :is(.sidebar-link, .sidebar-drawer, .sidebar-backdrop) { transition: none; }
 }
 .sidebar .user-owner-profile{font-size:11px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
+/* Etapa 3 · sección activa con barrita de color y caja de usuario siempre legible */
+.sidebar .sidebar-link { position: relative; }
+.sidebar .sidebar-link.active { border-color: transparent; color: var(--render-ink); }
+.sidebar .sidebar-link.active::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--render-accent); }
+.sidebar .account-trigger .user-name { color: var(--render-ink); }
+.sidebar .account-trigger :is(.user-owner-profile, .user-role) { color: var(--render-sidebar-muted); }

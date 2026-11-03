@@ -8,7 +8,7 @@ import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
 import { HomeTeamWorkload } from "../components/HomeTeamWorkload.jsx";
 import { HomeEditorialControl } from "../components/HomeEditorialControl.jsx";
-import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalTaskHref, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
+import { createPersonalHomeLoader, homeDate, homeDeadline, homeOverdueAge, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalTaskHref, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
 const WORK_AREAS = [
@@ -27,19 +27,25 @@ function ListCount({ shown, total }) {
 function HomeLink({ href, onNavigate, children, ...props }) {
   return <a href={href} onClick={(event) => personalHomeNavigate(event, href, onNavigate)} {...props}>{children}</a>;
 }
-function TaskRows({ items, today, onNavigate }) {
-  return <ol className="qh-task-list">{items.map((task) => {
+function TaskRows({ items, today, onNavigate, overdueTotal = 0 }) {
+  const firstOverdue = overdueTotal > 0 ? items.findIndex(task => task.fecha_vencimiento && task.fecha_vencimiento < today) : -1;
+  return <ol className="qh-task-list">{items.map((task, index) => {
     const overdue = task.fecha_vencimiento && task.fecha_vencimiento < today;
+    const age = overdue && overdueTotal > 0 ? homeOverdueAge(task.fecha_vencimiento, today) : null;
     const priority = ({ alta: "Alta", media: "Media", baja: "Baja" })[task.prioridad] || task.prioridad;
-    return <li key={task.id}>
+    return <React.Fragment key={task.id}>
+    {index === firstOverdue && <li className="qh-group-head" aria-hidden="true"><span>Vencidas · {overdueTotal}</span></li>}
+    <li>
       <HomeLink href={task.href} onNavigate={onNavigate} className="qh-task-row">
         <span className="qh-row-main"><strong>{task.titulo}</strong>
           <span className="qh-row-meta">{task.cliente?.nombre || "Sin cliente"}<span aria-hidden="true"> · </span>{homeStateLabel(task.estado)}<span aria-hidden="true"> · </span>Prioridad {priority.toLowerCase()}</span>
         </span>
-        <span className={`qh-deadline${overdue ? " is-overdue" : ""}`}>{homeDeadline(task.fecha_vencimiento, today)}</span>
+        {age ? <span className="qh-deadline is-overdue is-age" title={homeDeadline(task.fecha_vencimiento, today)}>{age}<span className="qh-sr-only"> · {homeDeadline(task.fecha_vencimiento, today)}</span></span>
+          : <span className={`qh-deadline${overdue ? " is-overdue" : ""}`}>{homeDeadline(task.fecha_vencimiento, today)}</span>}
         <span className="qh-row-arrow" aria-hidden="true">↗</span>
       </HomeLink>
-    </li>;
+    </li>
+    </React.Fragment>;
   })}</ol>;
 }
 
@@ -117,9 +123,12 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
 
       {data && <>
         <dl className="qh-summary" aria-label="Resumen de tus tareas">
-          {SUMMARY.map(([key, label]) => <div key={key} className={key === "overdue" && data.summary[key] ? "is-overdue" : ""}>
-            <dt>{label}</dt><dd>{data.summary[key]}</dd>
-          </div>)}
+          {SUMMARY.map(([key, label]) => {
+            const href = key === "awaiting_review" ? homeReviewTaskHref("personal") : personalTaskHref(userId);
+            return <div key={key} className={key === "overdue" && data.summary[key] ? "is-overdue" : ""}>
+              <dt>{label}</dt><dd>{href ? <HomeLink className="qh-summary-link" href={href} onNavigate={onNavigate} aria-label={`${label}: ${data.summary[key]}. Ver en Tareas`}>{data.summary[key]}</HomeLink> : data.summary[key]}</dd>
+            </div>;
+          })}
         </dl>
         <div className="qh-columns">
           <div className="qh-primary-column">
@@ -127,7 +136,7 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
             <section className="qh-section" aria-labelledby="qh-work-title">
               <header className="qh-section-heading"><div><h2 id="qh-work-title">Tu próximo trabajo</h2><p>Primero lo vencido, después lo que sigue.</p></div>
                 <ListCount shown={data.tasks.length} total={data.summary.open}/></header>
-              {data.tasks.length ? <TaskRows items={data.tasks} today={data.today} onNavigate={onNavigate}/> :
+              {data.tasks.length ? <TaskRows items={data.tasks} today={data.today} onNavigate={onNavigate} overdueTotal={data.summary.overdue}/> :
                 <p className="qh-empty">No tenés tareas abiertas asignadas.</p>}
               {personalTaskHref(userId) && <HomeLink className="qh-section-link" href={personalTaskHref(userId)} onNavigate={onNavigate}>Ver todas mis tareas <span aria-hidden="true">→</span></HomeLink>}
               {(role === 'produccion' || data.monthly_progress?.production?.total > 0) && personalProductionTaskHref(userId) &&

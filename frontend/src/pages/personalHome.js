@@ -99,6 +99,13 @@ export function homeDeadline(value, today) {
   if (!value) return "Sin fecha";
   return value === today ? "Hoy" : `${value < today ? "Venció el " : ""}${homeDate(value)}`;
 }
+// "hace 3 días": más fácil de leer que una fecha cuando hay muchas vencidas.
+export function homeOverdueAge(value, today) {
+  if (!value || !today || value >= today) return null;
+  const days = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${value}T12:00:00Z`)) / 86400000);
+  if (!Number.isFinite(days) || days < 1) return null;
+  return days === 1 ? "hace 1 día" : `hace ${days} días`;
+}
 export function personalHomeNavigate(event, href, onNavigate) {
   if (!onNavigate || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
