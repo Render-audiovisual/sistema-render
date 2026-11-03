@@ -12,7 +12,7 @@ const fmt = v => (typeof v === 'number' && Number.isFinite(v) ? nf.format(v) : '
 const times = v => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1).replace('.', ',')}×` : '—');
 const TIPO = { reel: 'Reel', carrusel: 'Carrusel' };
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const METRIC_LABELS = [['alcance', 'Alcance'], ['vistas', 'Reproducciones'], ['interacciones', 'Interacciones'], ['likes', 'Me gusta'],
+const METRIC_LABELS = [['vistas', 'Visualizaciones'], ['alcance', 'Alcance'], ['interacciones', 'Interacciones'], ['likes', 'Me gusta'],
   ['comentarios', 'Comentarios'], ['guardados', 'Guardados'], ['compartidos', 'Compartidos']];
 const validClient = v => typeof v === 'string' && /^(cliente|grupo)-[1-9]\d{0,9}$/.test(v);
 const validPeriod = v => typeof v === 'string' && /^20\d\d-(0[1-9]|1[0-2])$/.test(v);
@@ -39,6 +39,9 @@ export function periodLabel(period) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 const shortDate = iso => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Cordoba' }).format(new Date(iso));
+export function measurementLabel(iso) {
+  return typeof iso === 'string' && Number.isFinite(Date.parse(iso)) ? `Actualizado ${shortDate(iso)}` : 'Sin fecha de medición';
+}
 export function sortPublications(rows, tipo, orden) {
   const list = rows.filter(r => tipo === 'all' || r.tipo === tipo);
   const key = { fecha: r => Date.parse(r.publicado_at), puntaje: r => r.puntaje ?? -1, alcance: r => r.metricas.alcance ?? -1 }[orden];
@@ -146,6 +149,7 @@ function PublicationDetail({ capture, id, cover, bind, onClose }) {
       <div className="igs-detail-media">
         <div className="igs-detail-cover">{img ? <img src={img} alt="" width="240" height="300" loading="lazy" referrerPolicy="no-referrer" /> : <span>{TIPO[d.tipo]}</span>}</div>
         <p className="igs-detail-meta">{TIPO[d.tipo]} · {shortDate(d.publicado_at)}</p>
+        <p className="igs-sub">{measurementLabel(d.medido_at)}</p>
         {href && <a href={href} target="_blank" rel="noopener noreferrer" className="igs-link">Ver en Instagram ↗</a>}
         {d.caption && <details className="igs-copy"><summary>Ver copy</summary><p>{d.caption}</p></details>}
       </div>
@@ -206,7 +210,7 @@ function StatsContent({ sesion, params, navigate }) {
       <header className="igs-head"><h1>{d.nombre} · Estadísticas</h1><p>{d.cuentas.map(c => `@${c}`).join(' · ') || 'Sin cuenta vinculada'} · {periodLabel(d.periodo)}</p></header>
       {d.sin_cuenta ? <p className="igs-state">Este cliente todavía no tiene una cuenta de Instagram conectada.</p> : <>
         <section className="igs-tiles" aria-label="Resumen del mes">
-          <Tile label="Alcance" value={a.alcance} previous={p.alcance} spark={d.diario.map(x => x.alcance)} />
+          <Tile label="Visualizaciones" value={a.vistas} previous={p.vistas} />
           <Tile label="Interacciones" value={a.interacciones} previous={p.interacciones} spark={d.diario.map(x => x.interacciones)} />
           <Tile label="Publicaciones" value={a.piezas} previous={p.piezas} note={`${a.reels} reels · ${a.carruseles} carruseles`} />
           <Tile label="Seguidores ganados en el mes" value={d.seguidores.crecimiento} previous={d.seguidores.anterior}
@@ -224,8 +228,8 @@ function StatsContent({ sesion, params, navigate }) {
           {rows.length ? <ul className="igs-pubs">{rows.map(r => { const img = mediaCoverUrl(r.portada_url); const pct = r.puntaje === null ? 0 : Math.min(r.puntaje / maxScore, 1) * 100;
             return <li key={r.ig_media_id}><button type="button" className={`igs-pub${params.pub === r.ig_media_id ? ' is-active' : ''}`} onClick={() => { navigate({ ...params, pub: r.ig_media_id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
               <span className="igs-thumb">{img ? <img src={img} alt="" width="48" height="60" loading="lazy" referrerPolicy="no-referrer" /> : TIPO[r.tipo]?.[0]}</span>
-              <span className="igs-pub-text"><b>{r.caption?.trim() || `${TIPO[r.tipo]} sin copy`}</b><small>{TIPO[r.tipo]} · {shortDate(r.publicado_at)}</small></span>
-              <span className="igs-pub-num"><b>{fmt(r.metricas.alcance)}</b><small>alcance</small></span>
+              <span className="igs-pub-text"><b>{r.caption?.trim() || `${TIPO[r.tipo]} sin copy`}</b><small>{TIPO[r.tipo]} · {shortDate(r.publicado_at)}</small><small>{measurementLabel(r.medido_at)}</small></span>
+              <span className="igs-pub-num"><b>{fmt(r.metricas.vistas)}</b><small>vistas</small></span>
               <span className="igs-pub-score"><span className="igs-scorebar"><i className={r.puntaje >= 1 ? '' : 'is-low'} style={{ width: `${pct}%` }} /><em style={{ left: `${(1 / maxScore) * 100}%` }} /></span>
                 <b className={r.puntaje === null ? '' : r.puntaje >= 1 ? 'is-up' : 'is-down'}>{times(r.puntaje)}</b></span>
             </button></li>; })}</ul> : <p className="igs-empty">No hay {tipo === 'reel' ? 'reels' : tipo === 'carrusel' ? 'carruseles' : 'publicaciones'} en este mes.</p>}

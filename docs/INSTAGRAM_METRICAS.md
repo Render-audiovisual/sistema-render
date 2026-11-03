@@ -19,9 +19,11 @@ ni objetivos: escribe únicamente en las tablas `instagram_*` (migración 094).
    Guarda seguidores del día. Una cuenta que deja de aparecer queda `activa=false`
    (una respuesta vacía de Meta no desactiva nada).
 2. Solo sincroniza cuentas **vinculadas explícitamente** a un cliente activo.
-3. Trae publicaciones de los últimos 35 días (90 la primera vez).
-4. Mide cada pieza según su antigüedad: <2 días cada hora, <7 días cada 6 h,
-   <35 días cada 24 h. Después queda la última medición.
+3. Trae publicaciones de los últimos 90 días en cada corrida.
+4. Mide cada pieza según su antigüedad: <7 días cada hora, <35 días cada 3 h,
+   y hasta 90 días cada 24 h. Una pieza sin medición se mide al descubrirla.
+   La cadencia depende de que corra el ejecutor existente y de la respuesta de Meta;
+   no implica actualización en tiempo real. Fuera de los 90 días se conserva el historial.
 5. Vincula cada post con la pieza del sistema: mismo cliente (o grupo de feed),
    misma fecha de Córdoba y tipo (`reel`↔`reel/video`, `carrusel`↔`carrusel`,
    `imagen`↔`flyer`). Un único candidato → `automatico`; varios → `ambiguo`;
@@ -31,6 +33,12 @@ ni objetivos: escribe únicamente en las tablas `instagram_*` (migración 094).
 
 Errores: token inválido o límite de Meta cortan la corrida (sin checkpoint, se
 reintenta en la próxima hora). Un error de permisos en una cuenta no frena las demás.
+
+En Estadísticas, la cifra principal es `views` (visualizaciones), no `reach`
+(alcance). El detalle conserva ambas por separado y muestra el `medido_at` real.
+Una métrica ausente se muestra como «—», nunca se sustituye por alcance ni se
+ajusta para igualar un contador público redondeado. Los totales suman cada métrica
+disponible independientemente de que Meta haya informado alcance.
 
 ## Configuración (Fase 0)
 

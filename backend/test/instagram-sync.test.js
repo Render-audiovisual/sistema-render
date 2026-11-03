@@ -7,18 +7,21 @@ import { FEED_SNAPSHOT_ACTION, validateFeedCountSnapshot } from '../../shared/in
 const H = 3600000, D = 24 * H;
 const now = new Date('2026-10-31T15:00:00Z');
 
-test('refresh cadence slows down as pieces age and stops after the sync window', () => {
+test('metrics refresh hourly in the first week, then every three hours and daily through the complete 90-day inventory', () => {
   assert.equal(metricsRefreshInterval(H), H);
-  assert.equal(metricsRefreshInterval(3 * D), 6 * H);
-  assert.equal(metricsRefreshInterval(20 * D), D);
-  assert.equal(metricsRefreshInterval(40 * D), null);
+  assert.equal(metricsRefreshInterval(3 * D), H);
+  assert.equal(metricsRefreshInterval(20 * D), 3 * H);
+  assert.equal(metricsRefreshInterval(40 * D), D);
+  assert.equal(metricsRefreshInterval(90 * D), D);
+  assert.equal(metricsRefreshInterval(91 * D), null);
 });
 
 test('needsMetrics measures new pieces and respects the interval', () => {
   const at = ms => new Date(now - ms);
   assert.equal(needsMetrics({ publishedAt: at(40 * D), lastMeasuredAt: null }, now), true);
-  assert.equal(needsMetrics({ publishedAt: at(40 * D), lastMeasuredAt: at(30 * D) }, now), false);
-  assert.equal(needsMetrics({ publishedAt: at(3 * D), lastMeasuredAt: at(2 * H) }, now), false);
+  assert.equal(needsMetrics({ publishedAt: at(40 * D), lastMeasuredAt: at(30 * D) }, now), true);
+  assert.equal(needsMetrics({ publishedAt: at(3 * D), lastMeasuredAt: at(30 * 60000) }, now), false);
+  assert.equal(needsMetrics({ publishedAt: at(3 * D), lastMeasuredAt: at(2 * H) }, now), true);
   assert.equal(needsMetrics({ publishedAt: at(3 * D), lastMeasuredAt: at(6 * H) }, now), true);
   assert.equal(needsMetrics({ publishedAt: at(5 * H), lastMeasuredAt: at(58 * 60000) }, now), true);
 });
@@ -60,6 +63,17 @@ function graphDouble({ media = [], listMedia, mediaInsights, mediaCover } = {}) 
     listMedia: listMedia ?? (async () => media), mediaInsights: mediaInsights ?? (async () => ({ alcance: 100 })), mediaCover };
 }
 const proofs = h => h.committed.filter(a => a.action === FEED_SNAPSHOT_ACTION);
+
+test('older reels inside the inventory are remeasured instead of freezing their original views',async()=>{
+  const old=piece('501',{publishedAt:new Date(now-40*D)});
+  const h=harness({existing:[{ig_media_id:old.igMediaId,publicado_at:old.publishedAt,ultima:new Date(now-2*D)}]});
+  let reads=0;
+  const result=await runInstagramSync(h.pool,{now,env:{},graph:graphDouble({listMedia:async()=>[old],mediaInsights:async()=>{reads++;return{alcance:2200000,vistas:3300000};}})});
+  assert.equal(reads,1);assert.equal(result.metricas,1);
+  const stored=h.calls.find(call=>call.sql.includes('INSERT INTO instagram_media_metricas'));
+  assert.equal(stored.params[3],3300000);
+  assert.equal(h.calls.some(call=>/(?:INSERT INTO|UPDATE|DELETE FROM) (?:tareas|publicaciones|cliente_objetivos)/i.test(call.sql)),false);
+});
 
 test('every sync reads exact 90 days despite existing media; snapshots share boundaries and account transaction', async () => {
   const h = harness({ existing: [{ ig_media_id: '501', publicado_at: piece().publishedAt, ultima: now }] });

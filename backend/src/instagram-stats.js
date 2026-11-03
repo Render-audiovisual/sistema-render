@@ -117,7 +117,10 @@ export function followerGrowth(series, period) {
 
 export function monthTotals(rows) {
   const measured = rows.filter(r => finite(r.alcance));
-  const sum = key => measured.reduce((a, r) => a + (finite(r[key]) ? r[key] : 0), 0);
+  const sum = key => {
+    const values = rows.map(row => row[key]).filter(finite);
+    return values.length ? values.reduce((a,b) => a+b,0) : rows.length ? null : 0;
+  };
   return { piezas: rows.length, reels: rows.filter(r => r.tipo === 'reel').length, carruseles: rows.filter(r => r.tipo === 'carrusel').length,
     medidas: measured.length, alcance: sum('alcance'), vistas: sum('vistas'), interacciones: sum('interacciones'),
     guardados: sum('guardados'), compartidos: sum('compartidos') };
@@ -179,7 +182,7 @@ export async function readClientStatsFromDb(db, { accountIds, period, covers = n
     promedio: { dias: BASELINE_DAYS, ...base },
     publicaciones: inMonth.sort((a, b) => Date.parse(b.publicado_at) - Date.parse(a.publicado_at)).map(row => ({
       ig_media_id: row.ig_media_id, tipo: row.tipo, permalink: row.permalink, caption: row.caption.slice(0, 280),
-      publicado_at: row.publicado_at, portada_url: covers.get(row.ig_media_id) ?? null,
+      publicado_at: row.publicado_at, medido_at: row.medido_at, portada_url: covers.get(row.ig_media_id) ?? null,
       metricas: Object.fromEntries(METRICS.map(k => [k, row[k]])),
       puntaje: score(row.alcance, base[row.tipo]?.alcance),
     })),

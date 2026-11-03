@@ -48,3 +48,13 @@ test('followers chart needs two days and labels the month start', () => {
   assert.match(html, /Inicio del mes/); assert.match(html, /class="igs-line"/);
   assert.match(renderToStaticMarkup(React.createElement(api.FollowersChart, { serie: serie.slice(0, 1), period: '2026-10', bind })), /Todavía no hay suficientes días/);
 });
+
+test('views lead publication rows and the monthly summary; reach remains separately labelled',()=>{
+  assert.match(source,/<Tile label="Visualizaciones" value=\{a.vistas\}/);
+  assert.match(source,/fmt\(r.metricas.vistas\).*<small>vistas<\/small>/);
+  assert.match(source,/\['vistas', 'Visualizaciones'\], \['alcance', 'Alcance'\]/);
+  assert.match(api.measurementLabel('2026-11-03T18:00:00.000Z'),/^Actualizado/);
+  assert.equal(api.measurementLabel(null),'Sin fecha de medición');
+  assert.equal(api.measurementLabel('bad'),'Sin fecha de medición');
+  assert.match(source,/measurementLabel\(d.medido_at\)/);assert.match(source,/measurementLabel\(r.medido_at\)/);
+});

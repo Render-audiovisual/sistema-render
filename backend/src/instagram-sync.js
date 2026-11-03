@@ -15,9 +15,9 @@ export const COVER_REQUEST_LIMIT = 20;
 
 // Cada cuánto se vuelve a medir una pieza según su antigüedad.
 export function metricsRefreshInterval(age) {
-  if (age < 2 * DAY) return HOUR;
-  if (age < 7 * DAY) return 6 * HOUR;
-  if (age < SYNC_WINDOW_DAYS * DAY) return DAY;
+  if (age < 7 * DAY) return HOUR;
+  if (age < SYNC_WINDOW_DAYS * DAY) return 3 * HOUR;
+  if (age <= BACKFILL_DAYS * DAY) return DAY;
   return null;
 }
 

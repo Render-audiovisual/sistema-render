@@ -57,3 +57,11 @@ test('month and daily totals ignore unmeasured pieces in sums', () => {
   const d = dailyTotals(rows, '2026-10');
   assert.equal(d.length, 31); assert.deepEqual(d[1], { dia: 2, alcance: 100, interacciones: 10, piezas: 2 });
 });
+
+test('views are counted independently of reach, and missing measurements are never invented zeros',()=>{
+  const totals=monthTotals([{tipo:'reel',alcance:null,vistas:3300000,interacciones:null}]);
+  assert.equal(totals.vistas,3300000);assert.equal(totals.alcance,null);assert.equal(totals.interacciones,null);
+  assert.equal(monthTotals([{tipo:'reel',alcance:10,vistas:null}]).vistas,null);
+  assert.equal(monthTotals([{tipo:'reel',vistas:0}]).vistas,0);
+  assert.equal(monthTotals([]).vistas,0);
+});

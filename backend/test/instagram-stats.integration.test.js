@@ -82,6 +82,7 @@ test('client and per-publication statistics: totals, follower growth, score, cur
     assert.equal(stats.totales.anterior.piezas, 3); assert.equal(stats.totales.anterior.alcance, 4500);
     assert.equal(stats.seguidores.crecimiento, 120); assert.equal(stats.seguidores.fin, 1120);
     const reel = stats.publicaciones.find(p => p.ig_media_id === '7000004');
+    assert.equal(reel.medido_at,'2026-10-18T23:00:00.000Z');
     assert.equal(stats.promedio.reel.alcance, 2250); // (1200+1800+1500+4500)/4
     assert.equal(reel.puntaje, 2);
     assert.equal(stats.horarios.length, 4);
