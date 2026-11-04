@@ -69,6 +69,12 @@ export function buildTaskPageUrl(options = {}) {
   return `/api/tareas?${params.toString()}`;
 }
 
+// A board needs a broad page across all states, not only the first 50 oldest
+// tasks. Preserve server authorization, working-set rules and pagination.
+export function apiWorkspaceTaskPage(options = {}, requestOptions) {
+  return apiTaskPage({ ...options, limit: 500, workOnly: true }, requestOptions);
+}
+
 export async function apiTaskPage(options = {}, requestOptions) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const response = await fetch(buildTaskPageUrl(settings), requestOptions);

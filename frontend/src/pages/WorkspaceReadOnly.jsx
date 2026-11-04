@@ -7,7 +7,7 @@ import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
 import { AREAS, WORKING_BOARD_COLUMNS as BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskCompleted } from "../features/render-os/constants.js";
-import { apiJson, apiRequest, apiTaskById, apiTaskPage, apiSubtasks } from "../features/render-os/services/render-os-api.js";
+import { apiJson, apiRequest, apiTaskById, apiWorkspaceTaskPage, apiSubtasks } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { effectiveTaskFilterState, getTasksEmptyMessage, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, writeTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
@@ -1168,7 +1168,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     : BOARD_COLUMNS, [compactBoard, mobileBoardColumn]);
   useTaskBoardMotion(boardRef, visible, view);
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
-  const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all" || taskStatus !== "all" || overdue;
+  const hasFilters = Boolean(query.trim() || reviewScope) || responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all" || taskStatus !== "all" || overdue;
   const activeFilterCount = [responsible, client, sector, priority, area, taskStatus].filter((value) => value !== "all").length + Number(Boolean(reviewScope)) + Number(overdue);
   const emptyMessage = getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode });
   const incorporateRelatedTasks = useCallback((items) => {
@@ -1268,7 +1268,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     }
     return 'move';
   }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked, compactBoard]);
-  const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setOverdue(false); setTaskStatus("all"); setReviewScope(''); };
+  const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setOverdue(false); setTaskStatus("all"); setReviewScope(''); setMobileBoardColumn('pendiente'); };
   const changeTaskStatus = value => { if (value !== 'en_revision') setReviewScope(''); setTaskStatus(value); };
   const changeArchiveMode = value => { setReviewScope(''); setArchiveMode(value); };
   const exitReviewQueue = () => { setReviewScope(''); setTaskStatus('all'); };
@@ -1493,7 +1493,7 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
     }
     const timer = window.setTimeout(() => {
       if (!guard.current()) return;
-      apiTaskPage({ offset: 0, workOnly: true, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope }, guard.options())
+      apiWorkspaceTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope }, guard.options())
         .then(async (taskPage) => {
           if (!active || !guard.current() || generation !== taskQueryGenerationRef.current || orderContextRef.current !== orderObservation) return;
           let items = taskPage.items;
@@ -1558,7 +1558,7 @@ export function WorkspaceReadOnlyPage({ sesion, detailOnlyTaskId = null, onClose
     if (effectiveSort === 'manual' && manualPage?.observation !== orderObservation) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage({ workOnly: true, offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope, ...(reviewScope ? {expectedReviewSnapshot:reviewPage.snapshot} : {}), ...(effectiveSort === 'manual' ? {expectedSnapshot:manualPage.snapshot} : {}) }, guard.options());
+      const page = await apiWorkspaceTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope, ...(reviewScope ? {expectedReviewSnapshot:reviewPage.snapshot} : {}), ...(effectiveSort === 'manual' ? {expectedSnapshot:manualPage.snapshot} : {}) }, guard.options());
       guard.assertCurrent();
       if (generation !== taskQueryGenerationRef.current) return;
       if (orderContextRef.current !== orderObservation) return;
