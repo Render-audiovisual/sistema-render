@@ -21,6 +21,7 @@ export const HOME_ESCALATIONS_SQL = `WITH escalated AS MATERIALIZED (
   FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
   WHERE t.propiedades_extra->>'workspace'='render_os'
     AND t.estado NOT IN ('finalizada','publicada')
+    AND (t.fecha_vencimiento IS NULL OR t.fecha_vencimiento >= date_trunc('month',(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba'))::date)
     AND jsonb_typeof(t.propiedades_extra->'escalada_a')='string'
     AND t.propiedades_extra->>'escalada_a' IN ('Líder','Agustín','Franco')
     AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
@@ -84,6 +85,7 @@ export const HOME_TEAM_WORKLOAD_SQL = `WITH
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
     WHERE t.propiedades_extra->>'workspace'='render_os'
       AND t.estado NOT IN ('finalizada','publicada')
+      AND (t.fecha_vencimiento IS NULL OR t.fecha_vencimiento >= date_trunc('month',(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba'))::date)
       AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
       AND COALESCE(t.propiedades_extra->>'papelera_render_os','false')<>'true'
       AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
@@ -143,11 +145,12 @@ export async function readHomeTeamWorkload(pool, auth, query = {}) {
 
 // Shared task membership/visibility, monthly date fallback and production groups
 // keep the home preview and full client pagination on the same business scope.
-const personalTaskScopeSql = `visible AS MATERIALIZED (
+const personalTaskScopeSql = (currentHome = false) => `visible AS MATERIALIZED (
     SELECT t.id,t.titulo,${effectiveTaskStateSql('t')} AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
       t.cliente_id,c.nombre AS cliente_nombre,t.tipo_tarea
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
     WHERE ${taskLiveVisibilitySql('t','c')}
+    ${currentHome ? "AND (t.fecha_vencimiento IS NULL OR t.fecha_vencimiento >= date_trunc('month',(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba'))::date)" : ''}
   ),
   mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE ${taskReviewMembershipSql('v','$1')})`;
 const monthlyWorkSql = (start, end) => `monthly_work AS MATERIALIZED (
@@ -171,7 +174,7 @@ const personalVisitMembers = productionVisitMembersSql('v', alias =>
 
 export const PERSONAL_HOME_SQL = `WITH
   day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
-  ${personalTaskScopeSql},
+  ${personalTaskScopeSql(true)},
   open AS MATERIALIZED (SELECT * FROM mine WHERE estado NOT IN ('finalizada','publicada')),
   ${monthlyWorkSql("date_trunc('month',day.today)::date", "(date_trunc('month',day.today)+interval '1 month')::date")},
   monthly_sectors AS (
@@ -265,7 +268,7 @@ export function parseHomeProductionPage(query = {}) {
 
 export const HOME_PRODUCTION_PAGE_SQL = `WITH
   day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
-  ${personalTaskScopeSql},
+  ${personalTaskScopeSql()},
   ${monthlyWorkSql('$2::date', "($2::date+interval '1 month')::date")},
   ${monthlyProductionSql},
   page AS (

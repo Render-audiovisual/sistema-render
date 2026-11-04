@@ -174,7 +174,10 @@ export function subscribePersonalHomeRefresh(loader, windowTarget = window, docu
   windowTarget.addEventListener("focus", refresh);
   windowTarget.addEventListener("online", refresh);
   documentTarget.addEventListener("visibilitychange", refresh);
+  // Refresh shared server data while Inicio stays open; never poll hidden tabs.
+  const interval = windowTarget.setInterval?.(refresh, 30000);
   return () => {
+    if (interval !== undefined) windowTarget.clearInterval(interval);
     windowTarget.removeEventListener("focus", refresh);
     windowTarget.removeEventListener("online", refresh);
     documentTarget.removeEventListener("visibilitychange", refresh);
