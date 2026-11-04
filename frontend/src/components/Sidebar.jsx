@@ -183,7 +183,7 @@ export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion,
               <div className="user-info">
                 <div className="user-name">{sesion?.usuario?.nombre}</div>
                 {ownerProfileLabel && <div className="user-owner-profile">{ownerProfileLabel}</div>}
-                <div className="user-role">{getRolLabel?.(sesion?.usuario?.rol) || ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+                {!ownerProfileLabel && <div className="user-role">{getRolLabel?.(sesion?.usuario?.rol) || ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>}
               </div>
             </div>
           </summary>

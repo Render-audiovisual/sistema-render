@@ -106,7 +106,7 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
           {ownerProfiles.profiles.map(profile => <button type="button" key={profile.key}
             aria-pressed={ownerProfiles.active === profile.key}
             disabled={!validIdentity || editorialRecordOpen || ownerProfileState?.busy}
-            onClick={() => onChangeOwner(profile.key)}>{profile.name} líder</button>)}
+            onClick={() => onChangeOwner(profile.key)}>{profile.name}</button>)}
         </div>}
         <button type="button" className="qh-refresh" onClick={refresh} disabled={loading || !validIdentity || editorialRecordOpen}>
           <span aria-hidden="true">↻</span> Actualizar
