@@ -56,7 +56,11 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
       start: () => startOnce(() => {
         if (sessionChanges) {
           if (typeof sessionChanges.subscribe !== 'function') throw new ApplicationSessionError('application_session_changes_invalid');
-          removeChanges = sessionChanges.subscribe(() => controller.invalidateExternal());
+          removeChanges = sessionChanges.subscribe(() => {
+            // Hints cannot authenticate or prove logout. An unchanged server
+            // session can be revalidated without a destructive login redirect.
+            void controller.revalidateExternal().catch(() => {});
+          });
         }
         const result = controller.bootstrap();
         initialRead.start();

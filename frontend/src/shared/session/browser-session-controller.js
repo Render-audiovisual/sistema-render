@@ -111,6 +111,18 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
     bootstrap({ signal } = {}) {
       const op = start('bootstrap', signal); return run(op, () => observe(op));
     },
+    revalidateExternal() {
+      // A broadcast is only a hint. Withdraw authority while checking the
+      // exact same identity/context; never silently adopt another tab's login.
+      if (disposed) return Promise.resolve({ ok: false, reason: 'disposed' });
+      const expected = store.getSession();
+      if (active || !expected) {
+        active?.cancel(true); store.withdrawObservation();
+        return Promise.resolve({ ok: false, reason: 'unverified_session' });
+      }
+      const op = start('bootstrap');
+      return run(op, () => observe(op, expected, true));
+    },
     refreshProfile({ sessionIntent, signal } = {}) {
       // Validate ownership before queueing, then again under the shared lock.
       // Never turn a copied DTO or a stale photo action into a

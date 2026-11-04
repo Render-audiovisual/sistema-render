@@ -1843,6 +1843,9 @@ select:focus {
 }
 
 .login-main {
+  /* Login has no sidebar: do not inherit the operational main's narrow width. */
+  width: 100%;
+  max-width: none;
   align-items: center;
   background: radial-gradient(circle at top, rgba(37, 99, 235, 0.12), transparent 24%),
     linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);

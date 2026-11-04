@@ -19,9 +19,11 @@ test('external hint withdraws actual account and all captured intents without ad
   const f=setup(async()=>{calls++;return response(dto(7))});
   await f.runtime.start();const old=f.runtime.getSession(),binding=captureSessionBinding(old);
   assert.equal(sessionBindingMatches(binding,old),true);
-  f.hint();assert.equal(f.runtime.getSnapshot().status,'anonymous');assert.equal(f.runtime.getSession(),null);
+  f.hint();assert.equal(f.runtime.getSnapshot().status,'loading');assert.equal(f.runtime.getSession(),null);
   assert.equal(sessionBindingMatches(binding,old),false);assert.equal(calls,1);
-  f.runtime.dispose();assert.equal(f.listeners.size,0);f.hint();assert.equal(calls,1);
+  await settle();assert.equal(calls,2);assert.equal(f.runtime.getSession().usuario.id,7);
+  assert.equal(sessionBindingMatches(binding,old),false);
+  f.runtime.dispose();assert.equal(f.listeners.size,0);f.hint();assert.equal(calls,2);
 });
 test('external hint cancels pending bootstrap publication even if the response ignores abort',async()=>{
   const gate=deferred();const f=setup(async()=>{await gate.promise;return response(dto(7))});

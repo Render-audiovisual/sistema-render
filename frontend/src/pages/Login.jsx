@@ -111,10 +111,12 @@ export function LoginPage({ sessionPending = false }) {
           <div className="login-divider"><span>o con tu usuario</span></div>
         )}
 
-        <form onSubmit={handleSubmit} className="login-form login-form-card">
+        <form onSubmit={handleSubmit} className="login-form login-form-card" autoComplete="on">
           <label className="login-field">
             <span className="detail-label">Usuario o correo</span>
             <input
+              id="render-login-username"
+              name="username"
               type="text"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
@@ -129,6 +131,8 @@ export function LoginPage({ sessionPending = false }) {
             <span className="detail-label">Contraseña</span>
             <div className="password-input-wrap">
               <input
+                id="render-login-password"
+                name="password"
                 type={mostrarPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

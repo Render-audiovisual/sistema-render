@@ -24,6 +24,33 @@ function browser(fetchImpl, extra = {}) {
   return createApplicationSession({ mode: 'browser', fetchImpl, location: { origin }, storage: forbiddenStorage, locks: mutex(), ...extra });
 }
 
+test('closing and reopening a document restores the server session without another login or logout', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push(url);
+    assert.equal(url, '/api/sesion');
+    assert.equal(options.credentials, 'same-origin');
+    return reply(dto());
+  };
+  const first = browser(fetchImpl);
+  assert.equal((await first.start()).ok, true);
+  first.dispose();
+  const reopened = browser(fetchImpl);
+  assert.equal((await reopened.start()).ok, true);
+  assert.equal(reopened.getSession().usuario.id, 7);
+  assert.deepEqual(calls, ['/api/sesion', '/api/sesion']);
+  reopened.dispose();
+});
+
+test('reopening never restores an expired or revoked server session from browser state', async () => {
+  const first = browser(async () => reply(dto()));
+  await first.start(); first.dispose();
+  const reopened = browser(async () => reply({}, 401));
+  assert.equal((await reopened.start()).reason, 'anonymous');
+  assert.equal(reopened.getSession(), null);
+  reopened.dispose();
+});
+
 test('browser start is one lifetime singleflight, with exact registered DTO and independent subscribers', async () => {
   const gate = deferred(), calls = [], locks = mutex();
   const runtime = browser(async (url, options) => { calls.push({ url, options }); await gate.promise; return reply(dto()); }, { locks });
