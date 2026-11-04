@@ -36,7 +36,7 @@
 .igs-filters button{border:0;background:none;font:inherit;font-size:13px;padding:6px 12px;border-radius:7px;min-height:32px;color:var(--igs-ink2);cursor:pointer}
 .igs-filters button[aria-pressed=true]{background:var(--igs-ink);color:var(--igs-surface)}
 .igs-pubs{list-style:none;margin:0;padding:0}
-.igs-pub{display:grid;grid-template-columns:48px minmax(0,1fr) 90px minmax(120px,200px);gap:14px;align-items:center;width:100%;padding:10px 6px;border:0;border-top:1px solid var(--igs-line);background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:8px}
+.igs-pub{display:grid;grid-template-columns:48px minmax(0,1fr) 136px minmax(120px,200px);gap:14px;align-items:center;width:100%;padding:10px 6px;border:0;border-top:1px solid var(--igs-line);background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:8px}
 .igs-pub:hover,.igs-pub.is-active{background:var(--igs-bg)}
 .igs-pub:focus-visible,.igs-hit:focus-visible,.igs-link:focus-visible,.igs-filters button:focus-visible{outline:3px solid #2a78d6;outline-offset:2px}
 .igs-thumb{width:48px;height:60px;border-radius:7px;overflow:hidden;background:var(--igs-grid);display:grid;place-items:center;font-size:12px;color:var(--igs-muted)}
@@ -67,5 +67,9 @@
 .igs-metrics dd{margin:4px 0 2px;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}.igs-metrics small{font-size:11px;display:block}
 .igs-detail-data h3{font-size:14px;margin:0 0 6px}
 @media(max-width:900px){.igs-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.igs-grid{grid-template-columns:1fr}.igs-detail-body{grid-template-columns:1fr}.igs-detail-media{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:start}.igs-detail-cover{grid-row:span 3}.igs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.igs-pub{grid-template-columns:44px minmax(0,1fr) 70px}.igs-pub-score{grid-column:2/-1}.igs-tile strong{font-size:22px}.igs-controls input,.igs-filters select{font-size:16px}}
+@media(max-width:600px){.igs-pub{grid-template-columns:44px minmax(0,1fr) 116px}.igs-pub-score{grid-column:2/-1}.igs-tile strong{font-size:22px}.igs-controls input,.igs-filters select{font-size:16px}}
 :root[data-theme="dark"] .igs-page{--igs-grid:#262624;--igs-band:#25272b;--igs-ref:#5c5f66;--igs-s1:#3987e5;--igs-good:#4cc38a;--igs-bad:#ff7a6e;--igs-q1:#17283d;--igs-q2:#1d3d63;--igs-q3:#245a93;--igs-q4:#2f7bcc;--igs-q5:#5ea2ee}
+
+/* Desglose por plataforma: una línea por red, sin cortar el número. */
+.igs-pub-num .igs-platforms { display: grid; justify-items: end; }
+.igs-pub-num .igs-platforms span { white-space: nowrap; }

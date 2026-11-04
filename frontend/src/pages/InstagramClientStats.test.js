@@ -60,9 +60,9 @@ test('followers chart needs two days and labels the month start', () => {
 
 test('views lead publication rows and the monthly summary; reach remains separately labelled',()=>{
   assert.match(source,/<Tile label="Visualizaciones disponibles" value=\{a.vistas_disponibles\}/);
-  assert.match(source,/fmt\(r.metricas.vistas_total\).*<small>vistas totales<\/small>/);
+  assert.match(source,/fmt\(publicationViews\(r.metricas\)\).*'vistas disponibles' : 'vistas totales'/);
   assert.match(source,/\['vistas_total', 'Visualizaciones totales'\], \['alcance', 'Alcance'\]/);
-  assert.match(source,/Instagram:.*vistas_instagram.*Facebook:.*vistas_facebook/);
+  assert.match(source,/platformNote\(m.vistas_instagram, m.vistas_facebook\)/);
   assert.match(api.measurementLabel('2026-11-03T18:00:00.000Z'),/^Actualizado/);
   assert.equal(api.measurementLabel(null),'Sin fecha de medición');
   assert.equal(api.measurementLabel('bad'),'Sin fecha de medición');
@@ -74,4 +74,23 @@ test('a principio de mes compara contra los mismos días del mes anterior',()=>{
   assert.equal(api.compareLabel({periodo_anterior:'2026-10',comparacion:{parcial:true,hasta_dia:1}}),'1 oct');
   assert.equal(api.compareLabel({periodo_anterior:'2026-09',comparacion:{parcial:false,hasta_dia:null}}),'mes anterior');
   assert.equal(api.compareLabel({}),'mes anterior');
+});
+
+test('el desglose muestra primero la plataforma con más visualizaciones', () => {
+  assert.equal(api.platformNote(2934083, 386163), 'Instagram: 2.934.083 · Facebook: 386.163');
+  assert.equal(api.platformNote(3034, 4654), 'Facebook: 4.654 · Instagram: 3.034');
+  assert.equal(api.platformNote(2240, null), 'Instagram: 2.240 · Facebook: —');
+  assert.equal(api.platformNote(null, 10), 'Facebook: 10 · Instagram: —');
+});
+
+test('ordenar por más vistas usa el total y, si falta, lo disponible', () => {
+  const rows = [
+    { ig_media_id: 'a', tipo: 'reel', publicado_at: '2026-10-29T00:00:00Z', puntaje: 1, metricas: { vistas_total: 7688, vistas: 7688 } },
+    { ig_media_id: 'b', tipo: 'reel', publicado_at: '2026-10-07T00:00:00Z', puntaje: 9, metricas: { vistas_total: 3320246, vistas: 3320246 } },
+    { ig_media_id: 'c', tipo: 'reel', publicado_at: '2026-10-23T00:00:00Z', puntaje: 2, metricas: { vistas_total: null, vistas: 9000 } },
+    { ig_media_id: 'd', tipo: 'carrusel', publicado_at: '2026-10-20T00:00:00Z', puntaje: 2, metricas: {} },
+  ];
+  assert.deepEqual(api.sortPublications(rows, 'all', 'vistas').map(r => r.ig_media_id), ['b', 'c', 'a', 'd']);
+  assert.equal(api.publicationViews({ vistas_total: null, vistas: 9000 }), 9000);
+  assert.equal(api.publicationViews({}), null);
 });

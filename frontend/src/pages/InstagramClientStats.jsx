@@ -9,11 +9,18 @@ import './InstagramClientStats.css';
 // Estadísticas por cliente y por publicación. La API revalida la sesión en cada pedido.
 const nf = new Intl.NumberFormat('es-AR');
 const fmt = v => (typeof v === 'number' && Number.isFinite(v) ? nf.format(v) : '—');
-const viewNote = m => `Instagram: ${fmt(m.vistas_instagram)} · Facebook: ${fmt(m.vistas_facebook)}`;
+// Desglose por plataforma: la de más visualizaciones va primero.
+export function platformNote(instagram, facebook) {
+  const parts = [['Instagram', instagram], ['Facebook', facebook]];
+  if ((Number.isFinite(facebook) ? facebook : -1) > (Number.isFinite(instagram) ? instagram : -1)) parts.reverse();
+  return parts.map(([name, value]) => `${name}: ${fmt(value)}`).join(' · ');
+}
+const viewNote = m => platformNote(m.vistas_instagram, m.vistas_facebook);
+export const publicationViews = m => m?.vistas_total ?? m?.vistas ?? null;
 export function monthlyViewNote(m) {
   const missing = (count, platform) => count > 0
     ? `Falta ${platform} en ${count} ${count === 1 ? 'publicación' : 'publicaciones'}` : null;
-  return [`Instagram: ${fmt(m.vistas_instagram_disponibles)} · Facebook: ${fmt(m.vistas_facebook_disponibles)}`,
+  return [platformNote(m.vistas_instagram_disponibles, m.vistas_facebook_disponibles),
     missing(m.publicaciones_sin_facebook, 'Facebook'), missing(m.publicaciones_sin_instagram, 'Instagram')].filter(Boolean).join(' · ');
 }
 const times = v => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1).replace('.', ',')}×` : '—');
@@ -51,7 +58,7 @@ export function measurementLabel(iso) {
 }
 export function sortPublications(rows, tipo, orden) {
   const list = rows.filter(r => tipo === 'all' || r.tipo === tipo);
-  const key = { fecha: r => Date.parse(r.publicado_at), puntaje: r => r.puntaje ?? -1, alcance: r => r.metricas.alcance ?? -1 }[orden];
+  const key = { vistas: r => publicationViews(r.metricas) ?? -1, fecha: r => Date.parse(r.publicado_at), puntaje: r => r.puntaje ?? -1, alcance: r => r.metricas.alcance ?? -1 }[orden];
   return list.slice().sort((a, b) => key(b) - key(a));
 }
 
@@ -197,7 +204,7 @@ function Heatmap({ rows, bind }) {
 function StatsContent({ sesion, params, navigate }) {
   const { capture } = useScopedRequest(sesion, `instagram-stats:${params.cliente}:${params.periodo}`);
   const [state, setState] = useState({ loading: true, error: '', data: null });
-  const [tipo, setTipo] = useState('all'), [orden, setOrden] = useState('fecha');
+  const [tipo, setTipo] = useState('all'), [orden, setOrden] = useState('vistas');
   const [bind, tipNode] = useTooltip();
   useEffect(() => {
     const controller = new AbortController(), guard = capture();
@@ -240,13 +247,13 @@ function StatsContent({ sesion, params, navigate }) {
           <header className="igs-section-head"><div><h2>Publicación por publicación</h2><p>Tocá una publicación para ver su detalle y su curva. Puntaje = alcance contra el promedio de su formato en la cuenta (1,0× = normal).</p></div>
             <div className="igs-filters">
               <div role="group" aria-label="Formato">{[['all', 'Todo'], ['reel', 'Reels'], ['carrusel', 'Carruseles']].map(([k, l]) => <button key={k} type="button" aria-pressed={tipo === k} onClick={() => setTipo(k)}>{l}</button>)}</div>
-              <label><span>Ordenar</span><select value={orden} onChange={e => setOrden(e.target.value)}><option value="fecha">Más recientes</option><option value="puntaje">Mejor puntaje</option><option value="alcance">Mayor alcance</option></select></label>
+              <label><span>Ordenar</span><select value={orden} onChange={e => setOrden(e.target.value)}><option value="vistas">Más vistas</option><option value="fecha">Más recientes</option><option value="puntaje">Mejor puntaje</option><option value="alcance">Mayor alcance</option></select></label>
             </div></header>
           {rows.length ? <ul className="igs-pubs">{rows.map(r => { const img = mediaCoverUrl(r.portada_url); const pct = r.puntaje === null ? 0 : Math.min(r.puntaje / maxScore, 1) * 100;
             return <li key={r.ig_media_id}><button type="button" className={`igs-pub${params.pub === r.ig_media_id ? ' is-active' : ''}`} onClick={() => { navigate({ ...params, pub: r.ig_media_id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
               <span className="igs-thumb">{img ? <img src={img} alt="" width="48" height="60" loading="lazy" referrerPolicy="no-referrer" /> : TIPO[r.tipo]?.[0]}</span>
               <span className="igs-pub-text"><b>{r.caption?.trim() || `${TIPO[r.tipo]} sin copy`}</b><small>{TIPO[r.tipo]} · {shortDate(r.publicado_at)}</small><small>{measurementLabel(r.medido_at)}</small></span>
-              <span className="igs-pub-num"><b>{fmt(r.metricas.vistas_total)}</b><small>vistas totales</small><small>{viewNote(r.metricas)}</small></span>
+              <span className="igs-pub-num"><b>{fmt(publicationViews(r.metricas))}</b><small>{r.metricas.vistas_total == null ? 'vistas disponibles' : 'vistas totales'}</small><small className="igs-platforms">{viewNote(r.metricas).split(' · ').map(t => <span key={t}>{t}</span>)}</small></span>
               <span className="igs-pub-score"><span className="igs-scorebar"><i className={r.puntaje >= 1 ? '' : 'is-low'} style={{ width: `${pct}%` }} /><em style={{ left: `${(1 / maxScore) * 100}%` }} /></span>
                 <b className={r.puntaje === null ? '' : r.puntaje >= 1 ? 'is-up' : 'is-down'}>{times(r.puntaje)}</b></span>
             </button></li>; })}</ul> : <p className="igs-empty">No hay {tipo === 'reel' ? 'reels' : tipo === 'carrusel' ? 'carruseles' : 'publicaciones'} en este mes.</p>}
