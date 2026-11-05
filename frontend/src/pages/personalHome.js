@@ -71,8 +71,22 @@ export function parsePersonalHome(value, userId, allowTeamReview = false) {
   if (hasProjects && (!count(value.list_totals?.projects) || value.list_totals.projects < projects.length)) invalid();
   list_totals.projects = hasProjects ? value.list_totals.projects : 0;
   if (summary.open < tasks.length || review.total < review.items.length) invalid();
+  let supervision;
+  if (value.supervision !== undefined) {
+    const s = value.supervision;
+    if (!allowTeamReview || s?.today !== value.today || !Array.isArray(s.people) || s.people.length > 2
+      || !Array.isArray(s.priorities) || s.priorities.length > 12 || !Array.isArray(s.clients)) invalid();
+    supervision = { today: s.today,
+      people: s.people.map(p => { if (!positive(p.id) || !text(p.name) || ![p.open,p.review,p.done].every(count) || p.review > p.open) invalid();
+        return { id:p.id,name:p.name,open:p.open,review:p.review,done:p.done }; }),
+      priorities: s.priorities.map(p => { if (!positive(p.id) || !text(p.titulo) || !text(p.estado) || !(p.deadline === null || date(p.deadline)) || !(p.cliente === null || text(p.cliente))) invalid();
+        return { id:p.id,titulo:p.titulo,estado:p.estado,deadline:p.deadline,cliente:p.cliente }; }),
+      clients: s.clients.map(c => { if (!(c.id === null || positive(c.id)) || !text(c.name) || !positive(c.total) || !count(c.done) || c.done > c.total) invalid();
+        return { id:c.id,name:c.name,total:c.total,done:c.done }; }) };
+  }
   return { version: 1, generated_at: value.generated_at, today: value.today, user: { id: userId, nombre: value.user.nombre },
     summary, tasks, review, clients, visits, activity, projects, list_totals, capabilities: { projects: hasProjects },
+    ...(supervision ? { supervision } : {}),
     ...(value.monthly_progress === undefined ? {} : { monthly_progress: parseHomeMonthlyProgress(value.monthly_progress, value.today) }) };
 }
 

@@ -10,6 +10,7 @@ import { HomeTeamWorkload } from "../components/HomeTeamWorkload.jsx";
 import { HomeEditorialControl } from "../components/HomeEditorialControl.jsx";
 import { createPersonalHomeLoader, homeDate, homeDeadline, homeOverdueAge, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalTaskHref, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
+import { HomeSupervision } from '../components/HomeSupervision.jsx';
 
 const WORK_AREAS = [
   { href: "/workspace/tareas", title: "Tareas" },
@@ -121,7 +122,8 @@ export function QuickHomePage({ sesion, onNavigate, onChangeOwner, ownerProfileS
         {validIdentity && <button type="button" onClick={refresh}>Reintentar</button>}
       </div>}
 
-      {data && <>
+      {data?.supervision && <><HomeSupervision data={data.supervision} onNavigate={onNavigate}/><p className="qh-updated">Última consulta <time dateTime={data.generated_at}>{new Intl.DateTimeFormat('es-AR', {timeZone:'America/Argentina/Cordoba',hour:'2-digit',minute:'2-digit'}).format(new Date(data.generated_at))}</time></p></>}
+      {data && !data.supervision && <>
         <dl className="qh-summary" aria-label="Resumen de tus tareas">
           {SUMMARY.map(([key, label]) => {
             const base = personalTaskHref(userId);

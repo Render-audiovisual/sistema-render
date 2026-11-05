@@ -1,4 +1,5 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { HOME_SUPERVISION_SQL, SUPERVISION_TEAMS, supervisionSummary } from './home-supervision.js';
 import { effectiveTaskStateSql, taskLiveVisibilitySql, taskReviewStateSql, taskReviewMembershipSql } from './task-review-query.js';
 import { productionVisitMembersSql } from './production-visit-membership.js';
 
@@ -315,6 +316,12 @@ export async function readPersonalHome(pool, auth) {
     const result = await db.query(PERSONAL_HOME_SQL, [user.id, user.rol === 'admin']);
     if (!result.rows[0]?.home) throw new Error('No se pudo leer el inicio operativo.');
     const home = { ...result.rows[0].home, user: { id: user.id, nombre: user.nombre } };
+    const team = user.rol === 'admin' ? SUPERVISION_TEAMS[auth.owner_profile] : null;
+    if (team) {
+      const people = (await db.query('SELECT id,nombre FROM usuarios WHERE id=ANY($1::int[]) AND activo IS TRUE', [team])).rows;
+      const work = (await db.query(HOME_SUPERVISION_SQL, [team])).rows;
+      home.supervision = supervisionSummary(work, people, home.today);
+    }
     await db.query('COMMIT');
     return home;
   } catch (error) {
