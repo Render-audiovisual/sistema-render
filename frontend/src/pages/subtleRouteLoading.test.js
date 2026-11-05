@@ -20,5 +20,5 @@ test('headings, controls and content enter progressively including wrapped task 
  const frames=css.match(/@keyframes render-content-enter\{from\{([^}]+)\}to\{([^}]+)\}\}/);
  assert.ok(frames);assert.match(frames[1],/opacity:\.12/);assert.match(frames[2],/opacity:1/);
  assert.doesNotMatch(frames[0],/transform|height|width|filter|pointer-events/);
- assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{:is\([^\n]+\.ros-board[^\n]+\)\{animation:none\}\}/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{#root :is\([^\n]+\.ros-board[^\n]+\)\{animation:none\}\}/);
 });
