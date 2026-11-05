@@ -1534,6 +1534,13 @@ textarea {
 @media(max-width:980px){.route-loading{margin-left:0;padding-top:var(--render-mobile-header-height)}}
 @media(prefers-reduced-motion:reduce){.route-loading>span{animation:none}}
 
+/* Reveal the new section itself, not just its loading spinner. Only opacity:
+   no layout shift, transformed drag coordinates or delayed interaction.
+   Updating data inside an existing section does not restart this animation. */
+#render-main-content + main:not(.route-loading){animation:render-section-reveal 240ms cubic-bezier(.2,.65,.3,1) both}
+@keyframes render-section-reveal{from{opacity:.65}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){#render-main-content + main:not(.route-loading){animation:none}}
+
 /* Respuesta física común: breve y predecible para las acciones principales. */
 :is(.btn,.primary-btn,.secondary-btn,.ghost-btn,.ros-primary-button,.rf-primary,.publications-plan-action,.finance-contract-primary,.finance-contract-secondary,.drive-page-header a,.drive-connect button){
   transition:background-color var(--render-motion-fast) ease,border-color var(--render-motion-fast) ease,color var(--render-motion-fast) ease,box-shadow var(--render-motion-fast) ease,transform var(--render-motion-fast) ease;
