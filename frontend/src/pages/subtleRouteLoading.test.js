@@ -12,13 +12,13 @@ test('route loader is small, neutral and does not move content',()=>{
 test('reduced motion disables route spinner rather than merely slowing it',()=>{
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\.route-loading>span\{animation:none\}\}/);
 });
-test('headings, controls and content enter progressively including wrapped task board',()=>{
- assert.match(css,/\.ros-title-row[^\n]+render-heading-enter 560ms cubic-bezier\(\.25,\.1,\.25,1\)/);
- assert.match(css,/\.ros-controls[^\n]+560ms[^\n]+20ms backwards/);
- assert.match(css,/\.ros-board[^\n]+560ms[^\n]+40ms backwards/);
- assert.doesNotMatch(css,/animation:render-section-reveal/);
+test('shell stays still and content fades briefly without stagger or transformed drag surfaces',()=>{
+ assert.match(css,/#root :is\(\.ros-title-row[^\n]+\.ros-controls[^\n]+\)\{animation:none\}/);
+ assert.match(css,/#root :is\(\.ros-board[^\n]+\.personal-list-empty\)\{animation:render-content-enter 180ms ease-out backwards\}/);
+ assert.match(css,/#root \.render-workspace \.ros-column\.is-mobile-active\{animation:none\}/);
+ assert.doesNotMatch(css,/animation:render-(section-reveal|heading-enter)/);
  const frames=css.match(/@keyframes render-content-enter\{from\{([^}]+)\}to\{([^}]+)\}\}/);
- assert.ok(frames);assert.match(frames[1],/opacity:\.3/);assert.match(frames[2],/opacity:1/);
+ assert.ok(frames);assert.match(frames[1],/opacity:\.8/);assert.match(frames[2],/opacity:1/);
  assert.doesNotMatch(frames[0],/transform|height|width|filter|pointer-events/);
- assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{#root :is\([^\n]+\.ros-board[^\n]+\)\{animation:none\}\}/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{#root :is\(\.ros-board[^\n]+\)\{animation:none\}\}/);
 });
