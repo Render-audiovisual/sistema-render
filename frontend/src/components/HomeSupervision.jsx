@@ -17,7 +17,7 @@ export function HomeSupervision({ data, onNavigate }) {
       {data.clients.map(client => <article className="hs-client" key={client.id ?? 'none'}><strong>{client.name}</strong><span>{client.done} / {client.total}</span>
         <progress aria-label={`Avance de ${client.name}`} value={client.done} max={client.total}/>
         {client.id && link(`/workspace/tareas?client=${client.id}`, 'Ver tareas')}
-        {client.id && link(`/instagram/estadisticas?cliente=cliente-${client.id}&periodo=${data.today.slice(0, 7)}`, 'Estadísticas')}
+        {client.statsKey && link(`/instagram/estadisticas?cliente=${encodeURIComponent(client.statsKey)}&periodo=${data.today.slice(0, 7)}`, 'Estadísticas')}
       </article>)}
     </section></div>
     <nav aria-label="Control general">{link('/workspace/tareas', 'Todo el equipo')}{link('/clientes', 'Todos los clientes')}{link('/producciones', 'Visitas y grabaciones')}{link('/instagram', 'Reportes')}</nav>

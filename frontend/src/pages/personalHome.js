@@ -82,7 +82,9 @@ export function parsePersonalHome(value, userId, allowTeamReview = false) {
       priorities: s.priorities.map(p => { if (!positive(p.id) || !text(p.titulo) || !text(p.estado) || !(p.deadline === null || date(p.deadline)) || !(p.cliente === null || text(p.cliente))) invalid();
         return { id:p.id,titulo:p.titulo,estado:p.estado,deadline:p.deadline,cliente:p.cliente }; }),
       clients: s.clients.map(c => { if (!(c.id === null || positive(c.id)) || !text(c.name) || !positive(c.total) || !count(c.done) || c.done > c.total) invalid();
-        return { id:c.id,name:c.name,total:c.total,done:c.done }; }) };
+        const statsKey = c.statsKey ?? (c.id ? `cliente-${c.id}` : null);
+        if (statsKey !== null && !/^(cliente|grupo)-[1-9]\d*$/.test(statsKey)) invalid();
+        return { id:c.id,name:c.name,total:c.total,done:c.done,statsKey }; }) };
   }
   return { version: 1, generated_at: value.generated_at, today: value.today, user: { id: userId, nombre: value.user.nombre },
     summary, tasks, review, clients, visits, activity, projects, list_totals, capabilities: { projects: hasProjects },

@@ -26,6 +26,13 @@ test('supervision teams use stable IDs and shared tasks count once per client', 
   assert.equal(data.people[0].done,1); assert.equal(data.people[1].done,1);
   assert.equal(data.priorities.length,0);
 });
+test('feed group links preserve separate client task progress without duplicating the feed identity', () => {
+  const base={estado:'pendiente',deadline:'2026-11-07',members:[8],grupo_feed_id:1};
+  const data=supervisionSummary([{...base,id:1,cliente_id:5,cliente:'Hortícola'},{...base,id:2,cliente_id:6,cliente:'Market'}],[],'2026-11-04');
+  assert.equal(data.clients.length,2);
+  assert.deepEqual(data.clients.map(c=>c.statsKey),['grupo-1','grupo-1']);
+  assert.ok(data.clients.every(c=>c.total===1));
+});
 test('priority is overdue, today, review, then future or undated; monthly progress excludes future months', () => {
   const base = {cliente_id:2,cliente:'Synthetic',members:[8],estado:'pendiente'};
   const rows = [{...base,id:1,titulo:'Future',deadline:'2026-12-01'},

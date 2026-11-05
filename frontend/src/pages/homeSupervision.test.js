@@ -11,3 +11,9 @@ test('supervision DTO is closed, leader-only and rejects invalid counts',()=>{
  assert.throws(()=>parsePersonalHome(value,17,false));
  value.supervision.clients[0].done=2;assert.throws(()=>parsePersonalHome(value,17,true));
 });
+test('statistics accepts the server feed group and rejects external destinations',()=>{
+ const value=payload();value.supervision.clients[0].statsKey='grupo-1';
+ assert.equal(parsePersonalHome(value,17,true).supervision.clients[0].statsKey,'grupo-1');
+ value.supervision.clients[0].statsKey='https://example.invalid';
+ assert.throws(()=>parsePersonalHome(value,17,true));
+});
