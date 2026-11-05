@@ -1528,11 +1528,11 @@ textarea {
 /* Cambio de sección liviano: evita una pantalla congelada mientras se descarga
    únicamente el módulo solicitado. */
 .route-loading{align-content:center;background:var(--render-canvas);color:var(--render-ink);display:grid;gap:8px;justify-items:center;margin-left:var(--render-sidebar-width);min-height:100dvh;text-align:center}
-.route-loading>span{animation:route-loading-spin .75s linear infinite;border:2px solid var(--render-line);border-radius:50%;border-top-color:var(--render-accent);height:28px;width:28px}
-.route-loading strong{font-size:14px}.route-loading small{color:var(--render-muted);font-size:11px}
+.route-loading>span{animation:route-loading-spin 1.4s linear infinite;border:2px solid var(--render-line);border-radius:50%;border-top-color:var(--render-muted);height:18px;width:18px}
+.route-loading strong{color:var(--render-muted);font-size:13px;font-weight:500}.route-loading small{color:var(--render-muted);font-size:11px}
 @keyframes route-loading-spin{to{transform:rotate(360deg)}}
 @media(max-width:980px){.route-loading{margin-left:0;padding-top:var(--render-mobile-header-height)}}
-@media(prefers-reduced-motion:reduce){.route-loading>span{animation-duration:1.8s}}
+@media(prefers-reduced-motion:reduce){.route-loading>span{animation:none}}
 
 /* Respuesta física común: breve y predecible para las acciones principales. */
 :is(.btn,.primary-btn,.secondary-btn,.ghost-btn,.ros-primary-button,.rf-primary,.publications-plan-action,.finance-contract-primary,.finance-contract-secondary,.drive-page-header a,.drive-connect button){
