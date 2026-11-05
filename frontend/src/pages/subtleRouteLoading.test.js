@@ -13,12 +13,12 @@ test('reduced motion disables route spinner rather than merely slowing it',()=>{
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\.route-loading>span\{animation:none\}\}/);
 });
 test('headings, controls and content enter progressively including wrapped task board',()=>{
- assert.match(css,/\.ros-title-row[^\n]+render-heading-enter 420ms/);
- assert.match(css,/\.ros-controls[^\n]+65ms backwards/);
- assert.match(css,/\.ros-board[^\n]+130ms backwards/);
+ assert.match(css,/\.ros-title-row[^\n]+render-heading-enter 560ms cubic-bezier\(\.25,\.1,\.25,1\)/);
+ assert.match(css,/\.ros-controls[^\n]+560ms[^\n]+20ms backwards/);
+ assert.match(css,/\.ros-board[^\n]+560ms[^\n]+40ms backwards/);
  assert.doesNotMatch(css,/animation:render-section-reveal/);
  const frames=css.match(/@keyframes render-content-enter\{from\{([^}]+)\}to\{([^}]+)\}\}/);
- assert.ok(frames);assert.match(frames[1],/opacity:\.12/);assert.match(frames[2],/opacity:1/);
+ assert.ok(frames);assert.match(frames[1],/opacity:\.3/);assert.match(frames[2],/opacity:1/);
  assert.doesNotMatch(frames[0],/transform|height|width|filter|pointer-events/);
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{#root :is\([^\n]+\.ros-board[^\n]+\)\{animation:none\}\}/);
 });

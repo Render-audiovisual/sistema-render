@@ -1534,13 +1534,14 @@ textarea {
 @media(max-width:980px){.route-loading{margin-left:0;padding-top:var(--render-mobile-header-height)}}
 @media(prefers-reduced-motion:reduce){.route-loading>span{animation:none}}
 
-/* Three bounded entry stages. No remounts/timers, no transformed drag surface.
+/* Overlapping entry stages, with a gradual acceleration instead of separate beats.
+   No remounts/timers, no transformed drag surface.
    Backwards fill releases the animation stacking context when it finishes. */
-:is(.ros-title-row,.client-monthly-header,.principal-calendar-header,.prod-page-heading,.ig-hero,.quick-home-header){animation:render-heading-enter 420ms cubic-bezier(.22,.61,.36,1) backwards}
-:is(.ros-controls,.principal-calendar-toolbar,.prod-toolbar){animation:render-content-enter 440ms cubic-bezier(.22,.61,.36,1) 65ms backwards}
-#root :is(.ros-board,.ros-task-list,.client-monthly-list,.principal-calendar-layout,.prod-layout,.ig-report-choices,.ig-account-list,.ig-team-cards,.hs-people,.hs-columns){animation:render-content-enter 480ms cubic-bezier(.22,.61,.36,1) 130ms backwards}
-@keyframes render-heading-enter{from{opacity:.15;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-@keyframes render-content-enter{from{opacity:.12}to{opacity:1}}
+:is(.ros-title-row,.client-monthly-header,.principal-calendar-header,.prod-page-heading,.ig-hero,.quick-home-header){animation:render-heading-enter 560ms cubic-bezier(.25,.1,.25,1) backwards}
+:is(.ros-controls,.principal-calendar-toolbar,.prod-toolbar){animation:render-content-enter 560ms cubic-bezier(.25,.1,.25,1) 20ms backwards}
+#root :is(.ros-board,.ros-task-list,.client-monthly-list,.principal-calendar-layout,.prod-layout,.ig-report-choices,.ig-account-list,.ig-team-cards,.hs-people,.hs-columns){animation:render-content-enter 560ms cubic-bezier(.25,.1,.25,1) 40ms backwards}
+@keyframes render-heading-enter{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes render-content-enter{from{opacity:.3}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){#root :is(.ros-title-row,.client-monthly-header,.principal-calendar-header,.prod-page-heading,.ig-hero,.quick-home-header,.ros-controls,.principal-calendar-toolbar,.prod-toolbar,.ros-board,.ros-task-list,.client-monthly-list,.principal-calendar-layout,.prod-layout,.ig-report-choices,.ig-account-list,.ig-team-cards,.hs-people,.hs-columns){animation:none}}
 
 /* Respuesta física común: breve y predecible para las acciones principales. */
